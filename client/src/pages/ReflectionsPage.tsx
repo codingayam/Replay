@@ -155,9 +155,11 @@ const ReflectionsPage: React.FC = () => {
         setGeneratedPlaylist(null);
     };
 
-    const handleMeditationFinish = () => {
+    const handleMeditationFinish = (completed: boolean) => {
         setMeditationPlaylist(null);
-        setShowSummaryModal(true);
+        if (completed) {
+            setShowSummaryModal(true);
+        }
         fetchSavedMeditations(); // Refresh the saved meditations list
     };
 

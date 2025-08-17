@@ -10,7 +10,7 @@ interface PlaylistItem {
 
 interface MeditationPlayerProps {
     playlist: PlaylistItem[];
-    onFinish: () => void;
+    onFinish: (completed: boolean) => void;
 }
 
 const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish }) => {
@@ -41,7 +41,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish 
         if (currentIndex >= playlist.length) {
             setStatus('Meditation complete.');
             setIsPlaying(false);
-            onFinish();
+            onFinish(true);
             return;
         }
 
@@ -186,7 +186,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish 
                 <button onClick={togglePlayPause} style={styles.playButton}>
                     {isPlaying && !isPaused ? <Pause size={24} /> : <Play size={24} />}
                 </button>
-                <button onClick={onFinish} style={styles.button}>End Session</button>
+                <button onClick={() => onFinish(false)} style={styles.button}>End Session</button>
             </div>
             
             <audio ref={audioRef} onEnded={handleAudioEnded} />
