@@ -276,6 +276,29 @@ app.delete('/api/notes/:id', async (req, res) => {
     res.status(204).send();
 });
 
+// Update note transcript
+app.put('/api/notes/:id/transcript', async (req, res) => {
+    const { id } = req.params;
+    const { transcript } = req.body;
+    
+    if (!transcript || typeof transcript !== 'string') {
+        return res.status(400).json({ error: 'Transcript is required and must be a string' });
+    }
+    
+    let notes = await readData(NOTES_FILE);
+    const noteIndex = notes.findIndex(n => n.id === id);
+    
+    if (noteIndex === -1) {
+        return res.status(404).json({ error: 'Note not found' });
+    }
+    
+    // Update the transcript
+    notes[noteIndex].transcript = transcript.trim();
+    
+    await writeData(NOTES_FILE, notes);
+    res.json(notes[noteIndex]);
+});
+
 
 // -- Profile --
 app.get('/api/profile', async (req, res) => {

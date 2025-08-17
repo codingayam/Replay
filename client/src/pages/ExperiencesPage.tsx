@@ -76,6 +76,16 @@ const ExperiencesPage: React.FC = () => {
         }
     };
 
+    const handleUpdateTranscript = async (id: string, transcript: string) => {
+        try {
+            await axios.put(`${API_URL}/notes/${id}/transcript`, { transcript });
+            fetchNotes(); // Refresh the notes to show the updated transcript
+        } catch (err) {
+            console.error("Error updating transcript:", err);
+            alert('Failed to update transcript. See console for details.');
+        }
+    };
+
 
 
     return (
@@ -99,7 +109,7 @@ const ExperiencesPage: React.FC = () => {
                         <div key={dateHeader} style={styles.dateGroup}>
                             <h3 style={styles.dateHeader}>{dateHeader}</h3>
                             {groupedNotes[dateHeader].map(note => (
-                                <NoteCard key={note.id} note={note} onPlay={handlePlayNote} onDelete={handleDeleteNote} />
+                                <NoteCard key={note.id} note={note} onPlay={handlePlayNote} onDelete={handleDeleteNote} onUpdateTranscript={handleUpdateTranscript} />
                             ))}
                         </div>
                     ));
