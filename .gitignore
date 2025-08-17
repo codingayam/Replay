@@ -8,13 +8,56 @@ build/
 */dist/
 */build/
 
-# Environment variables
+# Environment variables and sensitive configuration
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env.staging
+.env.production
 *.env
+.envrc
+
+# API Keys and credentials
+**/secrets/
+**/credentials/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.cert
+config/secrets.json
+config/credentials.json
+secrets.json
+credentials.json
+api-keys.json
+
+# Database and service credentials
+database.json
+db-config.json
+firebase-adminsdk-*.json
+serviceAccountKey.json
+google-credentials.json
+
+# SSH Keys
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.pub
+
+# AWS credentials
+.aws/
+aws-credentials
+.s3cfg
+
+# Other sensitive files
+*.secret
+*.private
+.htpasswd
 
 # Data files
 server/data/audio/
