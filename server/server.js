@@ -539,7 +539,7 @@ The summary should be warm, supportive, and provide closure to the reflection ex
 
 // -- Meditation --
 app.post('/api/meditate', async (req, res) => {
-    const { noteIds, duration = 5 } = req.body; // Default to 5 minutes if not specified
+    const { noteIds, duration = 5, timeOfReflection = 'Day' } = req.body; // Default to 5 minutes and Day if not specified
     if (!noteIds || noteIds.length === 0) {
         return res.status(400).send('Note IDs are required.');
     }
@@ -556,29 +556,58 @@ app.post('/api/meditate', async (req, res) => {
 
         // 1. Generate Script with Gemini
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const masterPrompt = `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds.
+        
+        let masterPrompt;
+        
+        if (timeOfReflection === 'Night') {
+            masterPrompt = `
+                You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds.
 
-            Guidelines:
+                Guidelines:
 
-            - Keep it to exactly ${duration} minutes total
-            - Only highlight values that naturally connect to the chosen experiences - don't force all values into every reflection. It's actually ok to not mention any values at all.
-            - Include appropriate pauses (feel free to decide the number of seconds to pause)
-            - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. There should not be any pauses after the ending words.
-            - Adjust the depth and pacing based on the session duration: longer sessions should allow for deeper exploration and longer pauses
-            
-            Here is the user's context:
-            - Name: ${profile.name || 'User'}
-            - Core Values: ${profile.values || 'Not specified'}
-            - Life Mission: ${profile.mission || 'Not specified'}
-            
-            Here are the user's selected experiences for reflection:
-            ---
-            ${transcripts}
-            ---
-            
-            Please begin the ${duration}-minute guided meditation script now.
-        `;
+                - Keep it to exactly ${duration} minutes total
+                - Only highlight values that naturally connect to the chosen experiences - don't force all values into every reflection. It's actually ok to not mention any values at all.
+                - Include appropriate pauses (feel free to decide the number of seconds to pause)
+                - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. There should not be any pauses after the ending words.
+                - Adjust the depth and pacing based on the session duration: longer sessions should allow for deeper exploration and longer pauses
+                
+                Here is the user's context:
+                - Name: ${profile.name || 'User'}
+                - Core Values: ${profile.values || 'Not specified'}
+                - Life Mission: ${profile.mission || 'Not specified'}
+                
+                Here are the user's selected experiences for reflection:
+                ---
+                ${transcripts}
+                ---
+                
+                Please begin the ${duration}-minute guided meditation script now, but tweak it to be something more suited for nighttime reflection and wrapping up the day.
+            `;
+        } else {
+            masterPrompt = `
+                You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds.
+
+                Guidelines:
+
+                - Keep it to exactly ${duration} minutes total
+                - Only highlight values that naturally connect to the chosen experiences - don't force all values into every reflection. It's actually ok to not mention any values at all.
+                - Include appropriate pauses (feel free to decide the number of seconds to pause)
+                - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. There should not be any pauses after the ending words.
+                - Adjust the depth and pacing based on the session duration: longer sessions should allow for deeper exploration and longer pauses
+                
+                Here is the user's context:
+                - Name: ${profile.name || 'User'}
+                - Core Values: ${profile.values || 'Not specified'}
+                - Life Mission: ${profile.mission || 'Not specified'}
+                
+                Here are the user's selected experiences for reflection:
+                ---
+                ${transcripts}
+                ---
+                
+                Please begin the ${duration}-minute guided meditation script now.
+            `;
+        }
 
         const result = await model.generateContent(masterPrompt);
         const script = result.response.text();

@@ -4,7 +4,7 @@ import { X, Calendar } from 'lucide-react';
 interface DateSelectorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelectDates: (startDate: string, endDate: string) => void;
+    onSelectDates: (startDate: string, endDate: string, timeOfReflection: 'Day' | 'Night') => void;
 }
 
 const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
@@ -31,6 +31,8 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
         const today = new Date();
         return getLocalDateString(today);
     });
+    
+    const [timeOfReflection, setTimeOfReflection] = useState<'Day' | 'Night'>('Day');
 
     // Reset dates to today whenever modal opens
     useEffect(() => {
@@ -39,6 +41,7 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
             const todayString = getLocalDateString(today);
             setStartDate(todayString);
             setEndDate(todayString);
+            setTimeOfReflection('Day');
         }
     }, [isOpen]);
 
@@ -68,7 +71,7 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
             return;
         }
         
-        onSelectDates(startDate, endDate);
+        onSelectDates(startDate, endDate, timeOfReflection);
     };
 
     const getQuickSelectOptions = () => {
@@ -129,6 +132,31 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
                     <p style={styles.description}>
                         Choose which days you'd like to reflect on (up to 7 days).
                     </p>
+
+                    {/* Time of Reflection Section */}
+                    <div style={styles.section}>
+                        <h3 style={styles.sectionTitle}>Time of Reflection</h3>
+                        <div style={styles.timeOptions}>
+                            <button
+                                onClick={() => setTimeOfReflection('Day')}
+                                style={{
+                                    ...styles.timeButton,
+                                    ...(timeOfReflection === 'Day' ? styles.timeButtonActive : {})
+                                }}
+                            >
+                                Day
+                            </button>
+                            <button
+                                onClick={() => setTimeOfReflection('Night')}
+                                style={{
+                                    ...styles.timeButton,
+                                    ...(timeOfReflection === 'Night' ? styles.timeButtonActive : {})
+                                }}
+                            >
+                                Night
+                            </button>
+                        </div>
+                    </div>
 
                     {/* Quick Select Options */}
                     <div style={styles.section}>
@@ -282,6 +310,28 @@ const styles = {
         justifyContent: 'center',
     },
     quickButtonActive: {
+        borderColor: 'var(--primary-color)',
+        backgroundColor: 'var(--primary-color)',
+        color: 'white',
+    },
+    timeOptions: {
+        display: 'flex',
+        gap: '0.75rem',
+    },
+    timeButton: {
+        flex: 1,
+        padding: '0.875rem 1.5rem',
+        border: '2px solid var(--card-border)',
+        borderRadius: '8px',
+        backgroundColor: 'transparent',
+        color: 'var(--text-color)',
+        cursor: 'pointer',
+        fontSize: '0.95rem',
+        fontWeight: '600',
+        transition: 'all 0.2s',
+        textAlign: 'center' as const,
+    },
+    timeButtonActive: {
         borderColor: 'var(--primary-color)',
         backgroundColor: 'var(--primary-color)',
         color: 'white',

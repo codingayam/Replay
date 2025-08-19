@@ -41,6 +41,7 @@ const ReflectionsPage: React.FC = () => {
     // Reflection session data
     const [selectedStartDate, setSelectedStartDate] = useState('');
     const [selectedEndDate, setSelectedEndDate] = useState('');
+    const [selectedTimeOfReflection, setSelectedTimeOfReflection] = useState<'Day' | 'Night'>('Day');
     const [selectedDuration, setSelectedDuration] = useState(5);
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
@@ -114,9 +115,10 @@ const ReflectionsPage: React.FC = () => {
         setShowDateModal(true);
     };
 
-    const handleDateSelection = (startDate: string, endDate: string) => {
+    const handleDateSelection = (startDate: string, endDate: string, timeOfReflection: 'Day' | 'Night') => {
         setSelectedStartDate(startDate);
         setSelectedEndDate(endDate);
+        setSelectedTimeOfReflection(timeOfReflection);
         setShowDateModal(false);
         setShowDurationModal(true);
     };
@@ -136,7 +138,8 @@ const ReflectionsPage: React.FC = () => {
             // Generate meditation with selected experiences and duration
             const response = await axios.post(`${API_URL}/meditate`, {
                 noteIds,
-                duration: selectedDuration
+                duration: selectedDuration,
+                timeOfReflection: selectedTimeOfReflection
             });
             
             setGeneratedPlaylist(response.data.playlist);
