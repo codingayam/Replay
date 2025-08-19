@@ -5,7 +5,7 @@ import { Camera } from 'lucide-react';
 
 interface Profile {
     name: string;
-    values: string;
+    values: string[];
     mission: string;
     profileImageUrl?: string;
 }
@@ -14,13 +14,14 @@ const API_URL = '/api';
 
 
 const ProfilePage: React.FC = () => {
-    const [profile, setProfile] = useState<Profile>({ name: '', values: '', mission: '', profileImageUrl: '' });
+    const [profile, setProfile] = useState<Profile>({ name: '', values: [], mission: '', profileImageUrl: '' });
     const [status, setStatus] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isShowingCamera, setIsShowingCamera] = useState(false);
     const [stream, setStream] = useState<MediaStream | null>(null);
+    const [tagInput, setTagInput] = useState('');
 
     useEffect(() => {
         axios.get(`${API_URL}/profile`)
@@ -28,7 +29,11 @@ const ProfilePage: React.FC = () => {
                 if(res.data) {
                     setProfile({
                         name: res.data.name || '',
-                        values: res.data.values || '',
+                        values: Array.isArray(res.data.values) 
+                            ? res.data.values 
+                            : res.data.values 
+                                ? res.data.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
+                                : [],
                         mission: res.data.mission || '',
                         profileImageUrl: res.data.profileImageUrl || ''
                     });
@@ -151,10 +156,112 @@ const ProfilePage: React.FC = () => {
         setIsShowingCamera(false);
     };
 
+    const addTag = async (value: string) => {
+        const trimmedValue = value.trim();
+        if (trimmedValue && !profile.values.includes(trimmedValue)) {
+            const newValues = [...profile.values, trimmedValue];
+            const updatedProfile = {
+                ...profile,
+                values: newValues
+            };
+            
+            setProfile(updatedProfile);
+            
+            // Save to server immediately
+            try {
+                const profileToSave = {
+                    ...updatedProfile,
+                    values: newValues.join(', ')
+                };
+                await axios.post(`${API_URL}/profile`, profileToSave);
+            } catch (error) {
+                console.error('Error saving tag:', error);
+                setStatus('Error saving tag.');
+            }
+        }
+        setTagInput('');
+    };
+
+    const removeTag = async (tagToRemove: string) => {
+        const newValues = profile.values.filter(tag => tag !== tagToRemove);
+        const updatedProfile = {
+            ...profile,
+            values: newValues
+        };
+        
+        setProfile(updatedProfile);
+        
+        // Save to server immediately
+        try {
+            const profileToSave = {
+                ...updatedProfile,
+                values: newValues.join(', ')
+            };
+            await axios.post(`${API_URL}/profile`, profileToSave);
+        } catch (error) {
+            console.error('Error removing tag:', error);
+            setStatus('Error removing tag.');
+        }
+    };
+
+    const handleTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setTagInput(e.target.value);
+    };
+
+    const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addMultipleTags(tagInput);
+        }
+    };
+
+    const addMultipleTags = async (input: string) => {
+        const values = input.split(',').map(v => v.trim()).filter(v => v);
+        
+        if (values.length === 0) return;
+        
+        // Filter out values that already exist
+        const newValues = values.filter(value => !profile.values.includes(value));
+        
+        if (newValues.length === 0) {
+            setTagInput('');
+            return;
+        }
+        
+        const updatedValues = [...profile.values, ...newValues];
+        const updatedProfile = {
+            ...profile,
+            values: updatedValues
+        };
+        
+        setProfile(updatedProfile);
+        
+        // Save to server immediately
+        try {
+            const profileToSave = {
+                ...updatedProfile,
+                values: updatedValues.join(', ')
+            };
+            await axios.post(`${API_URL}/profile`, profileToSave);
+        } catch (error) {
+            console.error('Error saving tags:', error);
+            setStatus('Error saving tags.');
+        }
+        
+        setTagInput('');
+    };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        axios.post(`${API_URL}/profile`, profile)
+        
+        // Convert values array to string for backend compatibility
+        const profileToSave = {
+            ...profile,
+            values: profile.values.join(', ')
+        };
+        
+        axios.post(`${API_URL}/profile`, profileToSave)
             .then(() => setStatus('Profile saved successfully!'))
             .catch(() => setStatus('Error saving profile.'));
     };
@@ -182,7 +289,6 @@ const ProfilePage: React.FC = () => {
                             </div>
                         )}
                     </div>
-                    <p style={styles.profilePictureLabel}>Profile Picture</p>
                 </div>
 
                 <input
@@ -238,16 +344,36 @@ const ProfilePage: React.FC = () => {
                 </div>
                 <div style={styles.field}>
                     <label htmlFor="values" style={styles.label}>Core Values</label>
+                    <div style={styles.tagCloud}>
+                        {profile.values.map((tag, index) => (
+                            <div 
+                                key={index} 
+                                style={styles.tag}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#ff4757';
+                                    e.currentTarget.style.color = 'white';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'var(--primary-color)';
+                                    e.currentTarget.style.color = 'white';
+                                }}
+                                onClick={() => removeTag(tag)}
+                                title="Click to remove"
+                            >
+                                {tag} ×
+                            </div>
+                        ))}
+                    </div>
                     <input 
                         type="text" 
                         id="values" 
-                        name="values" 
-                        value={profile.values} 
-                        onChange={handleChange} 
-                        style={styles.input} 
-                        placeholder="e.g., Growth, Compassion, Authenticity"
+                        value={tagInput} 
+                        onChange={handleTagInputChange}
+                        onKeyDown={handleTagInputKeyDown}
+                        style={styles.tagInput} 
+                        placeholder="Type a value and press Enter to add"
                     />
-                    <small style={styles.hint}>Separate multiple values with commas</small>
+                    <small style={styles.hint}>You can add multiple values at once by typing A, B, C and then pressing Enter. Click on tags to remove them.</small>
                 </div>
                 <div style={styles.field}>
                     <label htmlFor="mission" style={styles.label}>Life Mission</label>
@@ -426,6 +552,41 @@ const styles = {
         fontSize: '0.8rem',
         color: '#666',
         marginTop: '0.25rem',
+    },
+    tagCloud: {
+        display: 'flex',
+        flexWrap: 'wrap' as const,
+        gap: '0.5rem',
+        marginBottom: '0.75rem',
+        minHeight: '2rem',
+        padding: '0.5rem',
+        backgroundColor: 'var(--card-background)',
+        border: '2px solid var(--card-border)',
+        borderRadius: 'var(--border-radius)',
+    },
+    tag: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '0.4rem 0.8rem',
+        backgroundColor: 'var(--primary-color)',
+        color: 'white',
+        borderRadius: '20px',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        userSelect: 'none' as const,
+        gap: '0.3rem',
+    },
+    tagInput: {
+        padding: '1rem',
+        border: '2px solid var(--card-border)',
+        borderRadius: 'var(--border-radius)',
+        fontSize: '1rem',
+        backgroundColor: 'var(--card-background)',
+        transition: 'all 0.2s ease',
+        color: 'var(--text-color)',
+        width: '100%',
     },
     button: { 
         padding: '1rem', 

@@ -564,7 +564,7 @@ app.post('/api/meditate', async (req, res) => {
             - Keep it to exactly ${duration} minutes total
             - Only highlight values that naturally connect to the chosen experiences - don't force all values into every reflection. It's actually ok to not mention any values at all.
             - Include appropriate pauses (feel free to decide the number of seconds to pause)
-            - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world.
+            - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. There should not be any pauses after the ending words.
             - Adjust the depth and pacing based on the session duration: longer sessions should allow for deeper exploration and longer pauses
             
             Here is the user's context:
