@@ -58,6 +58,19 @@ const uploadImage = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
+// Profile picture upload storage (same as images but for profiles)
+const uploadProfileImage = multer({ 
+    storage: imageStorage,
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed'), false);
+        }
+    },
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+
 // --- API CLIENTS ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -162,13 +175,12 @@ app.post('/api/notes', uploadAudio.single('audio'), async (req, res) => {
 3. Classification into one of these categories:
    - "experience": Personal experiences, events, feelings, daily activities
    - "knowledge": Learning, insights, facts, discoveries, realizations
-   - "book": Content related to books, reading, book reviews, literary discussions
 
 Return as JSON:
 {
   "transcript": "full transcription here",
   "title": "Short Title Here",
-  "category": "experience|knowledge|book"
+  "category": "experience|knowledge"
 }`;
 
         const result = await model.generateContent([prompt, audioPart]);
@@ -336,13 +348,40 @@ app.put('/api/notes/:id/transcript', async (req, res) => {
 
 // -- Profile --
 app.get('/api/profile', async (req, res) => {
-    const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', books: [] };
+    const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', profileImageUrl: '' };
     res.json(profile);
 });
 
 app.post('/api/profile', async (req, res) => {
     await writeData(PROFILE_FILE, req.body);
     res.status(200).json(req.body);
+});
+
+// Profile picture upload endpoint
+app.post('/api/profile/image', uploadProfileImage.single('profileImage'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file uploaded' });
+        }
+
+        // Get current profile
+        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', profileImageUrl: '' };
+        
+        // Update profile with new image URL
+        const imageUrl = `/images/${req.file.filename}`;
+        profile.profileImageUrl = imageUrl;
+        
+        // Save updated profile
+        await writeData(PROFILE_FILE, profile);
+        
+        res.json({ 
+            profileImageUrl: imageUrl,
+            message: 'Profile picture uploaded successfully' 
+        });
+    } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        res.status(500).json({ error: 'Failed to upload profile picture' });
+    }
 });
 
 // -- Reflection --
@@ -507,7 +546,7 @@ app.post('/api/meditate', async (req, res) => {
 
     try {
         const allNotes = await readData(NOTES_FILE) || [];
-        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', books: [] };
+        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', profileImageUrl: '' };
 
         const selectedNotes = allNotes.filter(note => noteIds.includes(note.id));
         if (selectedNotes.length === 0) {

@@ -1,46 +1,156 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { Camera } from 'lucide-react';
+
+interface Profile {
+    name: string;
+    values: string;
+    mission: string;
+    profileImageUrl?: string;
+}
 
 const API_URL = '/api';
 
-interface Book {
-    title: string;
-    author: string;
-}
 
 const ProfilePage: React.FC = () => {
-    const [profile, setProfile] = useState({ name: '', values: '', mission: '', books: [] as Book[] });
+    const [profile, setProfile] = useState<Profile>({ name: '', values: '', mission: '', profileImageUrl: '' });
     const [status, setStatus] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [isShowingCamera, setIsShowingCamera] = useState(false);
+    const [stream, setStream] = useState<MediaStream | null>(null);
 
     useEffect(() => {
         axios.get(`${API_URL}/profile`)
             .then(res => {
                 if(res.data) {
-                    setProfile({ ...res.data, books: res.data.books || [] });
+                    setProfile({
+                        name: res.data.name || '',
+                        values: res.data.values || '',
+                        mission: res.data.mission || '',
+                        profileImageUrl: res.data.profileImageUrl || ''
+                    });
                 }
             })
             .catch(err => console.error("Error fetching profile:", err));
     }, []);
 
+    useEffect(() => {
+        return () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, [stream]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setProfile({ ...profile, [e.target.name]: e.target.value });
     };
 
-    const addBook = () => {
-        setProfile({ ...profile, books: [...profile.books, { title: '', author: '' }] });
+    const handleProfilePictureClick = () => {
+        const options = ['Upload Photo', 'Take Photo'];
+        const choice = window.confirm('Choose: OK for Upload Photo, Cancel for Take Photo');
+        
+        if (choice) {
+            fileInputRef.current?.click();
+        } else {
+            startCamera();
+        }
     };
 
-    const removeBook = (index: number) => {
-        const newBooks = profile.books.filter((_, i) => i !== index);
-        setProfile({ ...profile, books: newBooks });
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('profileImage', file);
+
+        try {
+            const response = await axios.post(`${API_URL}/profile/image`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            setProfile(prev => ({ ...prev, profileImageUrl: response.data.profileImageUrl }));
+            setStatus('Profile picture updated successfully!');
+        } catch (error) {
+            console.error('Error uploading profile picture:', error);
+            setStatus('Error uploading profile picture.');
+        }
     };
 
-    const handleBookChange = (index: number, field: 'title' | 'author', value: string) => {
-        const newBooks = [...profile.books];
-        newBooks[index] = { ...newBooks[index], [field]: value };
-        setProfile({ ...profile, books: newBooks });
+    const startCamera = async () => {
+        try {
+            const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 640 },
+                    height: { ideal: 640 },
+                    facingMode: 'user'
+                } 
+            });
+            
+            setStream(mediaStream);
+            setIsShowingCamera(true);
+            
+            if (videoRef.current) {
+                videoRef.current.srcObject = mediaStream;
+            }
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            setStatus('Error accessing camera. Please try uploading a photo instead.');
+        }
     };
+
+    const capturePhoto = async () => {
+        if (!videoRef.current || !canvasRef.current) return;
+
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        const context = canvas.getContext('2d');
+
+        if (!context) return;
+
+        canvas.width = 640;
+        canvas.height = 640;
+        
+        // Draw video frame to canvas
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Convert to blob
+        canvas.toBlob(async (blob) => {
+            if (!blob) return;
+
+            const formData = new FormData();
+            formData.append('profileImage', blob, 'profile-photo.jpg');
+
+            try {
+                const response = await axios.post(`${API_URL}/profile/image`, formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                });
+
+                setProfile(prev => ({ ...prev, profileImageUrl: response.data.profileImageUrl }));
+                setStatus('Profile picture updated successfully!');
+                stopCamera();
+            } catch (error) {
+                console.error('Error uploading profile picture:', error);
+                setStatus('Error uploading profile picture.');
+            }
+        }, 'image/jpeg', 0.9);
+    };
+
+    const stopCamera = () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            setStream(null);
+        }
+        setIsShowingCamera(false);
+    };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,6 +165,64 @@ const ProfilePage: React.FC = () => {
                 <p style={styles.description}>
                     This information helps create personalized meditations just for you.
                 </p>
+                
+                {/* Profile Picture Section */}
+                <div style={styles.profilePictureSection}>
+                    <div style={styles.profilePictureContainer} onClick={handleProfilePictureClick}>
+                        {profile.profileImageUrl ? (
+                            <img 
+                                src={profile.profileImageUrl} 
+                                alt="Profile" 
+                                style={styles.profileImage} 
+                            />
+                        ) : (
+                            <div style={styles.profilePlaceholder}>
+                                <Camera size={48} color="#666" />
+                                <span style={styles.profilePlaceholderText}>Add Photo</span>
+                            </div>
+                        )}
+                    </div>
+                    <p style={styles.profilePictureLabel}>Profile Picture</p>
+                </div>
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                />
+
+                {isShowingCamera && (
+                    <div style={styles.cameraModal}>
+                        <div style={styles.cameraContainer}>
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                style={styles.video}
+                            />
+                            <canvas ref={canvasRef} style={{ display: 'none' }} />
+                            <div style={styles.cameraControls}>
+                                <button
+                                    type="button"
+                                    onClick={capturePhoto}
+                                    style={styles.captureButton}
+                                >
+                                    Capture
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={stopCamera}
+                                    style={styles.cancelButton}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             <form onSubmit={handleSubmit} style={styles.form}>
                 <div style={styles.field}>
                     <label htmlFor="name" style={styles.label}>Name</label>
@@ -92,44 +260,6 @@ const ProfilePage: React.FC = () => {
                         placeholder="What drives you? What do you want to achieve in life?"
                     ></textarea>
                 </div>
-                <div style={styles.field}>
-                    <div style={styles.labelWithButton}>
-                        <label style={styles.label}>Currently Reading</label>
-                        <button type="button" onClick={addBook} style={styles.addButton}>
-                            + Add Book
-                        </button>
-                    </div>
-                    {profile.books.map((book, index) => (
-                        <div key={index} style={styles.bookRow}>
-                            <div style={styles.bookInputs}>
-                                <input
-                                    type="text"
-                                    placeholder="Book title"
-                                    value={book.title}
-                                    onChange={(e) => handleBookChange(index, 'title', e.target.value)}
-                                    style={styles.input}
-                                />
-                                <input
-                                    type="text"
-                                    placeholder="Author name"
-                                    value={book.author}
-                                    onChange={(e) => handleBookChange(index, 'author', e.target.value)}
-                                    style={styles.input}
-                                />
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => removeBook(index)}
-                                style={styles.removeButton}
-                            >
-                                ×
-                            </button>
-                        </div>
-                    ))}
-                    {profile.books.length === 0 && (
-                        <p style={styles.emptyState}>No books added yet. Click "Add Book" to get started.</p>
-                    )}
-                </div>
                 <button type="submit" className="btn-primary" style={styles.button}>
                     Save Profile
                 </button>
@@ -156,6 +286,103 @@ const styles = {
         margin: '0 0 2rem 0',
         lineHeight: 1.5,
         textAlign: 'center' as const,
+    },
+    profilePictureSection: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+        marginBottom: '2rem',
+        gap: '0.5rem',
+    },
+    profilePictureContainer: {
+        width: '120px',
+        height: '120px',
+        borderRadius: '50%',
+        cursor: 'pointer',
+        border: '3px solid var(--primary-color)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'var(--card-background)',
+        transition: 'all 0.2s ease',
+        overflow: 'hidden',
+    },
+    profileImage: {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover' as const,
+        borderRadius: '50%',
+    },
+    profilePlaceholder: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+        gap: '0.5rem',
+        color: 'var(--text-secondary)',
+    },
+    profilePlaceholderText: {
+        fontSize: '0.8rem',
+        fontWeight: '500',
+    },
+    profilePictureLabel: {
+        fontSize: '0.9rem',
+        fontWeight: '600',
+        color: 'var(--text-color)',
+        margin: 0,
+    },
+    cameraModal: {
+        position: 'fixed' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+    },
+    cameraContainer: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+        gap: '1rem',
+        padding: '2rem',
+    },
+    video: {
+        width: '640px',
+        height: '640px',
+        maxWidth: '90vw',
+        maxHeight: '50vh',
+        objectFit: 'cover' as const,
+        borderRadius: '1rem',
+        border: '2px solid var(--primary-color)',
+    },
+    cameraControls: {
+        display: 'flex',
+        gap: '1rem',
+    },
+    captureButton: {
+        padding: '1rem 2rem',
+        backgroundColor: 'var(--primary-color)',
+        color: 'white',
+        border: 'none',
+        borderRadius: 'var(--border-radius)',
+        fontSize: '1rem',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+    },
+    cancelButton: {
+        padding: '1rem 2rem',
+        backgroundColor: 'transparent',
+        color: 'white',
+        border: '2px solid white',
+        borderRadius: 'var(--border-radius)',
+        fontSize: '1rem',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
     },
     form: { 
         display: 'flex', 
@@ -215,62 +442,6 @@ const styles = {
         fontSize: '0.9rem',
         fontWeight: '500',
     },
-    labelWithButton: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '0.5rem',
-    },
-    addButton: {
-        padding: '0.5rem 1rem',
-        backgroundColor: 'var(--primary-color)',
-        color: 'white',
-        border: 'none',
-        borderRadius: 'var(--border-radius)',
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        cursor: 'pointer',
-        transition: 'opacity 0.2s ease',
-    },
-    bookRow: {
-        display: 'flex',
-        gap: '0.5rem',
-        alignItems: 'flex-start',
-        marginBottom: '0.75rem',
-    },
-    bookInputs: {
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '0.5rem',
-    },
-    removeButton: {
-        width: '40px',
-        height: '40px',
-        backgroundColor: '#ff4757',
-        color: 'white',
-        border: 'none',
-        borderRadius: 'var(--border-radius)',
-        fontSize: '1.2rem',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        marginTop: '0px',
-        transition: 'opacity 0.2s ease',
-    },
-    emptyState: {
-        color: 'var(--text-secondary)',
-        fontSize: '0.9rem',
-        fontStyle: 'italic',
-        textAlign: 'center' as const,
-        padding: '1rem',
-        backgroundColor: 'var(--card-background)',
-        borderRadius: 'var(--border-radius)',
-        border: '2px dashed var(--card-border)',
-        margin: '0.5rem 0',
-    }
 };
 
 export default ProfilePage;
