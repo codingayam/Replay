@@ -76,13 +76,11 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         
-        const thisWeekStart = new Date(today);
-        thisWeekStart.setDate(today.getDate() - today.getDay()); // Start of this week (Sunday)
+        const past3DaysStart = new Date(today);
+        past3DaysStart.setDate(today.getDate() - 2); // 3 days ago (today + yesterday + 2 days ago)
         
-        const lastWeekStart = new Date(today);
-        lastWeekStart.setDate(today.getDate() - today.getDay() - 7);
-        const lastWeekEnd = new Date(lastWeekStart);
-        lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+        const past7DaysStart = new Date(today);
+        past7DaysStart.setDate(today.getDate() - 6); // 7 days ago (today + 6 previous days)
 
         return [
             {
@@ -96,14 +94,14 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
                 endDate: getLocalDateString(yesterday),
             },
             {
-                label: 'This Week',
-                startDate: getLocalDateString(thisWeekStart),
+                label: 'Past 3 Days',
+                startDate: getLocalDateString(past3DaysStart),
                 endDate: getLocalDateString(today),
             },
             {
-                label: 'Last Week',
-                startDate: getLocalDateString(lastWeekStart),
-                endDate: getLocalDateString(lastWeekEnd),
+                label: 'Past 7 Days',
+                startDate: getLocalDateString(past7DaysStart),
+                endDate: getLocalDateString(today),
             },
         ];
     };

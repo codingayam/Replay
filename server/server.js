@@ -17,6 +17,10 @@ const port = process.env.PORT || 3001;
 // --- MIDDLEWARE ---
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from React build
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
 app.use('/audio', express.static(path.join(__dirname, 'data/audio')));
 app.use('/images', express.static(path.join(__dirname, 'data/images')));
 
@@ -152,21 +156,51 @@ app.post('/api/notes', uploadAudio.single('audio'), async (req, res) => {
                 mimeType: 'audio/wav',
             },
         };
-        const transcriptResult = await model.generateContent(["Please transcribe this audio.", audioPart]);
-        const transcript = transcriptResult.response.text();
-        console.log("Transcript:", transcript);
-        // 2. Generate Title
-        const titleResult = await model.generateContent(`Generate a single, short, concise title (4-5 words max) for the following journal entry. Do not provide a list of options. Just provide one title. 
+        const prompt = `Please analyze this audio and provide:
+1. A complete transcription
+2. A short, concise title (4-5 words max) 
+3. Classification into one of these categories:
+   - "experience": Personal experiences, events, feelings, daily activities
+   - "knowledge": Learning, insights, facts, discoveries, realizations
+   - "book": Content related to books, reading, book reviews, literary discussions
 
-"${transcript}"`);
-        const title = titleResult.response.text().replace(/"/g, ''); // Remove quotes from title
-        console.log("Generated Title:", title);
+Return as JSON:
+{
+  "transcript": "full transcription here",
+  "title": "Short Title Here",
+  "category": "experience|knowledge|book"
+}`;
+
+        const result = await model.generateContent([prompt, audioPart]);
+        const responseText = result.response.text();
+        console.log("AI Response:", responseText);
+        
+        let parsedResponse;
+        try {
+            // Extract JSON from response (in case there's extra text)
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+            parsedResponse = JSON.parse(jsonString);
+        } catch (parseError) {
+            console.error('Failed to parse AI response as JSON:', parseError);
+            // Fallback to default values
+            parsedResponse = {
+                transcript: 'No transcript available.',
+                title: 'Untitled Note',
+                category: 'experience'
+            };
+        }
+
+        console.log("Generated Title:", parsedResponse.title);
+        console.log("Generated Category:", parsedResponse.category);
+
         const newNote = {
             id: uuidv4(),
-            title: title || 'Untitled Note',
-            transcript: transcript || 'No transcript available.',
+            title: parsedResponse.title || 'Untitled Note',
+            transcript: parsedResponse.transcript || 'No transcript available.',
+            category: parsedResponse.category || 'experience',
             type: 'audio',
-            date: new Date().toISOString(),
+            date: req.body.localTimestamp || new Date().toISOString(),
             duration: 0, // Placeholder, can be implemented with an audio library
             audioUrl: `/audio/${req.file.filename}`,
         };
@@ -226,7 +260,7 @@ app.post('/api/notes/photo', uploadImage.single('image'), async (req, res) => {
             title: title || 'Untitled Photo',
             transcript: enhancedCaption || caption, // Use enhanced caption as transcript
             type: 'photo',
-            date: new Date().toISOString(),
+            date: req.body.localTimestamp || new Date().toISOString(),
             imageUrl: `/images/${req.file.filename}`,
             originalCaption: caption,
         };
@@ -302,7 +336,7 @@ app.put('/api/notes/:id/transcript', async (req, res) => {
 
 // -- Profile --
 app.get('/api/profile', async (req, res) => {
-    const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '' };
+    const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', books: [] };
     res.json(profile);
 });
 
@@ -324,30 +358,15 @@ app.post('/api/reflect/suggest', async (req, res) => {
         // Get notes in date range
         const allNotes = await readData(NOTES_FILE) || [];
         
-        // Since timezone handling is complex between client/server, 
-        // send all notes and let client filter by local date
-        // For now, expand range to catch timezone boundary cases
-        const startDateObj = new Date(startDate);
-        startDateObj.setDate(startDateObj.getDate() - 1);
-        const expandedStartDate = startDateObj.toISOString().split('T')[0];
+        // Filter notes by local date range (notes now contain local timestamps)
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Set to end of day
         
-        const endDateObj = new Date(endDate);
-        endDateObj.setDate(endDateObj.getDate() + 1);
-        const expandedEndDate = endDateObj.toISOString().split('T')[0];
-        
-        // Get all potentially relevant notes (with expanded range)
-        const potentialNotes = allNotes.filter(note => {
+        const notesInRange = allNotes.filter(note => {
             const noteDate = new Date(note.date);
-            const noteYear = noteDate.getUTCFullYear();
-            const noteMonth = String(noteDate.getUTCMonth() + 1).padStart(2, '0');
-            const noteDay = String(noteDate.getUTCDate()).padStart(2, '0');
-            const noteDateString = `${noteYear}-${noteMonth}-${noteDay}`;
-            
-            return noteDateString >= expandedStartDate && noteDateString <= expandedEndDate;
+            return noteDate >= start && noteDate <= end;
         });
-        
-        // Return all potential notes - client will filter correctly
-        const notesInRange = potentialNotes;
         
         if (notesInRange.length === 0) {
             return res.json({ suggestedNotes: [], availableNotes: [] });
@@ -488,7 +507,7 @@ app.post('/api/meditate', async (req, res) => {
 
     try {
         const allNotes = await readData(NOTES_FILE) || [];
-        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '' };
+        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', books: [] };
 
         const selectedNotes = allNotes.filter(note => noteIds.includes(note.id));
         if (selectedNotes.length === 0) {
@@ -653,6 +672,11 @@ app.delete('/api/meditations/:id', async (req, res) => {
     meditations.splice(index, 1);
     await writeData(MEDITATIONS_FILE, meditations);
     res.status(200).json({ message: 'Meditation deleted successfully.' });
+});
+
+// Catch-all handler: send back React's index.html file for client-side routing
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
 app.listen(port, () => {

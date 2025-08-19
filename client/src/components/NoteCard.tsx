@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { PlayCircle, Trash2, FileText, Image as ImageIcon, Edit2, Save, X } from 'lucide-react';
 import type { Note } from '../types';
+import CategoryBadge from './CategoryBadge';
 
 interface NoteCardProps {
     note: Note;
@@ -18,6 +19,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
 
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
+    const category = note.category || 'experience'; // Use AI-generated category or default
 
     const handleSaveTranscript = () => {
         if (onUpdateTranscript && editedTranscript.trim() !== note.transcript) {
@@ -38,13 +40,17 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                 {isPhotoNote && note.imageUrl && (
                     <div style={styles.imageContainer}>
                         <img 
-                            src={`http://localhost:3001${note.imageUrl}`} 
+                            src={`${note.imageUrl}`} 
                             alt={note.title}
                             style={styles.image}
                         />
                     </div>
                 )}
 
+                <div style={styles.cardHeader}>
+                    <CategoryBadge category={category} style={styles.categoryBadge} />
+                </div>
+                
                 <div style={styles.header} onClick={() => setShowTranscript(!showTranscript)}>
                     <div style={styles.titleSection}>
                         <div style={styles.titleRow}>
@@ -145,14 +151,27 @@ const styles = {
         backgroundColor: 'var(--card-background)', 
         border: '1px solid var(--card-border)', 
         borderRadius: 'var(--border-radius)', 
-        marginBottom: '1rem', 
+        marginBottom: '1.25rem', 
         boxShadow: 'var(--shadow-sm)',
         overflow: 'hidden',
         transition: 'all 0.2s ease',
+        '&:hover': {
+            boxShadow: 'var(--shadow-md)',
+            borderColor: 'var(--card-border-hover)',
+            transform: 'translateY(-1px)',
+        }
     },
     content: {
         flex: 1,
-        padding: '1rem',
+        padding: '1.25rem',
+    },
+    cardHeader: {
+        display: 'flex',
+        justifyContent: 'flex-start',
+        marginBottom: '1rem',
+    },
+    categoryBadge: {
+        // Additional styles will be applied from CategoryBadge component
     },
     imageContainer: {
         marginBottom: '1rem',
@@ -185,14 +204,18 @@ const styles = {
     },
     title: { 
         margin: 0, 
-        fontSize: '1.1rem',
+        fontSize: '1.125rem',
         fontWeight: '600',
         color: 'var(--text-color)',
+        fontFamily: 'var(--font-family-heading)',
+        lineHeight: '1.4',
     },
     date: { 
         margin: 0, 
-        fontSize: '0.8rem', 
-        color: '#6c757d' 
+        fontSize: '0.875rem', 
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-family)',
+        fontWeight: '400',
     },
     noteType: {
         display: 'flex',
@@ -296,26 +319,30 @@ const styles = {
     },
     controls: { 
         display: 'flex', 
-        gap: '0.5rem',
+        gap: '0.75rem',
         justifyContent: 'flex-end',
-        padding: '0.75rem 1rem',
-        borderTop: '1px solid #eee',
-        backgroundColor: '#fafafa',
+        padding: '1rem 1.25rem',
+        borderTop: '1px solid var(--card-border)',
+        backgroundColor: 'var(--background-secondary)',
     },
     button: { 
-        background: 'none', 
-        border: 'none', 
+        background: 'var(--card-background)', 
+        border: '1px solid var(--card-border)', 
         cursor: 'pointer', 
         padding: '0.75rem',
-        borderRadius: 'var(--border-radius)',
+        borderRadius: 'var(--border-radius-sm)',
         transition: 'all 0.2s ease',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: 'var(--primary-color)',
+        color: 'var(--text-secondary)',
+        minWidth: '44px',
+        minHeight: '44px',
     },
     deleteButton: { 
         color: 'var(--error-color)',
+        borderColor: 'var(--error-light)',
+        backgroundColor: 'var(--error-light)',
     }
 };
 

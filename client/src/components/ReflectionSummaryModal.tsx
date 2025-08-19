@@ -15,7 +15,7 @@ interface SummaryResponse {
     duration: number;
 }
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 
 const ReflectionSummaryModal: React.FC<ReflectionSummaryModalProps> = ({
     isOpen,

@@ -5,6 +5,7 @@ export interface Note {
     date: string;
     transcript: string; // For audio: transcription, for photo: AI-enhanced caption
     type: 'audio' | 'photo';
+    category?: 'experience' | 'knowledge' | 'book'; // AI-generated category
     audioUrl?: string; // Only for audio notes
     imageUrl?: string; // Only for photo notes  
     originalCaption?: string; // Only for photo notes - user's original caption

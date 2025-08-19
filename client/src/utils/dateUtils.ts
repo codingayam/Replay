@@ -104,6 +104,12 @@ export const formatDateHeader = (date: Date): string => {
 export const groupNotesByDate = (notes: Note[]): GroupedNotes => {
     const grouped: GroupedNotes = {};
     
+    // Defensive check to ensure notes is an array
+    if (!Array.isArray(notes)) {
+        console.warn('groupNotesByDate received non-array input:', notes);
+        return grouped;
+    }
+    
     notes.forEach(note => {
         const noteDate = new Date(note.date);
         const dateHeader = formatDateHeader(noteDate);

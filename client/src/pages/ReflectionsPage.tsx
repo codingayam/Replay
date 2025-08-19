@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import MeditationPlayer from '../components/MeditationPlayer';
-import Header from '../components/Header';
 import DateSelectorModal from '../components/DateSelectorModal';
 import DurationSelectorModal from '../components/DurationSelectorModal';
 import ExperienceSelectionModal from '../components/ExperienceSelectionModal';
@@ -9,7 +8,7 @@ import ReflectionSummaryModal from '../components/ReflectionSummaryModal';
 import MeditationGenerationModal from '../components/MeditationGenerationModal';
 import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -46,6 +45,13 @@ const ReflectionsPage: React.FC = () => {
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
     const [generatedPlaylist, setGeneratedPlaylist] = useState<PlaylistItem[] | null>(null);
+    
+    // Current playing meditation metadata (for saved meditations)
+    const [currentMeditationMeta, setCurrentMeditationMeta] = useState<{
+        noteIds: string[];
+        duration: number;
+        summary: string;
+    } | null>(null);
 
     const fetchSavedMeditations = async () => {
         try {
@@ -65,6 +71,12 @@ const ReflectionsPage: React.FC = () => {
         try {
             const res = await axios.get(`${API_URL}/meditations/${meditationId}`);
             setMeditationPlaylist(res.data.playlist);
+            // Store meditation metadata for summary modal
+            setCurrentMeditationMeta({
+                noteIds: res.data.noteIds,
+                duration: res.data.duration,
+                summary: res.data.summary
+            });
         } catch (err) {
             console.error("Error loading meditation:", err);
             alert('Failed to load meditation. Please try again.');
@@ -141,6 +153,12 @@ const ReflectionsPage: React.FC = () => {
     const handlePlayNow = () => {
         setShowGenerationModal(false);
         setMeditationPlaylist(generatedPlaylist);
+        // Store current session metadata for summary modal
+        setCurrentMeditationMeta({
+            noteIds: selectedNoteIds,
+            duration: selectedDuration,
+            summary: generatedSummary
+        });
     };
 
     const handleSaveLater = () => {
@@ -171,6 +189,7 @@ const ReflectionsPage: React.FC = () => {
         setSelectedDuration(5);
         setSelectedNoteIds([]);
         setGeneratedSummary('');
+        setCurrentMeditationMeta(null);
     };
 
     if (isLoadingMeditation || isGeneratingMeditation) {
@@ -188,8 +207,6 @@ const ReflectionsPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            <Header />
-
             {/* Reflect Button */}
             <div style={styles.reflectSection}>
                 <button 
@@ -295,9 +312,9 @@ const ReflectionsPage: React.FC = () => {
             <ReflectionSummaryModal
                 isOpen={showSummaryModal}
                 onClose={handleSummaryClose}
-                noteIds={selectedNoteIds}
-                duration={selectedDuration}
-                preGeneratedSummary={generatedSummary}
+                noteIds={currentMeditationMeta?.noteIds || selectedNoteIds}
+                duration={currentMeditationMeta?.duration || selectedDuration}
+                preGeneratedSummary={currentMeditationMeta?.summary || generatedSummary}
             />
             
             <MeditationGenerationModal

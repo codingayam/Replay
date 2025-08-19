@@ -1,19 +1,23 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import Header from '../components/Header';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
+
+interface Book {
+    title: string;
+    author: string;
+}
 
 const ProfilePage: React.FC = () => {
-    const [profile, setProfile] = useState({ name: '', values: '', mission: '' });
+    const [profile, setProfile] = useState({ name: '', values: '', mission: '', books: [] as Book[] });
     const [status, setStatus] = useState('');
 
     useEffect(() => {
         axios.get(`${API_URL}/profile`)
             .then(res => {
                 if(res.data) {
-                    setProfile(res.data);
+                    setProfile({ ...res.data, books: res.data.books || [] });
                 }
             })
             .catch(err => console.error("Error fetching profile:", err));
@@ -21,6 +25,21 @@ const ProfilePage: React.FC = () => {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setProfile({ ...profile, [e.target.name]: e.target.value });
+    };
+
+    const addBook = () => {
+        setProfile({ ...profile, books: [...profile.books, { title: '', author: '' }] });
+    };
+
+    const removeBook = (index: number) => {
+        const newBooks = profile.books.filter((_, i) => i !== index);
+        setProfile({ ...profile, books: newBooks });
+    };
+
+    const handleBookChange = (index: number, field: 'title' | 'author', value: string) => {
+        const newBooks = [...profile.books];
+        newBooks[index] = { ...newBooks[index], [field]: value };
+        setProfile({ ...profile, books: newBooks });
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -32,7 +51,6 @@ const ProfilePage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            <Header />
             <div style={styles.formWrapper}>
                 <p style={styles.description}>
                     This information helps create personalized meditations just for you.
@@ -73,6 +91,44 @@ const ProfilePage: React.FC = () => {
                         style={styles.textarea}
                         placeholder="What drives you? What do you want to achieve in life?"
                     ></textarea>
+                </div>
+                <div style={styles.field}>
+                    <div style={styles.labelWithButton}>
+                        <label style={styles.label}>Currently Reading</label>
+                        <button type="button" onClick={addBook} style={styles.addButton}>
+                            + Add Book
+                        </button>
+                    </div>
+                    {profile.books.map((book, index) => (
+                        <div key={index} style={styles.bookRow}>
+                            <div style={styles.bookInputs}>
+                                <input
+                                    type="text"
+                                    placeholder="Book title"
+                                    value={book.title}
+                                    onChange={(e) => handleBookChange(index, 'title', e.target.value)}
+                                    style={styles.input}
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Author name"
+                                    value={book.author}
+                                    onChange={(e) => handleBookChange(index, 'author', e.target.value)}
+                                    style={styles.input}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => removeBook(index)}
+                                style={styles.removeButton}
+                            >
+                                ×
+                            </button>
+                        </div>
+                    ))}
+                    {profile.books.length === 0 && (
+                        <p style={styles.emptyState}>No books added yet. Click "Add Book" to get started.</p>
+                    )}
                 </div>
                 <button type="submit" className="btn-primary" style={styles.button}>
                     Save Profile
@@ -158,6 +214,62 @@ const styles = {
         textAlign: 'center' as const,
         fontSize: '0.9rem',
         fontWeight: '500',
+    },
+    labelWithButton: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '0.5rem',
+    },
+    addButton: {
+        padding: '0.5rem 1rem',
+        backgroundColor: 'var(--primary-color)',
+        color: 'white',
+        border: 'none',
+        borderRadius: 'var(--border-radius)',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'opacity 0.2s ease',
+    },
+    bookRow: {
+        display: 'flex',
+        gap: '0.5rem',
+        alignItems: 'flex-start',
+        marginBottom: '0.75rem',
+    },
+    bookInputs: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '0.5rem',
+    },
+    removeButton: {
+        width: '40px',
+        height: '40px',
+        backgroundColor: '#ff4757',
+        color: 'white',
+        border: 'none',
+        borderRadius: 'var(--border-radius)',
+        fontSize: '1.2rem',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        marginTop: '0px',
+        transition: 'opacity 0.2s ease',
+    },
+    emptyState: {
+        color: 'var(--text-secondary)',
+        fontSize: '0.9rem',
+        fontStyle: 'italic',
+        textAlign: 'center' as const,
+        padding: '1rem',
+        backgroundColor: 'var(--card-background)',
+        borderRadius: 'var(--border-radius)',
+        border: '2px dashed var(--card-border)',
+        margin: '0.5rem 0',
     }
 };
 

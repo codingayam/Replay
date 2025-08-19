@@ -17,6 +17,19 @@ Located in `server/` directory:
 - `nodemon server.js` - Start development server with auto-restart (requires nodemon to be installed)
 - Server runs on port 3001 by default
 
+### Deployment Options
+
+#### Local Development
+1. Start server: `cd server && node server.js`
+2. Start client: `cd client && npm run dev`
+3. Access at `http://localhost:5173` (client dev server proxies API calls to localhost:3001)
+
+#### Cloudflared Tunnel (External Access)
+1. Start server: `cd server && node server.js`
+2. Run tunnel: `cloudflared tunnel --url http://localhost:3001`
+3. Access via the cloudflared URL provided (serves both frontend build and API)
+4. Note: For cloudflared, build the client first: `cd client && npm run build`
+
 ## Architecture Overview
 
 ### Application Structure
@@ -27,9 +40,10 @@ This is a full-stack reflection and journaling application called "Replay" with:
 
 ### Core Features
 1. **Audio & Photo Journaling**: Record daily voice notes or upload photos with captions, both transcribed and titled automatically
-2. **Reflection Generation**: Creates personalized guided meditations from selected experiences using AI
-3. **Profile Management**: User values and life mission stored to personalize reflections
-4. **Experience Tracking**: Timeline view of both audio and photo-based experiences
+2. **Note Categorization**: Automatic categorization of notes into gratitude, experience, reflection, or insight based on content analysis
+3. **Reflection Generation**: Creates personalized guided meditations from selected experiences using AI
+4. **Profile Management**: User values and life mission stored to personalize reflections
+5. **Experience Tracking**: Timeline view of both audio and photo-based experiences with category badges
 
 ### Key Components
 
@@ -49,8 +63,10 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **components/ExperienceSelectionModal.tsx**: Experience selection interface for reflections
 - **components/ReflectionSummaryModal.tsx**: Summary display before meditation generation
 - **components/MeditationGenerationModal.tsx**: Progress indicator during meditation creation
+- **components/CategoryBadge.tsx**: Display category badges with color-coded styling
 - **types.ts**: TypeScript interfaces (Note interface supports both audio and photo types)
 - **utils/dateUtils.ts**: Date formatting and grouping utilities
+- **utils/categoryUtils.ts**: Note categorization logic and category definitions (gratitude, experience, reflection, insight)
 
 #### Server Architecture (`server/`)
 - **server.js**: Single Express server file handling all API routes
@@ -83,6 +99,8 @@ Notes support both audio and photo types with fields: id, title, transcript (tra
 
 ### Technology Stack
 - **Frontend**: React 19, TypeScript, Vite, React Router DOM, Lucide React icons, Axios
-- **Backend**: Express 5, Multer (file uploads), UUID, CORS, dotenv, WAV processing
+- **Backend**: Express 4, Multer (file uploads), UUID, CORS, dotenv, WAV processing, Helmet (security), rate limiting
+- **Infrastructure**: BullMQ (job queues), Redis (caching/queues), Pino (logging)
+- **Database**: Supabase client integration, file system (JSON + media files)
 - **AI**: Google Generative AI (Gemini models), OpenAI (TTS)
 - **Storage**: File system (JSON + media files)

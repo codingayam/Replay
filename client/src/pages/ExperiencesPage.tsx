@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Calendar } from 'lucide-react';
 import NoteCard from '../components/NoteCard';
 import FloatingUploadButton from '../components/FloatingUploadButton';
-import Header from '../components/Header';
 import type { Note } from '../types';
 import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -29,6 +29,7 @@ const ExperiencesPage: React.FC = () => {
     const handleSaveAudioNote = async (blob: Blob) => {
         const formData = new FormData();
         formData.append('audio', blob, 'recording.wav');
+        formData.append('localTimestamp', new Date().toISOString());
         try {
             await axios.post(`${API_URL}/notes`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
@@ -44,6 +45,7 @@ const ExperiencesPage: React.FC = () => {
         const formData = new FormData();
         formData.append('image', file);
         formData.append('caption', caption);
+        formData.append('localTimestamp', new Date().toISOString());
         
         setIsUploadingPhoto(true);
         try {
@@ -72,7 +74,7 @@ const ExperiencesPage: React.FC = () => {
 
     const handlePlayNote = (audioUrl: string) => {
         if (audioUrl) {
-            setCurrentAudio(`http://localhost:3001${audioUrl}`);
+            setCurrentAudio(`${audioUrl}`);
         }
     };
 
@@ -90,8 +92,6 @@ const ExperiencesPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            <Header />
-            
             {currentAudio && (
                 <div className="card-enhanced" style={styles.playerContainer}>
                     <h3 style={styles.playerTitle}>Now Playing Note</h3>
@@ -105,14 +105,32 @@ const ExperiencesPage: React.FC = () => {
                     const groupedNotes = groupNotesByDate(notes);
                     const sortedDateHeaders = sortDateGroups(Object.keys(groupedNotes));
                     
-                    return sortedDateHeaders.map(dateHeader => (
-                        <div key={dateHeader} style={styles.dateGroup}>
-                            <h3 style={styles.dateHeader}>{dateHeader}</h3>
-                            {groupedNotes[dateHeader].map(note => (
-                                <NoteCard key={note.id} note={note} onPlay={handlePlayNote} onDelete={handleDeleteNote} onUpdateTranscript={handleUpdateTranscript} />
-                            ))}
-                        </div>
-                    ));
+                    return sortedDateHeaders.map(dateHeader => {
+                        const isToday = dateHeader === 'Today';
+                        const dateFormatted = isToday ? 
+                            new Date().toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                            }) : dateHeader;
+                        
+                        return (
+                            <div key={dateHeader} style={styles.dateGroup}>
+                                <div style={styles.dateHeaderContainer}>
+                                    <div style={styles.dateHeaderContent}>
+                                        <Calendar size={20} style={styles.calendarIcon} />
+                                        <div>
+                                            <h3 style={styles.dateHeader}>{dateHeader}</h3>
+                                            {isToday && <p style={styles.dateSubtext}>{dateFormatted}</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                                {groupedNotes[dateHeader].map(note => (
+                                    <NoteCard key={note.id} note={note} onPlay={handlePlayNote} onDelete={handleDeleteNote} onUpdateTranscript={handleUpdateTranscript} />
+                                ))}
+                            </div>
+                        );
+                    });
                 })()
             }
             </div>
@@ -136,7 +154,7 @@ const ExperiencesPage: React.FC = () => {
 const styles = {
     container: {
         paddingBottom: '120px', // Space for FAB and bottom nav
-        paddingTop: '1rem', // Space after Instagram-style header
+        paddingTop: '1.5rem', // Space after header
     },
     playerContainer: { 
         padding: '1.25rem', 
@@ -160,15 +178,35 @@ const styles = {
     dateGroup: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '0.5rem',
+        gap: '1rem',
+        marginBottom: '2rem',
+    },
+    dateHeaderContainer: {
+        marginBottom: '1rem',
+    },
+    dateHeaderContent: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+    },
+    calendarIcon: {
+        color: 'var(--primary-color)',
+        flexShrink: 0,
     },
     dateHeader: {
-        margin: '1rem 0 0.5rem 0',
-        fontSize: '1.2rem',
-        fontWeight: '600',
+        margin: 0,
+        fontSize: '1.5rem',
+        fontWeight: '700',
         color: 'var(--text-color)',
-        borderBottom: '2px solid var(--primary-color)',
-        paddingBottom: '0.25rem',
+        fontFamily: 'var(--font-family-heading)',
+        letterSpacing: '-0.025em',
+    },
+    dateSubtext: {
+        margin: '0.25rem 0 0 0',
+        fontSize: '0.9rem',
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-family)',
+        fontWeight: '400',
     },
     emptyState: {
         textAlign: 'center' as const,
