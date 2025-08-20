@@ -561,14 +561,14 @@ app.post('/api/meditate', async (req, res) => {
         
         if (timeOfReflection === 'Night') {
             masterPrompt = `
-                You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds.
+                You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. 
 
                 Guidelines:
-
-                - Keep it to exactly ${duration} minutes total
+                - The user is currently in a nighttime reflection session. So the session should be more reflective and introspective and aimed at consolidating or crystallizing the day's experiences.
+                Keep it to exactly ${duration} minutes total
                 - Only highlight values that naturally connect to the chosen experiences - don't force all values into every reflection. It's actually ok to not mention any values at all.
                 - Include appropriate pauses (feel free to decide the number of seconds to pause)
-                - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. There should not be any pauses after the ending words.
+                - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. Don't end with a pause.
                 - Adjust the depth and pacing based on the session duration: longer sessions should allow for deeper exploration and longer pauses
                 
                 Here is the user's context:
@@ -581,7 +581,7 @@ app.post('/api/meditate', async (req, res) => {
                 ${transcripts}
                 ---
                 
-                Please begin the ${duration}-minute guided meditation script now, but tweak it to be something more suited for nighttime reflection and wrapping up the day.
+                Please begin the ${duration}-minute guided meditation script now.
             `;
         } else {
             masterPrompt = `
@@ -589,10 +589,11 @@ app.post('/api/meditate', async (req, res) => {
 
                 Guidelines:
 
-                - Keep it to exactly ${duration} minutes total
+                - The user is currently in a daytime reflection session. So the session, while taking the experiences, should be more forward-looking and in particular priming the user for the day ahead. It should ground him, remind him of his values, and help him feel connected to his mission so that he is recharged and energized for the day ahead.
+                Keep it to exactly ${duration} minutes total
                 - Only highlight values that naturally connect to the chosen experiences - don't force all values into every reflection. It's actually ok to not mention any values at all.
                 - Include appropriate pauses (feel free to decide the number of seconds to pause)
-                - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. There should not be any pauses after the ending words.
+                - Make sure that the beginning and ending of each session feels natural. For example, during the ending, there should be a language to guide the transition smoothly from the session back into the world. Don't end with a pause.
                 - Adjust the depth and pacing based on the session duration: longer sessions should allow for deeper exploration and longer pauses
                 
                 Here is the user's context:
@@ -611,7 +612,7 @@ app.post('/api/meditate', async (req, res) => {
 
         const result = await model.generateContent(masterPrompt);
         const script = result.response.text();
-        console.log("Generated Script:", script);
+        console.log(`Generated ${timeOfReflection} Reflection Script (${duration}min):`, script);
 
         // 2. Parse script and generate audio with Gemini TTS
         const segments = script.split(/(\[PAUSE=\d+s\])/g).filter(s => s.trim() !== '');
@@ -677,7 +678,8 @@ The summary should be warm, supportive, and provide closure to the reflection ex
             noteIds,
             script,
             duration,
-            summary
+            summary,
+            timeOfReflection
         };
 
         const meditations = await readData(MEDITATIONS_FILE) || [];
@@ -701,7 +703,8 @@ app.get('/api/meditations', async (req, res) => {
         title: m.title,
         createdAt: m.createdAt,
         noteIds: m.noteIds,
-        summary: m.summary
+        summary: m.summary,
+        timeOfReflection: m.timeOfReflection || 'Day' // Default to 'Day' for backward compatibility
     }));
     res.status(200).json(meditationsList);
 });
