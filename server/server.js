@@ -14,7 +14,7 @@ const Replicate = require('replicate');
 const wav = require('wav');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3002;
 
 // --- MIDDLEWARE ---
 app.use(cors());
@@ -722,6 +722,78 @@ app.delete('/api/meditations/:id', async (req, res) => {
     meditations.splice(index, 1);
     await writeData(MEDITATIONS_FILE, meditations);
     res.status(200).json({ message: 'Meditation deleted successfully.' });
+});
+
+// -- Stats Endpoints --
+app.get('/api/stats/streak', async (req, res) => {
+    try {
+        const meditations = await readData(MEDITATIONS_FILE) || [];
+        
+        // Calculate current streak by checking consecutive days with meditations
+        const today = new Date();
+        let streak = 0;
+        let checkDate = new Date(today);
+        
+        // Start from today and work backwards
+        while (true) {
+            const dateString = checkDate.toISOString().split('T')[0];
+            const hasMeditation = meditations.some(m => {
+                const meditationDate = new Date(m.createdAt).toISOString().split('T')[0];
+                return meditationDate === dateString;
+            });
+            
+            if (hasMeditation) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        
+        res.status(200).json({ streak });
+    } catch (error) {
+        console.error('Error calculating streak:', error);
+        res.status(500).json({ error: 'Failed to calculate streak' });
+    }
+});
+
+app.get('/api/stats/monthly', async (req, res) => {
+    try {
+        const meditations = await readData(MEDITATIONS_FILE) || [];
+        const currentDate = new Date();
+        const currentMonth = currentDate.getMonth();
+        const currentYear = currentDate.getFullYear();
+        
+        const thisMonthCount = meditations.filter(m => {
+            const meditationDate = new Date(m.createdAt);
+            return meditationDate.getMonth() === currentMonth && 
+                   meditationDate.getFullYear() === currentYear;
+        }).length;
+        
+        res.status(200).json({ count: thisMonthCount });
+    } catch (error) {
+        console.error('Error calculating monthly stats:', error);
+        res.status(500).json({ error: 'Failed to calculate monthly stats' });
+    }
+});
+
+app.get('/api/stats/calendar', async (req, res) => {
+    try {
+        const meditations = await readData(MEDITATIONS_FILE) || [];
+        
+        // Get all unique dates when meditations were created
+        const reflectionDates = meditations.map(m => {
+            return new Date(m.createdAt).toISOString().split('T')[0];
+        });
+        
+        // Remove duplicates
+        const uniqueDates = [...new Set(reflectionDates)];
+        
+        res.status(200).json({ dates: uniqueDates });
+    } catch (error) {
+        console.error('Error getting calendar data:', error);
+        res.status(500).json({ error: 'Failed to get calendar data' });
+    }
 });
 
 // Catch-all handler: send back React's index.html file for client-side routing

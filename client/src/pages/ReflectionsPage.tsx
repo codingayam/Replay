@@ -7,7 +7,10 @@ import ExperienceSelectionModal from '../components/ExperienceSelectionModal';
 import ReflectionSummaryModal from '../components/ReflectionSummaryModal';
 import MeditationGenerationModal from '../components/MeditationGenerationModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
-import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import StatsCards from '../components/StatsCards';
+import RecentActivityCalendar from '../components/RecentActivityCalendar';
+import CalendarModal from '../components/CalendarModal';
+import { Plus, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 const API_URL = '/api';
 
@@ -30,6 +33,12 @@ const ReflectionsPage: React.FC = () => {
     const [isLoadingMeditation, setIsLoadingMeditation] = useState(false);
     const [meditationPlaylist, setMeditationPlaylist] = useState<PlaylistItem[] | null>(null);
     const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
+    
+    // Stats state
+    const [dayStreak, setDayStreak] = useState(0);
+    const [monthlyCount, setMonthlyCount] = useState(0);
+    const [reflectionDates, setReflectionDates] = useState<string[]>([]);
+    const [showCalendarModal, setShowCalendarModal] = useState(false);
     
     // New reflection flow state
     const [showDateModal, setShowDateModal] = useState(false);
@@ -66,8 +75,25 @@ const ReflectionsPage: React.FC = () => {
         }
     };
 
+    const fetchStats = async () => {
+        try {
+            const [streakRes, monthlyRes, calendarRes] = await Promise.all([
+                axios.get(`${API_URL}/stats/streak`),
+                axios.get(`${API_URL}/stats/monthly`),
+                axios.get(`${API_URL}/stats/calendar`)
+            ]);
+            
+            setDayStreak(streakRes.data.streak);
+            setMonthlyCount(monthlyRes.data.count);
+            setReflectionDates(calendarRes.data.dates);
+        } catch (err) {
+            console.error("Error fetching stats:", err);
+        }
+    };
+
     useEffect(() => {
         fetchSavedMeditations();
+        fetchStats();
     }, []);
 
     const handlePlaySavedMeditation = async (meditationId: string) => {
@@ -226,6 +252,7 @@ const ReflectionsPage: React.FC = () => {
     const handleSaveLater = () => {
         setShowGenerationModal(false);
         fetchSavedMeditations(); // Refresh the saved meditations list
+        fetchStats(); // Refresh stats since a new meditation was created
         // Reset state
         setSelectedStartDate('');
         setSelectedEndDate('');
@@ -241,6 +268,7 @@ const ReflectionsPage: React.FC = () => {
             setShowSummaryModal(true);
         }
         fetchSavedMeditations(); // Refresh the saved meditations list
+        fetchStats(); // Refresh stats since meditation was completed
     };
 
     const handlePlayDayReflection = async () => {
@@ -288,85 +316,89 @@ const ReflectionsPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            {/* Reflect Button */}
-            <div style={styles.reflectSection}>
+            {/* Header */}
+            <div style={styles.header}>
+                <h1 style={styles.appTitle}>Replay</h1>
+                <p style={styles.appSubtitle}>Your daily reflections</p>
+                
+                {/* Stats Cards */}
+                <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
+                
+                {/* Recent Activity Calendar */}
+                <RecentActivityCalendar 
+                    reflectionDates={reflectionDates}
+                    onExpandClick={() => setShowCalendarModal(true)}
+                />
+                
+                {/* Generate Reflection Button */}
                 <button 
                     onClick={handleStartReflection}
-                    style={styles.reflectButton}
-                    className="btn-primary"
+                    style={styles.generateButton}
                 >
-                    <Sparkles size={20} />
-                    <span>Reflect</span>
+                    <Plus size={20} />
+                    <span>Generate Reflection</span>
                 </button>
-                <p style={styles.reflectDescription}>
-                    Create a personalized meditation from your recent experiences
-                </p>
             </div>
 
-            {savedMeditations.length > 0 ? (
-                <div style={styles.meditationsList}>
+            {/* Recent Reflections Section */}
+            <div style={styles.reflectionsSection}>
+                <h2 style={styles.sectionTitle}>Recent Reflections</h2>
+                {savedMeditations.length > 0 ? (
+                    <div style={styles.meditationsList}>
                     {savedMeditations
                         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                         .map(meditation => {
                         const isExpanded = expandedSummaries.has(meditation.id);
                         return (
-                            <div key={meditation.id} className="card-enhanced" style={styles.meditationCard}>
-                                <div style={styles.meditationContent}>
-                                    <h3 style={styles.meditationTitle}>{meditation.title}</h3>
-                                    <p style={styles.meditationDate}>
-                                        {new Date(meditation.createdAt).toLocaleDateString()} at {new Date(meditation.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                    <p style={styles.meditationNotes}>
-                                        Based on {meditation.noteIds.length} experience{meditation.noteIds.length !== 1 ? 's' : ''}
-                                    </p>
-                                    
-                                    {meditation.summary && (
-                                        <div style={styles.summarySection}>
+                            <div key={meditation.id} style={styles.meditationCard}>
+                                <div style={styles.cardHeader} onClick={() => toggleSummaryExpansion(meditation.id)}>
+                                    <div style={styles.avatarContainer}>
+                                        <span style={styles.avatar}>🧘‍♀️</span>
+                                    </div>
+                                    <div style={styles.cardContent}>
+                                        <h3 style={styles.meditationTitle}>{meditation.title}</h3>
+                                        <p style={styles.meditationDate}>
+                                            {new Date(meditation.createdAt).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <div style={styles.expandIcon}>
+                                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </div>
+                                </div>
+                                
+                                {isExpanded && meditation.summary && (
+                                    <div style={styles.expandedContent}>
+                                        <p style={styles.summaryText}>{meditation.summary}</p>
+                                        <div style={styles.meditationActions}>
                                             <button 
-                                                onClick={() => toggleSummaryExpansion(meditation.id)}
-                                                style={styles.summaryToggle}
+                                                onClick={() => handlePlaySavedMeditation(meditation.id)}
+                                                style={styles.playButton}
                                             >
-                                                <span>Reflection Summary</span>
-                                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                Play
                                             </button>
-                                            
-                                            {isExpanded && (
-                                                <div style={styles.summaryContent}>
-                                                    <p style={styles.summaryText}>{meditation.summary}</p>
-                                                </div>
-                                            )}
+                                            <button 
+                                                onClick={() => handleDeleteSavedMeditation(meditation.id)}
+                                                style={styles.deleteButton}
+                                            >
+                                                Delete
+                                            </button>
                                         </div>
-                                    )}
-                                </div>
-                                <div style={styles.meditationActions}>
-                                    <button 
-                                        onClick={() => handlePlaySavedMeditation(meditation.id)}
-                                        className="btn-primary"
-                                        style={styles.playButton}
-                                    >
-                                        Play
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDeleteSavedMeditation(meditation.id)}
-                                        className="btn-secondary"
-                                        style={styles.deleteButton}
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
-                </div>
-            ) : (
-                <div style={styles.emptyState}>
-                    <div style={styles.emptyIcon}>🧘‍♀️</div>
-                    <h3 style={styles.emptyTitle}>No reflections yet</h3>
-                    <p style={styles.emptyText}>
-                        Click the "Reflect" button above to create your first personalized reflection session.
-                    </p>
-                </div>
-            )}
+                    </div>
+                ) : (
+                    <div style={styles.emptyState}>
+                        <div style={styles.emptyIcon}>🧘‍♀️</div>
+                        <h3 style={styles.emptyTitle}>No reflections yet</h3>
+                        <p style={styles.emptyText}>
+                            Click the "Generate Reflection" button above to create your first personalized reflection session.
+                        </p>
+                    </div>
+                )}
+            </div>
 
             {/* Modals */}
             <DateSelectorModal
@@ -414,149 +446,182 @@ const ReflectionsPage: React.FC = () => {
                 onComplete={handleMeditationReady}
                 isApiComplete={isMeditationApiComplete}
             />
+            
+            {/* Calendar Modal */}
+            <CalendarModal 
+                isOpen={showCalendarModal}
+                onClose={() => setShowCalendarModal(false)}
+                reflectionDates={reflectionDates}
+            />
         </div>
     );
 };
 
 const styles = {
     container: {
+        backgroundColor: '#f8fafc',
+        minHeight: '100vh',
         paddingBottom: '100px', // Space for bottom nav
-        paddingTop: '1rem', // Space after Instagram-style header
     },
-    reflectSection: {
-        textAlign: 'center' as const,
-        marginBottom: '2rem',
-        padding: '1.5rem 0',
+    header: {
+        backgroundColor: 'white',
+        padding: '24px',
+        borderBottom: '1px solid #e2e8f0',
     },
-    reflectButton: {
+    appTitle: {
+        fontSize: '24px',
+        fontWeight: '600',
+        color: '#0f172a',
+        margin: '0 0 4px 0',
+    },
+    appSubtitle: {
+        fontSize: '14px',
+        color: '#64748b',
+        margin: '0 0 24px 0',
+    },
+    generateButton: {
+        width: '100%',
+        backgroundColor: '#3b82f6',
+        color: 'white',
+        border: 'none',
+        borderRadius: '12px',
+        padding: '16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '0.5rem',
-        padding: '1rem 2rem',
-        fontSize: '1.1rem',
-        fontWeight: '600',
+        gap: '8px',
+        fontSize: '16px',
+        fontWeight: '500',
         cursor: 'pointer',
-        borderRadius: '12px',
-        border: 'none',
-        background: 'var(--gradient-primary)',
-        color: 'white',
-        margin: '0 auto',
-        minWidth: '140px',
-        boxShadow: 'var(--shadow-md)',
-        transition: 'all 0.3s ease',
+        transition: 'background-color 0.2s ease',
+        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+    } as React.CSSProperties,
+    reflectionsSection: {
+        backgroundColor: 'white',
+        padding: '24px',
+        borderTop: '1px solid #e2e8f0',
     },
-    reflectDescription: {
-        fontSize: '0.9rem',
-        color: 'var(--text-secondary)',
-        maxWidth: '280px',
-        margin: '0.75rem auto 0 auto',
-        lineHeight: 1.4,
+    sectionTitle: {
+        fontSize: '18px',
+        fontWeight: '600',
+        color: '#0f172a',
+        margin: '0 0 16px 0',
     },
     meditationsList: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '1.25rem',
+        gap: '16px',
     },
-    meditationCard: { 
-        padding: '1.5rem',
-    },
-    meditationContent: { 
-        marginBottom: '1rem',
-    },
-    meditationTitle: { 
-        margin: '0 0 0.5rem 0', 
-        fontSize: '1.1rem', 
-        fontWeight: '600',
-        color: 'var(--text-color)',
-    },
-    meditationDate: { 
-        margin: '0 0 0.5rem 0', 
-        color: '#666', 
-        fontSize: '0.85rem',
-    },
-    meditationNotes: { 
-        margin: 0, 
-        color: 'var(--primary-color)', 
-        fontSize: '0.85rem',
-        fontWeight: '500',
-    },
-    meditationActions: { 
-        display: 'flex', 
-        gap: '0.75rem',
-        justifyContent: 'flex-end',
-    },
-    playButton: { 
-        padding: '0.875rem 1.5rem', 
-        fontSize: '0.95rem',
+    meditationCard: {
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        border: '1px solid #e2e8f0',
+        overflow: 'hidden',
         cursor: 'pointer',
+        transition: 'background-color 0.2s ease',
     },
-    deleteButton: { 
-        padding: '0.875rem 1.5rem', 
-        fontSize: '0.95rem',
-        cursor: 'pointer',
-        border: '2px solid var(--error-color)',
-        color: 'var(--error-color)',
-        background: 'transparent',
-    },
-    summarySection: {
-        marginTop: '1rem',
-        borderTop: '1px solid var(--card-border)',
-        paddingTop: '1rem',
-    },
-    summaryToggle: {
+    cardHeader: {
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        padding: '0.75rem',
-        background: 'var(--card-border)',
-        border: 'none',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        fontSize: '0.9rem',
-        fontWeight: '500',
-        color: 'var(--text-color)',
-        transition: 'background-color 0.2s',
+        padding: '16px',
+        gap: '12px',
     },
-    summaryContent: {
-        marginTop: '0.75rem',
-        padding: '1rem',
-        backgroundColor: 'rgba(var(--primary-color-rgb), 0.05)',
-        borderRadius: '8px',
-        border: '1px solid rgba(var(--primary-color-rgb), 0.1)',
+    avatarContainer: {
+        width: '40px',
+        height: '40px',
+        backgroundColor: '#fef3c7',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+    },
+    avatar: {
+        fontSize: '18px',
+    },
+    cardContent: {
+        flex: 1,
+        minWidth: 0,
+    },
+    meditationTitle: {
+        fontSize: '16px',
+        fontWeight: '500',
+        color: '#0f172a',
+        margin: '0 0 4px 0',
+        lineHeight: 1.3,
+    },
+    meditationDate: {
+        fontSize: '14px',
+        color: '#64748b',
+        margin: 0,
+    },
+    expandIcon: {
+        color: '#94a3b8',
+        flexShrink: 0,
+    },
+    expandedContent: {
+        borderTop: '1px solid #e2e8f0',
+        padding: '16px',
+        backgroundColor: '#f8fafc',
+        animation: 'slideIn 0.2s ease',
     },
     summaryText: {
-        margin: 0,
-        fontSize: '0.9rem',
-        color: 'var(--text-color)',
+        fontSize: '14px',
+        color: '#475569',
         lineHeight: 1.5,
-        fontStyle: 'italic',
+        margin: '0 0 16px 0',
+    },
+    meditationActions: {
+        display: 'flex',
+        gap: '12px',
+        justifyContent: 'flex-end',
+    },
+    playButton: {
+        backgroundColor: '#3b82f6',
+        color: 'white',
+        border: 'none',
+        borderRadius: '8px',
+        padding: '10px 16px',
+        fontSize: '14px',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'background-color 0.2s ease',
+    },
+    deleteButton: {
+        backgroundColor: 'transparent',
+        color: '#ef4444',
+        border: '1px solid #ef4444',
+        borderRadius: '8px',
+        padding: '10px 16px',
+        fontSize: '14px',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
     },
     emptyState: {
         textAlign: 'center' as const,
-        marginTop: '3rem',
-        padding: '2rem',
+        padding: '48px 24px',
     },
     emptyIcon: {
-        fontSize: '3rem',
-        marginBottom: '1rem',
+        fontSize: '48px',
+        marginBottom: '16px',
     },
     emptyTitle: {
-        color: 'var(--text-color)',
-        marginBottom: '1rem',
-        fontSize: '1.3rem',
+        fontSize: '18px',
+        fontWeight: '600',
+        color: '#0f172a',
+        margin: '0 0 8px 0',
     },
     emptyText: {
-        color: '#666',
-        fontSize: '1rem',
+        fontSize: '14px',
+        color: '#64748b',
         lineHeight: 1.5,
         maxWidth: '300px',
         margin: '0 auto',
     },
-    centered: { 
-        textAlign: 'center' as const, 
-        paddingTop: '4rem',
+    centered: {
+        textAlign: 'center' as const,
+        paddingTop: '64px',
         paddingBottom: '100px',
     },
 };
