@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import MeditationPlayer from '../components/MeditationPlayer';
-import DateSelectorModal from '../components/DateSelectorModal';
+import ReflectionTypeModal from '../components/ReflectionTypeModal';
+import TimePeriodModal from '../components/TimePeriodModal';
+import ReadyToBeginModal from '../components/ReadyToBeginModal';
 import DurationSelectorModal from '../components/DurationSelectorModal';
 import ExperienceSelectionModal from '../components/ExperienceSelectionModal';
-import ReflectionSummaryModal from '../components/ReflectionSummaryModal';
 import MeditationGenerationModal from '../components/MeditationGenerationModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
 import StatsCards from '../components/StatsCards';
 import RecentActivityCalendar from '../components/RecentActivityCalendar';
 import CalendarModal from '../components/CalendarModal';
-import { Plus, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 
 const API_URL = '/api';
 
@@ -41,30 +42,25 @@ const ReflectionsPage: React.FC = () => {
     const [showCalendarModal, setShowCalendarModal] = useState(false);
     
     // New reflection flow state
-    const [showDateModal, setShowDateModal] = useState(false);
+    const [showReflectionTypeModal, setShowReflectionTypeModal] = useState(false);
+    const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
     const [showExperienceModal, setShowExperienceModal] = useState(false);
     const [showDurationModal, setShowDurationModal] = useState(false);
-    const [showSummaryModal, setShowSummaryModal] = useState(false);
+    const [showReadyToBeginModal, setShowReadyToBeginModal] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
     const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     
     // Reflection session data
+    const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night'>('Day');
     const [selectedStartDate, setSelectedStartDate] = useState('');
     const [selectedEndDate, setSelectedEndDate] = useState('');
-    const [selectedTimeOfReflection, setSelectedTimeOfReflection] = useState<'Day' | 'Night'>('Day');
     const [selectedDuration, setSelectedDuration] = useState(5);
     const [recommendedDuration, setRecommendedDuration] = useState(5);
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
     const [generatedPlaylist, setGeneratedPlaylist] = useState<PlaylistItem[] | null>(null);
     
-    // Current playing meditation metadata (for saved meditations)
-    const [currentMeditationMeta, setCurrentMeditationMeta] = useState<{
-        noteIds: string[];
-        duration: number;
-        summary: string;
-    } | null>(null);
 
     const fetchSavedMeditations = async () => {
         try {
@@ -101,12 +97,6 @@ const ReflectionsPage: React.FC = () => {
         try {
             const res = await axios.get(`${API_URL}/meditations/${meditationId}`);
             setMeditationPlaylist(res.data.playlist);
-            // Store meditation metadata for summary modal
-            setCurrentMeditationMeta({
-                noteIds: res.data.noteIds,
-                duration: res.data.duration,
-                summary: res.data.summary
-            });
         } catch (err) {
             console.error("Error loading meditation:", err);
             alert('Failed to load meditation. Please try again.');
@@ -141,23 +131,29 @@ const ReflectionsPage: React.FC = () => {
 
     // New reflection flow handlers
     const handleStartReflection = () => {
-        setShowDateModal(true);
+        setShowReflectionTypeModal(true);
     };
 
-    const handleDateSelection = (startDate: string, endDate: string, timeOfReflection: 'Day' | 'Night') => {
-        setSelectedStartDate(startDate);
-        setSelectedEndDate(endDate);
-        setSelectedTimeOfReflection(timeOfReflection);
-        setShowDateModal(false);
+    const handleReflectionTypeSelection = (type: 'Day' | 'Night') => {
+        setSelectedReflectionType(type);
+        setShowReflectionTypeModal(false);
         
-        // For Day reflection, skip experience selection and go directly to pre-saved meditation
-        if (timeOfReflection === 'Day') {
+        if (type === 'Day') {
+            // For Day meditation, go straight to playback
             handlePlayDayReflection();
         } else {
-            // For Night reflection, continue with normal flow
-            setShowExperienceModal(true);
+            // For Night reflection, continue with time period selection
+            setShowTimePeriodModal(true);
         }
     };
+
+    const handleTimePeriodSelection = (startDate: string, endDate: string) => {
+        setSelectedStartDate(startDate);
+        setSelectedEndDate(endDate);
+        setShowTimePeriodModal(false);
+        setShowExperienceModal(true);
+    };
+
 
 
     // Calculate recommended duration based on number of experiences
@@ -177,9 +173,19 @@ const ReflectionsPage: React.FC = () => {
         setShowDurationModal(true);
     };
 
-    const handleDurationSelection = async (duration: number) => {
+    const handleDurationSelection = (duration: number) => {
         setSelectedDuration(duration);
         setShowDurationModal(false);
+        setShowReadyToBeginModal(true);
+    };
+
+    const handleReadyToBeginBack = () => {
+        setShowReadyToBeginModal(false);
+        setShowDurationModal(true);
+    };
+
+    const handleReadyToBeginStart = async () => {
+        setShowReadyToBeginModal(false);
         setIsGeneratingMeditation(true);
         setIsMeditationApiComplete(false);
 
@@ -187,19 +193,12 @@ const ReflectionsPage: React.FC = () => {
             // Generate meditation with selected experiences and chosen duration
             const response = await axios.post(`${API_URL}/meditate`, {
                 noteIds: selectedNoteIds,
-                duration,
-                timeOfReflection: selectedTimeOfReflection
+                duration: selectedDuration,
+                timeOfReflection: selectedReflectionType
             });
             
             setGeneratedPlaylist(response.data.playlist);
             setGeneratedSummary(response.data.summary || '');
-            
-            // Store current session metadata for summary modal
-            setCurrentMeditationMeta({
-                noteIds: selectedNoteIds,
-                duration: duration,
-                summary: response.data.summary || ''
-            });
             
             // Mark API as complete - loading modal will handle the transition
             console.log('✅ API Success - setting isMeditationApiComplete to true');
@@ -229,6 +228,7 @@ const ReflectionsPage: React.FC = () => {
             // If no playlist (API failed), show error and reset
             alert('Meditation generation failed. Please try again when the server is running.');
             // Reset all state
+            setSelectedReflectionType('Day');
             setSelectedStartDate('');
             setSelectedEndDate('');
             setSelectedDuration(5);
@@ -241,12 +241,6 @@ const ReflectionsPage: React.FC = () => {
     const handlePlayNow = () => {
         setShowGenerationModal(false);
         setMeditationPlaylist(generatedPlaylist);
-        // Store current session metadata for summary modal
-        setCurrentMeditationMeta({
-            noteIds: selectedNoteIds,
-            duration: selectedDuration,
-            summary: generatedSummary
-        });
     };
 
     const handleSaveLater = () => {
@@ -254,6 +248,7 @@ const ReflectionsPage: React.FC = () => {
         fetchSavedMeditations(); // Refresh the saved meditations list
         fetchStats(); // Refresh stats since a new meditation was created
         // Reset state
+        setSelectedReflectionType('Day');
         setSelectedStartDate('');
         setSelectedEndDate('');
         setSelectedDuration(5);
@@ -262,11 +257,17 @@ const ReflectionsPage: React.FC = () => {
         setGeneratedPlaylist(null);
     };
 
-    const handleMeditationFinish = (completed: boolean) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const handleMeditationFinish = (_completed: boolean) => {
+        // Ignore completed parameter since we no longer show completion modal
         setMeditationPlaylist(null);
-        if (completed) {
-            setShowSummaryModal(true);
-        }
+        // Reset all state when meditation finishes
+        setSelectedReflectionType('Day');
+        setSelectedStartDate('');
+        setSelectedEndDate('');
+        setSelectedDuration(5);
+        setSelectedNoteIds([]);
+        setGeneratedSummary('');
         fetchSavedMeditations(); // Refresh the saved meditations list
         fetchStats(); // Refresh stats since meditation was completed
     };
@@ -276,12 +277,6 @@ const ReflectionsPage: React.FC = () => {
         try {
             const res = await axios.get(`${API_URL}/meditations/day/default`);
             setMeditationPlaylist(res.data.playlist);
-            // Store meditation metadata for summary modal
-            setCurrentMeditationMeta({
-                noteIds: res.data.noteIds,
-                duration: res.data.duration,
-                summary: res.data.summary
-            });
         } catch (err) {
             console.error("Error loading day reflection:", err);
             alert('Failed to load day reflection. Please try again.');
@@ -290,16 +285,19 @@ const ReflectionsPage: React.FC = () => {
         }
     };
 
-    const handleSummaryClose = () => {
-        setShowSummaryModal(false);
-        // Reset all state
-        setSelectedStartDate('');
-        setSelectedEndDate('');
-        setSelectedDuration(5);
-        setSelectedNoteIds([]);
-        setGeneratedSummary('');
-        setCurrentMeditationMeta(null);
+    const formatDateRange = () => {
+        if (!selectedStartDate || !selectedEndDate) return 'Not selected';
+        
+        const start = new Date(selectedStartDate);
+        const end = new Date(selectedEndDate);
+        
+        if (selectedStartDate === selectedEndDate) {
+            return start.toLocaleDateString();
+        }
+        
+        return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
     };
+
 
     if (isLoadingMeditation) {
         return (
@@ -400,10 +398,16 @@ const ReflectionsPage: React.FC = () => {
             </div>
 
             {/* Modals */}
-            <DateSelectorModal
-                isOpen={showDateModal}
-                onClose={() => setShowDateModal(false)}
-                onSelectDates={handleDateSelection}
+            <ReflectionTypeModal
+                isOpen={showReflectionTypeModal}
+                onClose={() => setShowReflectionTypeModal(false)}
+                onSelectType={handleReflectionTypeSelection}
+            />
+            
+            <TimePeriodModal
+                isOpen={showTimePeriodModal}
+                onClose={() => setShowTimePeriodModal(false)}
+                onSelectDates={handleTimePeriodSelection}
             />
             
             <ExperienceSelectionModal
@@ -422,13 +426,17 @@ const ReflectionsPage: React.FC = () => {
                 recommendedDuration={recommendedDuration}
             />
             
-            <ReflectionSummaryModal
-                isOpen={showSummaryModal}
-                onClose={handleSummaryClose}
-                noteIds={currentMeditationMeta?.noteIds || selectedNoteIds}
-                duration={currentMeditationMeta?.duration || selectedDuration}
-                preGeneratedSummary={currentMeditationMeta?.summary || generatedSummary}
+            <ReadyToBeginModal
+                isOpen={showReadyToBeginModal}
+                onClose={() => setShowReadyToBeginModal(false)}
+                onBack={handleReadyToBeginBack}
+                onStart={handleReadyToBeginStart}
+                reflectionType={selectedReflectionType}
+                period={formatDateRange()}
+                experienceCount={selectedNoteIds.length}
+                duration={selectedDuration}
             />
+            
             
             <MeditationGenerationModal
                 isOpen={showGenerationModal}

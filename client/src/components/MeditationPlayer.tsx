@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import BottomTabNavigation from './BottomTabNavigation';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -11,9 +12,16 @@ interface PlaylistItem {
 interface MeditationPlayerProps {
     playlist: PlaylistItem[];
     onFinish: (completed: boolean) => void;
+    title?: string;
+    author?: string;
 }
 
-const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish }) => {
+const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ 
+    playlist, 
+    onFinish, 
+    title = "Your Personalized Meditation", 
+    author = "Replay" 
+}) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [status, setStatus] = useState('Starting...');
     const [isPlaying, setIsPlaying] = useState(false);
@@ -145,49 +153,102 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish 
         }
     };
 
+    const handlePrevious = () => {
+        if (currentIndex > 0) {
+            setCurrentIndex(currentIndex - 1);
+            setCurrentTime(0);
+        }
+    };
+
+    const handleNext = () => {
+        if (currentIndex < playlist.length - 1) {
+            setCurrentIndex(currentIndex + 1);
+            setCurrentTime(0);
+        }
+    };
+
     const formatTime = (time: number) => {
         const minutes = Math.floor(time / 60);
         const seconds = Math.floor(time % 60);
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    const progress = (currentIndex / playlist.length) * 100;
     const currentItem = playlist[currentIndex];
     const audioProgress = currentItem?.type === 'speech' && totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
+    const remainingTime = totalDuration > 0 ? totalDuration - currentTime : 0;
 
     return (
         <div style={styles.container}>
-            <h2>Your Personalized Meditation</h2>
-            
-            {/* Overall progress */}
-            <div style={styles.progressWrapper}>
-                <div style={{...styles.progressBar, width: `${progress}%`}}></div>
-            </div>
-            
-            {/* Audio progress (for speech segments) */}
-            {currentItem?.type === 'speech' && (
-                <div style={styles.audioProgressWrapper}>
-                    <div 
-                        style={styles.audioProgressContainer}
-                        onClick={handleProgressBarClick}
-                    >
-                        <div style={{...styles.audioProgressBar, width: `${audioProgress}%`}}></div>
+            {/* Main Content */}
+            <div style={styles.mainContent}>
+                <div style={styles.playerContainer}>
+                    {/* Album Art Placeholder */}
+                    <div style={styles.albumArt}>
+                        <div style={styles.albumArtPlaceholder}>
+                            <div style={styles.meditationIcon}>🧘‍♀️</div>
+                        </div>
                     </div>
-                    <div style={styles.timeDisplay}>
-                        {formatTime(currentTime)} / {formatTime(totalDuration || 0)}
+                    
+                    {/* Content Container */}
+                    <div style={styles.contentContainer}>
+                        {/* Song Details */}
+                        <div style={styles.songDetails}>
+                            <div style={styles.songInfo}>
+                                <div style={styles.songTitle}>{title}</div>
+                                <div style={styles.songArtist}>{author}</div>
+                            </div>
+                        </div>
+                        
+                        {/* Progress Bar */}
+                        <div style={styles.progressSection}>
+                            <div style={styles.progressContainer}>
+                                <div 
+                                    style={styles.progressTrack}
+                                    onClick={handleProgressBarClick}
+                                >
+                                    <div style={{...styles.progressFill, width: `${audioProgress}%`}} />
+                                </div>
+                            </div>
+                            <div style={styles.timeLabels}>
+                                <div style={styles.timeLabel}>{formatTime(currentTime)}</div>
+                                <div style={styles.timeLabel}>-{formatTime(remainingTime)}</div>
+                            </div>
+                        </div>
+                        
+                        {/* Play Controls */}
+                        <div style={styles.playControls}>
+                            <button 
+                                onClick={handlePrevious} 
+                                style={{...styles.controlButton, ...styles.secondaryButton}}
+                                disabled={currentIndex === 0}
+                            >
+                                <SkipBack size={20} />
+                            </button>
+                            <button onClick={togglePlayPause} style={{...styles.controlButton, ...styles.primaryButton}}>
+                                {isPlaying && !isPaused ? <Pause size={24} /> : <Play size={24} />}
+                            </button>
+                            <button 
+                                onClick={handleNext} 
+                                style={{...styles.controlButton, ...styles.secondaryButton}}
+                                disabled={currentIndex >= playlist.length - 1}
+                            >
+                                <SkipForward size={20} />
+                            </button>
+                        </div>
                     </div>
                 </div>
-            )}
-            
-            <p style={styles.status}>{status}</p>
-            
-            {/* Controls */}
-            <div style={styles.controls}>
-                <button onClick={togglePlayPause} style={styles.playButton}>
-                    {isPlaying && !isPaused ? <Pause size={24} /> : <Play size={24} />}
-                </button>
-                <button onClick={() => onFinish(false)} style={styles.button}>End Session</button>
             </div>
+            
+            {/* Bottom Tab Navigation */}
+            <BottomTabNavigation />
+            
+            {/* Gesture Indicator Bar */}
+            <div style={styles.gestureIndicatorContainer}>
+                <div style={styles.gestureIndicator}></div>
+            </div>
+            
+            {/* Hidden status for debugging */}
+            <div style={styles.hiddenStatus}>{status}</div>
             
             <audio ref={audioRef} onEnded={handleAudioEnded} />
         </div>
@@ -195,17 +256,177 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish 
 };
 
 const styles = {
-    container: { backgroundColor: 'var(--card-background)', padding: '2rem', borderRadius: '8px', boxShadow: 'var(--shadow)', textAlign: 'center' as const, marginTop: '2rem' },
-    progressWrapper: { height: '8px', backgroundColor: '#e9ecef', borderRadius: '4px', overflow: 'hidden', margin: '1rem 0' },
-    progressBar: { height: '100%', backgroundColor: 'var(--primary-color)', transition: 'width 0.5s' },
-    audioProgressWrapper: { margin: '1rem 0' },
-    audioProgressContainer: { height: '12px', backgroundColor: '#e9ecef', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer', margin: '0.5rem 0' },
-    audioProgressBar: { height: '100%', backgroundColor: '#007bff', transition: 'width 0.1s' },
-    timeDisplay: { fontSize: '0.9rem', color: '#6c757d', marginTop: '0.5rem' },
-    status: { fontStyle: 'italic', color: '#6c757d', margin: '1rem 0' },
-    controls: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' },
-    playButton: { padding: '0.75rem', border: '2px solid var(--primary-color)', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-color)', transition: 'all 0.2s' },
-    button: { padding: '0.5rem 1rem', border: '1px solid #6c757d', borderRadius: '4px', background: 'transparent', cursor: 'pointer' }
+    container: {
+        backgroundColor: '#ffffff',
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        position: 'relative' as const,
+    },
+    mainContent: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column' as const,
+        minHeight: '618px',
+        paddingBottom: '88px', // Account for bottom navigation
+    },
+    playerContainer: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '32px',
+        padding: '24px 16px',
+        flex: 1,
+    },
+    albumArt: {
+        height: '361px',
+        width: '100%',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        position: 'relative' as const,
+        backgroundImage: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    albumArtPlaceholder: {
+        width: '100%',
+        height: '100%',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative' as const,
+    },
+    meditationIcon: {
+        fontSize: '4rem',
+        opacity: 0.8,
+        color: 'rgba(255, 255, 255, 0.9)',
+        textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)',
+    },
+    contentContainer: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '61px',
+        alignItems: 'center',
+        flex: 1,
+    },
+    songDetails: {
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+    },
+    songInfo: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '4px',
+        flex: 1,
+        textAlign: 'center' as const,
+    },
+    songTitle: {
+        fontSize: '17px',
+        fontWeight: 'bold',
+        color: '#000000',
+        fontFamily: "'DM Sans', sans-serif",
+    },
+    songArtist: {
+        fontSize: '13px',
+        color: 'rgba(0,0,0,0.5)',
+        fontFamily: "'DM Sans', sans-serif",
+    },
+    progressSection: {
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '8px',
+    },
+    progressContainer: {
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '8px',
+    },
+    progressTrack: {
+        width: '100%',
+        height: '6px',
+        backgroundColor: 'rgba(0,0,0,0.06)',
+        borderRadius: '360px',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        position: 'relative' as const,
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#4e3cdb',
+        borderRadius: '360px',
+        transition: 'width 0.1s',
+    },
+    timeLabels: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    timeLabel: {
+        fontSize: '13px',
+        fontWeight: 'bold',
+        color: 'rgba(0,0,0,0.5)',
+        fontFamily: "'DM Sans', sans-serif",
+    },
+    playControls: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '66.5px',
+        width: '277px',
+    },
+    controlButton: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: 'none',
+        backgroundColor: 'transparent',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+        color: '#000000',
+    },
+    primaryButton: {
+        width: '48px',
+        height: '48px',
+        borderRadius: '50%',
+        backgroundColor: '#4e3cdb',
+        color: 'white',
+        boxShadow: '0 4px 12px rgba(78, 60, 219, 0.3)',
+    },
+    secondaryButton: {
+        width: '48px',
+        height: '48px',
+        borderRadius: '50%',
+        opacity: 0.8,
+        color: '#4e3cdb',
+    },
+    gestureIndicatorContainer: {
+        position: 'absolute' as const,
+        bottom: '100px', // Above bottom navigation
+        left: 0,
+        right: 0,
+        height: '32px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 999,
+    },
+    gestureIndicator: {
+        width: '120px',
+        height: '4px',
+        backgroundColor: 'rgba(0, 0, 0, 0.04)',
+        borderRadius: '360px',
+    },
+    hiddenStatus: {
+        position: 'absolute' as const,
+        left: '-9999px',
+        opacity: 0,
+    },
 };
 
 export default MeditationPlayer;

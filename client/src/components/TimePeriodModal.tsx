@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
 
-interface DateSelectorModalProps {
+interface TimePeriodModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelectDates: (startDate: string, endDate: string, timeOfReflection: 'Day' | 'Night') => void;
+    onSelectDates: (startDate: string, endDate: string) => void;
 }
 
-const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
+const TimePeriodModal: React.FC<TimePeriodModalProps> = ({
     isOpen,
     onClose,
     onSelectDates,
@@ -31,8 +31,6 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
         const today = new Date();
         return getLocalDateString(today);
     });
-    
-    const [timeOfReflection, setTimeOfReflection] = useState<'Day' | 'Night'>('Day');
 
     // Reset dates to today whenever modal opens
     useEffect(() => {
@@ -41,7 +39,6 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
             const todayString = getLocalDateString(today);
             setStartDate(todayString);
             setEndDate(todayString);
-            setTimeOfReflection('Day');
         }
     }, [isOpen]);
 
@@ -71,7 +68,7 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
             return;
         }
         
-        onSelectDates(startDate, endDate, timeOfReflection);
+        onSelectDates(startDate, endDate);
     };
 
     const getQuickSelectOptions = () => {
@@ -122,7 +119,7 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
         <div style={styles.overlay} onClick={onClose}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <div style={styles.header}>
-                    <h2 style={styles.title}>Select Reflection Period</h2>
+                    <h2 style={styles.title}>Select Time Period</h2>
                     <button onClick={onClose} style={styles.closeButton}>
                         <X size={24} />
                     </button>
@@ -132,31 +129,6 @@ const DateSelectorModal: React.FC<DateSelectorModalProps> = ({
                     <p style={styles.description}>
                         Choose which days you'd like to reflect on (up to 7 days).
                     </p>
-
-                    {/* Time of Reflection Section */}
-                    <div style={styles.section}>
-                        <h3 style={styles.sectionTitle}>Time of Reflection</h3>
-                        <div style={styles.timeOptions}>
-                            <button
-                                onClick={() => setTimeOfReflection('Day')}
-                                style={{
-                                    ...styles.timeButton,
-                                    ...(timeOfReflection === 'Day' ? styles.timeButtonActive : {})
-                                }}
-                            >
-                                Day
-                            </button>
-                            <button
-                                onClick={() => setTimeOfReflection('Night')}
-                                style={{
-                                    ...styles.timeButton,
-                                    ...(timeOfReflection === 'Night' ? styles.timeButtonActive : {})
-                                }}
-                            >
-                                Night
-                            </button>
-                        </div>
-                    </div>
 
                     {/* Quick Select Options */}
                     <div style={styles.section}>
@@ -314,28 +286,6 @@ const styles = {
         backgroundColor: 'var(--primary-color)',
         color: 'white',
     },
-    timeOptions: {
-        display: 'flex',
-        gap: '0.75rem',
-    },
-    timeButton: {
-        flex: 1,
-        padding: '0.875rem 1.5rem',
-        border: '2px solid var(--card-border)',
-        borderRadius: '8px',
-        backgroundColor: 'transparent',
-        color: 'var(--text-color)',
-        cursor: 'pointer',
-        fontSize: '0.95rem',
-        fontWeight: '600',
-        transition: 'all 0.2s',
-        textAlign: 'center' as const,
-    },
-    timeButtonActive: {
-        borderColor: 'var(--primary-color)',
-        backgroundColor: 'var(--primary-color)',
-        color: 'white',
-    },
     dateInputs: {
         display: 'flex',
         gap: '1rem',
@@ -392,4 +342,4 @@ const styles = {
     },
 };
 
-export default DateSelectorModal;
+export default TimePeriodModal;
