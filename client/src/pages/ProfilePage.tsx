@@ -242,6 +242,11 @@ const ProfilePage: React.FC = () => {
 
     return (
         <div style={styles.container}>
+            <div style={styles.header}>
+                <h1 style={styles.title}>Replay</h1>
+                <p style={styles.subtitle}>Your daily reflections</p>
+            </div>
+            
             <div style={styles.formWrapper}>
                 <p style={styles.description}>
                     This information helps create personalized meditations just for you.
@@ -373,12 +378,31 @@ const ProfilePage: React.FC = () => {
 const styles = {
     container: { 
         paddingBottom: '100px', // Space for bottom navigation
-        paddingTop: '1rem', // Space after Instagram-style header
+        paddingTop: '0.75rem',
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
+    },
+    header: {
+        marginBottom: '1.5rem',
+    },
+    title: {
+        margin: 0,
+        fontSize: '1.75rem',
+        fontWeight: '700',
+        color: 'var(--text-color)',
+        fontFamily: 'var(--font-family-heading)',
+        letterSpacing: '-0.025em',
+    },
+    subtitle: {
+        margin: '0.25rem 0 0 0',
+        fontSize: '0.9rem',
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-family)',
+        fontWeight: '400',
     },
     formWrapper: {
         maxWidth: '600px', 
         margin: '0 auto',
-        padding: '0 1rem',
     },
     description: {
         color: 'var(--text-secondary)',

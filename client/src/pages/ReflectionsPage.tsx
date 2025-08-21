@@ -316,29 +316,28 @@ const ReflectionsPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            {/* Header */}
             <div style={styles.header}>
-                <h1 style={styles.appTitle}>Replay</h1>
-                <p style={styles.appSubtitle}>Your daily reflections</p>
-                
-                {/* Stats Cards */}
-                <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
-                
-                {/* Recent Activity Calendar */}
-                <RecentActivityCalendar 
-                    reflectionDates={reflectionDates}
-                    onExpandClick={() => setShowCalendarModal(true)}
-                />
-                
-                {/* Generate Reflection Button */}
-                <button 
-                    onClick={handleStartReflection}
-                    style={styles.generateButton}
-                >
-                    <Plus size={20} />
-                    <span>Generate Reflection</span>
-                </button>
+                <h1 style={styles.title}>Replay</h1>
+                <p style={styles.subtitle}>Your daily reflections</p>
             </div>
+
+            {/* Stats Cards */}
+            <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
+            
+            {/* Recent Activity Calendar */}
+            <RecentActivityCalendar 
+                reflectionDates={reflectionDates}
+                onExpandClick={() => setShowCalendarModal(true)}
+            />
+            
+            {/* Generate Reflection Button */}
+            <button 
+                onClick={handleStartReflection}
+                style={styles.generateButton}
+            >
+                <Plus size={20} />
+                <span>Generate Reflection</span>
+            </button>
 
             {/* Recent Reflections Section */}
             <div style={styles.reflectionsSection}>
@@ -459,25 +458,28 @@ const ReflectionsPage: React.FC = () => {
 
 const styles = {
     container: {
-        backgroundColor: '#f8fafc',
-        minHeight: '100vh',
         paddingBottom: '100px', // Space for bottom nav
+        paddingTop: '0.75rem',
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
     },
     header: {
-        backgroundColor: 'white',
-        padding: '24px',
-        borderBottom: '1px solid #e2e8f0',
+        marginBottom: '1.5rem',
     },
-    appTitle: {
-        fontSize: '24px',
-        fontWeight: '600',
-        color: '#0f172a',
-        margin: '0 0 4px 0',
+    title: {
+        margin: 0,
+        fontSize: '1.75rem',
+        fontWeight: '700',
+        color: 'var(--text-color)',
+        fontFamily: 'var(--font-family-heading)',
+        letterSpacing: '-0.025em',
     },
-    appSubtitle: {
-        fontSize: '14px',
-        color: '#64748b',
-        margin: '0 0 24px 0',
+    subtitle: {
+        margin: '0.25rem 0 0 0',
+        fontSize: '0.9rem',
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-family)',
+        fontWeight: '400',
     },
     generateButton: {
         width: '100%',
