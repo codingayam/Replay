@@ -3,12 +3,10 @@ import ExperiencesPage from './pages/ExperiencesPage';
 import ReflectionsPage from './pages/ReflectionsPage';
 import ProfilePage from './pages/ProfilePage';
 import BottomTabNavigation from './components/BottomTabNavigation';
-import Header from './components/Header';
 
 function App() {
   return (
     <Router>
-        <Header />
         <main style={styles.main}>
             <Routes>
                 <Route path="/" element={<ExperiencesPage />} />
