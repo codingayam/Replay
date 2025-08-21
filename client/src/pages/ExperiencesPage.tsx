@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Calendar } from 'lucide-react';
 import NoteCard from '../components/NoteCard';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import type { Note } from '../types';
-import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 
 const API_URL = '/api';
 
@@ -16,7 +14,11 @@ const ExperiencesPage: React.FC = () => {
     const fetchNotes = async () => {
         try {
             const res = await axios.get(`${API_URL}/notes`);
-            setNotes(res.data);
+            // Sort notes by date, most recent first
+            const sortedNotes = res.data.sort((a: Note, b: Note) => 
+                new Date(b.date).getTime() - new Date(a.date).getTime()
+            );
+            setNotes(sortedNotes);
         } catch (err) {
             console.error("Error fetching notes:", err);
         }
@@ -99,40 +101,16 @@ const ExperiencesPage: React.FC = () => {
                 </div>
             )}
 
-
             <div style={styles.notesList}>
-                {(() => {
-                    const groupedNotes = groupNotesByDate(notes);
-                    const sortedDateHeaders = sortDateGroups(Object.keys(groupedNotes));
-                    
-                    return sortedDateHeaders.map(dateHeader => {
-                        const isToday = dateHeader === 'Today';
-                        const dateFormatted = isToday ? 
-                            new Date().toLocaleDateString('en-US', { 
-                                year: 'numeric', 
-                                month: 'long', 
-                                day: 'numeric' 
-                            }) : dateHeader;
-                        
-                        return (
-                            <div key={dateHeader} style={styles.dateGroup}>
-                                <div style={styles.dateHeaderContainer}>
-                                    <div style={styles.dateHeaderContent}>
-                                        <Calendar size={20} style={styles.calendarIcon} />
-                                        <div>
-                                            <h3 style={styles.dateHeader}>{dateHeader}</h3>
-                                            {isToday && <p style={styles.dateSubtext}>{dateFormatted}</p>}
-                                        </div>
-                                    </div>
-                                </div>
-                                {groupedNotes[dateHeader].map(note => (
-                                    <NoteCard key={note.id} note={note} onPlay={handlePlayNote} onDelete={handleDeleteNote} onUpdateTranscript={handleUpdateTranscript} />
-                                ))}
-                            </div>
-                        );
-                    });
-                })()
-            }
+                {notes.map(note => (
+                    <NoteCard 
+                        key={note.id} 
+                        note={note} 
+                        onPlay={handlePlayNote} 
+                        onDelete={handleDeleteNote} 
+                        onUpdateTranscript={handleUpdateTranscript} 
+                    />
+                ))}
             </div>
 
             {notes.length === 0 && (
@@ -154,7 +132,9 @@ const ExperiencesPage: React.FC = () => {
 const styles = {
     container: {
         paddingBottom: '120px', // Space for FAB and bottom nav
-        paddingTop: '1.5rem', // Space after header
+        paddingTop: '1rem',
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
     },
     playerContainer: { 
         padding: '1.25rem', 
@@ -173,40 +153,6 @@ const styles = {
     notesList: {
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: '1rem',
-    },
-    dateGroup: {
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '1rem',
-        marginBottom: '2rem',
-    },
-    dateHeaderContainer: {
-        marginBottom: '1rem',
-    },
-    dateHeaderContent: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-    },
-    calendarIcon: {
-        color: 'var(--primary-color)',
-        flexShrink: 0,
-    },
-    dateHeader: {
-        margin: 0,
-        fontSize: '1.5rem',
-        fontWeight: '700',
-        color: 'var(--text-color)',
-        fontFamily: 'var(--font-family-heading)',
-        letterSpacing: '-0.025em',
-    },
-    dateSubtext: {
-        margin: '0.25rem 0 0 0',
-        fontSize: '0.9rem',
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-family)',
-        fontWeight: '400',
     },
     emptyState: {
         textAlign: 'center' as const,

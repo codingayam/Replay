@@ -1,8 +1,7 @@
 
 import React, { useState } from 'react';
-import { PlayCircle, Trash2, FileText, Image as ImageIcon, Edit2, Save, X } from 'lucide-react';
+import { PlayCircle, Trash2, Edit2, Save, X, ChevronRight } from 'lucide-react';
 import type { Note } from '../types';
-import CategoryBadge from './CategoryBadge';
 
 interface NoteCardProps {
     note: Note;
@@ -12,14 +11,35 @@ interface NoteCardProps {
 }
 
 const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTranscript }) => {
-    const [showTranscript, setShowTranscript] = useState(false);
+    const [showDetails, setShowDetails] = useState(false);
     const [showOriginalCaption, setShowOriginalCaption] = useState(false);
     const [isEditingTranscript, setIsEditingTranscript] = useState(false);
     const [editedTranscript, setEditedTranscript] = useState(note.transcript);
 
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
-    const category = note.category || 'experience'; // Use AI-generated category or default
+    const category = note.category || 'experience';
+
+    // Get emoji based on category
+    const getCategoryEmoji = (category: string) => {
+        switch (category) {
+            case 'gratitude': return '🌅';
+            case 'experience': return '🍽️';
+            case 'reflection': return '🌙';
+            case 'insight': return '💡';
+            default: return '📝';
+        }
+    };
+
+    // Format date to show month and day
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
 
     const handleSaveTranscript = () => {
         if (onUpdateTranscript && editedTranscript.trim() !== note.transcript) {
@@ -34,37 +54,38 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
     };
 
     return (
-        <div className="card-enhanced" style={styles.card}>
-            <div style={styles.content}>
-                {/* Photo display */}
-                {isPhotoNote && note.imageUrl && (
-                    <div style={styles.imageContainer}>
-                        <img 
-                            src={`${note.imageUrl}`} 
-                            alt={note.title}
-                            style={styles.image}
-                        />
-                    </div>
-                )}
-
-                <div style={styles.cardHeader}>
-                    <CategoryBadge category={category} style={styles.categoryBadge} />
+        <div style={styles.listItem} onClick={() => setShowDetails(!showDetails)}>
+            <div style={styles.listItemContent}>
+                <div style={styles.emojiIcon}>
+                    {getCategoryEmoji(category)}
                 </div>
-                
-                <div style={styles.header} onClick={() => setShowTranscript(!showTranscript)}>
-                    <div style={styles.titleSection}>
-                        <div style={styles.titleRow}>
-                            <h3 style={styles.title}>{note.title}</h3>
-                            <div style={styles.noteType}>
-                                {isPhotoNote ? <ImageIcon size={16} /> : <PlayCircle size={16} />}
-                            </div>
+                <div style={styles.textContent}>
+                    <h3 style={styles.title}>{note.title}</h3>
+                    <p style={styles.date}>{formatDate(note.date)}</p>
+                </div>
+                <ChevronRight 
+                    size={16} 
+                    style={{
+                        ...styles.chevron,
+                        transform: showDetails ? 'rotate(90deg)' : 'rotate(0deg)'
+                    }} 
+                />
+            </div>
+            
+            {showDetails && (
+                <div style={styles.detailsContainer}>
+                    {/* Photo display */}
+                    {isPhotoNote && note.imageUrl && (
+                        <div style={styles.imageContainer}>
+                            <img 
+                                src={`${note.imageUrl}`} 
+                                alt={note.title}
+                                style={styles.image}
+                            />
                         </div>
-                        <p style={styles.date}>{new Date(note.date).toLocaleString()}</p>
-                    </div>
-                    <FileText style={{...styles.icon, opacity: showTranscript ? 1 : 0.6}} />
-                </div>
+                    )}
 
-                {showTranscript && (
+                    {/* Transcript section */}
                     <div style={styles.transcript}>
                         <div style={styles.transcriptHeader}>
                             {isEditingTranscript ? (
@@ -82,14 +103,20 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                                     {isEditingTranscript ? (
                                         <>
                                             <button 
-                                                onClick={handleSaveTranscript}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSaveTranscript();
+                                                }}
                                                 style={{...styles.transcriptButton, ...styles.saveButton}}
                                                 title="Save changes"
                                             >
                                                 <Save size={14} />
                                             </button>
                                             <button 
-                                                onClick={handleCancelEdit}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCancelEdit();
+                                                }}
                                                 style={{...styles.transcriptButton, ...styles.cancelButton}}
                                                 title="Cancel editing"
                                             >
@@ -98,7 +125,10 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                                         </>
                                     ) : (
                                         <button 
-                                            onClick={() => setIsEditingTranscript(true)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsEditingTranscript(true);
+                                            }}
                                             style={styles.transcriptButton}
                                             title="Edit transcript"
                                         >
@@ -127,51 +157,86 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                             </div>
                         )}
                     </div>
-                )}
-            </div>
-            
-            <div style={styles.controls}>
-                {isAudioNote && note.audioUrl && (
-                    <button onClick={() => onPlay(note.audioUrl!)} style={styles.button}>
-                        <PlayCircle />
-                    </button>
-                )}
-                <button onClick={() => onDelete(note.id)} style={{...styles.button, ...styles.deleteButton}}>
-                    <Trash2 />
-                </button>
-            </div>
+                    
+                    {/* Controls */}
+                    <div style={styles.controls}>
+                        {isAudioNote && note.audioUrl && (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPlay(note.audioUrl!);
+                                }} 
+                                style={styles.button}
+                            >
+                                <PlayCircle />
+                                Play Audio
+                            </button>
+                        )}
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(note.id);
+                            }} 
+                            style={{...styles.button, ...styles.deleteButton}}
+                        >
+                            <Trash2 />
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 const styles = {
-    card: { 
-        display: 'flex', 
-        flexDirection: 'column' as const,
-        backgroundColor: 'var(--card-background)', 
-        border: '1px solid var(--card-border)', 
-        borderRadius: 'var(--border-radius)', 
-        marginBottom: '1.25rem', 
-        boxShadow: 'var(--shadow-sm)',
-        overflow: 'hidden',
-        transition: 'all 0.2s ease',
-        '&:hover': {
-            boxShadow: 'var(--shadow-md)',
-            borderColor: 'var(--card-border-hover)',
-            transform: 'translateY(-1px)',
-        }
+    listItem: {
+        backgroundColor: 'var(--card-background)',
+        borderBottom: '1px solid #f0f0f0',
+        cursor: 'pointer',
+        transition: 'background-color 0.15s ease',
     },
-    content: {
-        flex: 1,
-        padding: '1.25rem',
-    },
-    cardHeader: {
+    listItemContent: {
         display: 'flex',
-        justifyContent: 'flex-start',
-        marginBottom: '1rem',
+        alignItems: 'center',
+        padding: '1rem',
+        gap: '0.75rem',
     },
-    categoryBadge: {
-        // Additional styles will be applied from CategoryBadge component
+    emojiIcon: {
+        fontSize: '1.5rem',
+        width: '2rem',
+        height: '2rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+    },
+    textContent: {
+        flex: 1,
+        minWidth: 0,
+    },
+    title: {
+        margin: 0,
+        fontSize: '1rem',
+        fontWeight: '500',
+        color: 'var(--text-color)',
+        lineHeight: '1.3',
+    },
+    date: {
+        margin: '0.125rem 0 0 0',
+        fontSize: '0.875rem',
+        color: 'var(--text-secondary)',
+        fontWeight: '400',
+    },
+    chevron: {
+        color: 'var(--text-secondary)',
+        transition: 'transform 0.2s ease',
+        flexShrink: 0,
+    },
+    detailsContainer: {
+        padding: '0 1rem 1rem 1rem',
+        borderTop: '1px solid #f0f0f0',
+        backgroundColor: '#fafafa',
     },
     imageContainer: {
         marginBottom: '1rem',
@@ -184,58 +249,12 @@ const styles = {
         objectFit: 'cover' as const,
         display: 'block',
     },
-    header: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        cursor: 'pointer',
-        marginBottom: '0.5rem',
-        gap: '1rem',
-    },
-    titleSection: {
-        flex: 1,
-        minWidth: 0,
-    },
-    titleRow: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '0.25rem',
-    },
-    title: { 
-        margin: 0, 
-        fontSize: '1.125rem',
-        fontWeight: '600',
-        color: 'var(--text-color)',
-        fontFamily: 'var(--font-family-heading)',
-        lineHeight: '1.4',
-    },
-    date: { 
-        margin: 0, 
-        fontSize: '0.875rem', 
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-family)',
-        fontWeight: '400',
-    },
-    noteType: {
-        display: 'flex',
-        alignItems: 'center',
-        color: 'var(--primary-color)',
-    },
-    icon: {
-        width: '20px',
-        height: '20px',
-        color: '#666',
-        transition: 'opacity 0.2s',
-        flexShrink: 0,
-    },
     transcript: {
-        background: 'var(--gradient-subtle)',
+        background: '#fff',
         padding: '1rem',
-        borderRadius: 'var(--border-radius)',
-        borderLeft: '4px solid var(--primary-color)',
-        marginTop: '0.75rem',
-        boxShadow: 'var(--shadow-sm)',
+        borderRadius: '8px',
+        border: '1px solid #e0e0e0',
+        marginBottom: '1rem',
     },
     transcriptHeader: {
         display: 'flex',
@@ -317,32 +336,28 @@ const styles = {
         color: '#555',
         fontStyle: 'italic',
     },
-    controls: { 
-        display: 'flex', 
+    controls: {
+        display: 'flex',
         gap: '0.75rem',
-        justifyContent: 'flex-end',
-        padding: '1rem 1.25rem',
-        borderTop: '1px solid var(--card-border)',
-        backgroundColor: 'var(--background-secondary)',
+        justifyContent: 'flex-start',
+        flexWrap: 'wrap' as const,
     },
-    button: { 
-        background: 'var(--card-background)', 
-        border: '1px solid var(--card-border)', 
-        cursor: 'pointer', 
-        padding: '0.75rem',
-        borderRadius: 'var(--border-radius-sm)',
+    button: {
+        background: 'var(--primary-color)',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '0.75rem 1rem',
+        borderRadius: '8px',
         transition: 'all 0.2s ease',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--text-secondary)',
-        minWidth: '44px',
-        minHeight: '44px',
+        gap: '0.5rem',
+        color: 'white',
+        fontSize: '0.875rem',
+        fontWeight: '500',
     },
-    deleteButton: { 
-        color: 'var(--error-color)',
-        borderColor: 'var(--error-light)',
-        backgroundColor: 'var(--error-light)',
+    deleteButton: {
+        backgroundColor: '#dc3545',
     }
 };
 
