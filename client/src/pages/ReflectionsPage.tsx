@@ -6,6 +6,7 @@ import DurationSelectorModal from '../components/DurationSelectorModal';
 import ExperienceSelectionModal from '../components/ExperienceSelectionModal';
 import ReflectionSummaryModal from '../components/ReflectionSummaryModal';
 import MeditationGenerationModal from '../components/MeditationGenerationModal';
+import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
 import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 const API_URL = '/api';
@@ -37,6 +38,7 @@ const ReflectionsPage: React.FC = () => {
     const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
+    const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     
     // Reflection session data
     const [selectedStartDate, setSelectedStartDate] = useState('');
@@ -153,6 +155,7 @@ const ReflectionsPage: React.FC = () => {
         setSelectedDuration(duration);
         setShowDurationModal(false);
         setIsGeneratingMeditation(true);
+        setIsMeditationApiComplete(false);
 
         try {
             // Generate meditation with selected experiences and chosen duration
@@ -164,12 +167,48 @@ const ReflectionsPage: React.FC = () => {
             
             setGeneratedPlaylist(response.data.playlist);
             setGeneratedSummary(response.data.summary || '');
-            setShowGenerationModal(true);
+            
+            // Store current session metadata for summary modal
+            setCurrentMeditationMeta({
+                noteIds: selectedNoteIds,
+                duration: duration,
+                summary: response.data.summary || ''
+            });
+            
+            // Mark API as complete - loading modal will handle the transition
+            console.log('✅ API Success - setting isMeditationApiComplete to true');
+            setIsMeditationApiComplete(true);
         } catch (err) {
             console.error("Error generating meditation:", err);
             alert('Failed to generate meditation. Please try again.');
-        } finally {
             setIsGeneratingMeditation(false);
+            setIsMeditationApiComplete(false);
+        }
+    };
+
+    const handleMeditationReady = () => {
+        console.log('🎯 handleMeditationReady called');
+        console.log('📊 generatedPlaylist:', generatedPlaylist);
+        
+        // Called when the loading animation completes
+        setIsGeneratingMeditation(false);
+        setIsMeditationApiComplete(false); // Reset for next time
+        
+        // Only proceed if we actually have a playlist
+        if (generatedPlaylist && generatedPlaylist.length > 0) {
+            console.log('✅ Valid playlist found, starting meditation');
+            setMeditationPlaylist(generatedPlaylist);
+        } else {
+            console.log('❌ No valid playlist found');
+            // If no playlist (API failed), show error and reset
+            alert('Meditation generation failed. Please try again when the server is running.');
+            // Reset all state
+            setSelectedStartDate('');
+            setSelectedEndDate('');
+            setSelectedDuration(5);
+            setSelectedNoteIds([]);
+            setGeneratedSummary('');
+            setGeneratedPlaylist(null);
         }
     };
 
@@ -234,10 +273,10 @@ const ReflectionsPage: React.FC = () => {
         setCurrentMeditationMeta(null);
     };
 
-    if (isLoadingMeditation || isGeneratingMeditation) {
+    if (isLoadingMeditation) {
         return (
             <div style={styles.centered}>
-                <h2>{isGeneratingMeditation ? 'Creating your reflection...' : 'Loading your meditation...'}</h2>
+                <h2>Loading your meditation...</h2>
                 <p>Please wait a moment.</p>
             </div>
         );
@@ -368,6 +407,12 @@ const ReflectionsPage: React.FC = () => {
                 duration={selectedDuration}
                 noteCount={selectedNoteIds.length}
                 summary={generatedSummary}
+            />
+            
+            <MeditationGeneratingModal
+                isOpen={isGeneratingMeditation}
+                onComplete={handleMeditationReady}
+                isApiComplete={isMeditationApiComplete}
             />
         </div>
     );
