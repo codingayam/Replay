@@ -55,7 +55,6 @@ const ProfilePage: React.FC = () => {
     };
 
     const handleProfilePictureClick = () => {
-        const options = ['Upload Photo', 'Take Photo'];
         const choice = window.confirm('Choose: OK for Upload Photo, Cancel for Take Photo');
         
         if (choice) {
@@ -156,31 +155,6 @@ const ProfilePage: React.FC = () => {
         setIsShowingCamera(false);
     };
 
-    const addTag = async (value: string) => {
-        const trimmedValue = value.trim();
-        if (trimmedValue && !profile.values.includes(trimmedValue)) {
-            const newValues = [...profile.values, trimmedValue];
-            const updatedProfile = {
-                ...profile,
-                values: newValues
-            };
-            
-            setProfile(updatedProfile);
-            
-            // Save to server immediately
-            try {
-                const profileToSave = {
-                    ...updatedProfile,
-                    values: newValues.join(', ')
-                };
-                await axios.post(`${API_URL}/profile`, profileToSave);
-            } catch (error) {
-                console.error('Error saving tag:', error);
-                setStatus('Error saving tag.');
-            }
-        }
-        setTagInput('');
-    };
 
     const removeTag = async (tagToRemove: string) => {
         const newValues = profile.values.filter(tag => tag !== tagToRemove);

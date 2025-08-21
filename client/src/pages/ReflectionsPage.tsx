@@ -32,8 +32,8 @@ const ReflectionsPage: React.FC = () => {
     
     // New reflection flow state
     const [showDateModal, setShowDateModal] = useState(false);
-    const [showDurationModal, setShowDurationModal] = useState(false);
     const [showExperienceModal, setShowExperienceModal] = useState(false);
+    const [showDurationModal, setShowDurationModal] = useState(false);
     const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
@@ -43,6 +43,7 @@ const ReflectionsPage: React.FC = () => {
     const [selectedEndDate, setSelectedEndDate] = useState('');
     const [selectedTimeOfReflection, setSelectedTimeOfReflection] = useState<'Day' | 'Night'>('Day');
     const [selectedDuration, setSelectedDuration] = useState(5);
+    const [recommendedDuration, setRecommendedDuration] = useState(5);
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
     const [generatedPlaylist, setGeneratedPlaylist] = useState<PlaylistItem[] | null>(null);
@@ -120,25 +121,44 @@ const ReflectionsPage: React.FC = () => {
         setSelectedEndDate(endDate);
         setSelectedTimeOfReflection(timeOfReflection);
         setShowDateModal(false);
+        
+        // For Day reflection, skip experience selection and go directly to pre-saved meditation
+        if (timeOfReflection === 'Day') {
+            handlePlayDayReflection();
+        } else {
+            // For Night reflection, continue with normal flow
+            setShowExperienceModal(true);
+        }
+    };
+
+
+    // Calculate recommended duration based on number of experiences
+    const calculateRecommendedDuration = (experienceCount: number): number => {
+        if (experienceCount <= 3) return 5;
+        if (experienceCount <= 6) return 10;
+        if (experienceCount <= 9) return 15;
+        return 20;
+    };
+
+    const handleExperienceSelection = (noteIds: string[]) => {
+        setSelectedNoteIds(noteIds);
+        const calculatedDuration = calculateRecommendedDuration(noteIds.length);
+        setRecommendedDuration(calculatedDuration);
+        setSelectedDuration(calculatedDuration);
+        setShowExperienceModal(false);
         setShowDurationModal(true);
     };
 
-    const handleDurationSelection = (duration: number) => {
+    const handleDurationSelection = async (duration: number) => {
         setSelectedDuration(duration);
         setShowDurationModal(false);
-        setShowExperienceModal(true);
-    };
-
-    const handleExperienceSelection = async (noteIds: string[]) => {
-        setSelectedNoteIds(noteIds);
-        setShowExperienceModal(false);
         setIsGeneratingMeditation(true);
 
         try {
-            // Generate meditation with selected experiences and duration
+            // Generate meditation with selected experiences and chosen duration
             const response = await axios.post(`${API_URL}/meditate`, {
-                noteIds,
-                duration: selectedDuration,
+                noteIds: selectedNoteIds,
+                duration,
                 timeOfReflection: selectedTimeOfReflection
             });
             
@@ -182,6 +202,25 @@ const ReflectionsPage: React.FC = () => {
             setShowSummaryModal(true);
         }
         fetchSavedMeditations(); // Refresh the saved meditations list
+    };
+
+    const handlePlayDayReflection = async () => {
+        setIsLoadingMeditation(true);
+        try {
+            const res = await axios.get(`${API_URL}/meditations/day/default`);
+            setMeditationPlaylist(res.data.playlist);
+            // Store meditation metadata for summary modal
+            setCurrentMeditationMeta({
+                noteIds: res.data.noteIds,
+                duration: res.data.duration,
+                summary: res.data.summary
+            });
+        } catch (err) {
+            console.error("Error loading day reflection:", err);
+            alert('Failed to load day reflection. Please try again.');
+        } finally {
+            setIsLoadingMeditation(false);
+        }
     };
 
     const handleSummaryClose = () => {
@@ -297,19 +336,20 @@ const ReflectionsPage: React.FC = () => {
                 onSelectDates={handleDateSelection}
             />
             
-            <DurationSelectorModal
-                isOpen={showDurationModal}
-                onClose={() => setShowDurationModal(false)}
-                onSelectDuration={handleDurationSelection}
-            />
-            
             <ExperienceSelectionModal
                 isOpen={showExperienceModal}
                 onClose={() => setShowExperienceModal(false)}
                 onSelectExperiences={handleExperienceSelection}
                 startDate={selectedStartDate}
                 endDate={selectedEndDate}
-                duration={selectedDuration}
+                calculateRecommendedDuration={calculateRecommendedDuration}
+            />
+            
+            <DurationSelectorModal
+                isOpen={showDurationModal}
+                onClose={() => setShowDurationModal(false)}
+                onSelectDuration={handleDurationSelection}
+                recommendedDuration={recommendedDuration}
             />
             
             <ReflectionSummaryModal

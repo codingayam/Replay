@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Clock } from 'lucide-react';
 
 interface DurationSelectorModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSelectDuration: (duration: number) => void;
+    recommendedDuration?: number;
 }
 
 const DurationSelectorModal: React.FC<DurationSelectorModalProps> = ({
     isOpen,
     onClose,
     onSelectDuration,
+    recommendedDuration = 5,
 }) => {
-    const [selectedDuration, setSelectedDuration] = useState<number>(5);
+    const [selectedDuration, setSelectedDuration] = useState<number>(recommendedDuration);
+
+    // Update selected duration when recommended duration changes
+    useEffect(() => {
+        setSelectedDuration(recommendedDuration);
+    }, [recommendedDuration]);
 
     const durationOptions = [
         { value: 5, label: '5 minutes', description: 'Quick reflection' },
@@ -56,7 +63,14 @@ const DurationSelectorModal: React.FC<DurationSelectorModalProps> = ({
                                     <Clock size={20} />
                                 </div>
                                 <div style={styles.optionContent}>
-                                    <div style={styles.optionLabel}>{option.label}</div>
+                                    <div style={styles.optionLabelRow}>
+                                        <div style={styles.optionLabel}>{option.label}</div>
+                                        {option.value === recommendedDuration && (
+                                            <div style={styles.recommendedBadge}>
+                                                Recommended
+                                            </div>
+                                        )}
+                                    </div>
                                     <div style={styles.optionDescription}>{option.description}</div>
                                 </div>
                                 <div style={styles.radioIndicator}>
@@ -187,11 +201,25 @@ const styles = {
     optionContent: {
         flex: 1,
     },
+    optionLabelRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        marginBottom: '0.25rem',
+    },
     optionLabel: {
         fontSize: '1rem',
         fontWeight: '600',
         color: 'var(--text-color)',
-        marginBottom: '0.25rem',
+    },
+    recommendedBadge: {
+        padding: '0.125rem 0.5rem',
+        backgroundColor: 'var(--primary-color)',
+        color: 'white',
+        borderRadius: '12px',
+        fontSize: '0.7rem',
+        fontWeight: '600',
+        flexShrink: 0,
     },
     optionDescription: {
         fontSize: '0.85rem',

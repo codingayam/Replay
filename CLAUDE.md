@@ -104,3 +104,8 @@ Notes support both audio and photo types with fields: id, title, transcript (tra
 - **Database**: Supabase client integration, file system (JSON + media files)
 - **AI**: Google Generative AI (Gemini models), OpenAI (TTS)
 - **Storage**: File system (JSON + media files)
+- remember that to initiate the supabase mcp, follow these steps:
+
+Start Claude Code with your environment:
+  # From your project root
+run "source server/.env && claude"

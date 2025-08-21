@@ -1,14 +1,16 @@
 
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
+const Replicate = require('replicate');
 const wav = require('wav');
 
 const app = express();
@@ -22,6 +24,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
 app.use('/audio', express.static(path.join(__dirname, 'data/audio')));
+app.use('/day_audio', express.static(path.join(__dirname, 'data/day_audio')));
 app.use('/images', express.static(path.join(__dirname, 'data/images')));
 
 // --- FILE STORAGE SETUP ---
@@ -72,10 +75,13 @@ const uploadProfileImage = multer({
 });
 
 // --- API CLIENTS ---
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const replicate = process.env.REPLICATE_API_TOKEN ? new Replicate({ auth: process.env.REPLICATE_API_TOKEN }) : null;
 
 // --- HELPERS ---
+
+
 async function saveWaveFile(
     filename,
     pcmData,
@@ -158,7 +164,26 @@ app.post('/api/notes', uploadAudio.single('audio'), async (req, res) => {
         return res.status(400).send('Audio file is required.');
     }
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        // Check if AI service is available
+        if (!genAI) {
+            // Fallback when AI service is not available
+            const newNote = {
+                id: uuidv4(),
+                title: 'Audio Note',
+                transcript: 'Transcription not available (AI service not configured)',
+                category: 'experience',
+                type: 'audio',
+                date: req.body.localTimestamp || new Date().toISOString(),
+                duration: 0,
+                audioUrl: `/audio/${req.file.filename}`,
+            };
+            const notes = await readData(NOTES_FILE) || [];
+            notes.push(newNote);
+            await writeData(NOTES_FILE, notes);
+            return res.status(201).json(newNote);
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
         const audioFilePath = req.file.path;
         // 1. Generate Transcript
         const audioBytes = await fs.readFile(audioFilePath);
@@ -238,7 +263,26 @@ app.post('/api/notes/photo', uploadImage.single('image'), async (req, res) => {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+        // Check if AI service is available
+        if (!genAI) {
+            // Fallback when AI service is not available
+            const newNote = {
+                id: uuidv4(),
+                title: 'Photo Note',
+                transcript: caption,
+                originalCaption: caption,
+                type: 'photo',
+                date: req.body.localTimestamp || new Date().toISOString(),
+                imageUrl: `/images/${req.file.filename}`,
+                category: 'experience'
+            };
+            const notes = await readData(NOTES_FILE) || [];
+            notes.push(newNote);
+            await writeData(NOTES_FILE, notes);
+            return res.status(201).json(newNote);
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
         const imageFilePath = req.file.path;
         
         // Read and encode the image
@@ -385,108 +429,6 @@ app.post('/api/profile/image', uploadProfileImage.single('profileImage'), async 
 });
 
 // -- Reflection --
-// AI-powered experience suggestion endpoint
-app.post('/api/reflect/suggest', async (req, res) => {
-    const { startDate, endDate, duration } = req.body;
-    
-    if (!startDate || !endDate || !duration) {
-        return res.status(400).send('startDate, endDate, and duration are required.');
-    }
-    
-    try {
-        // Get notes in date range
-        const allNotes = await readData(NOTES_FILE) || [];
-        
-        // Filter notes by local date range (notes now contain local timestamps)
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999); // Set to end of day
-        
-        const notesInRange = allNotes.filter(note => {
-            const noteDate = new Date(note.date);
-            return noteDate >= start && noteDate <= end;
-        });
-        
-        if (notesInRange.length === 0) {
-            return res.json({ suggestedNotes: [], availableNotes: [] });
-        }
-        
-        // Calculate optimal number of notes based on duration
-        const baseNotesCount = Math.max(1, Math.floor(duration / 5)); // 1 note per 5 minutes, minimum 1
-        const maxNotes = Math.min(baseNotesCount + 2, notesInRange.length); // Allow slight flexibility
-        const targetNotes = Math.min(maxNotes, notesInRange.length);
-        
-        // Use AI to select the most thoughtful experiences
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const notesForAI = notesInRange.map(note => ({
-            id: note.id,
-            title: note.title,
-            transcript: note.transcript,
-            date: note.date
-        }));
-        
-        const selectionPrompt = `
-You are an AI assistant helping to curate meaningful experiences for a ${duration}-minute guided reflection session.
-
-From the following ${notesInRange.length} experiences, please select the ${targetNotes} most thoughtful, emotionally rich, and reflection-worthy entries. Consider:
-1. Depth of emotion and meaning
-2. Potential for personal growth insights  
-3. Variety in themes and experiences
-4. Quality of content for meditation reflection
-
-Experiences:
-${notesForAI.map((note, idx) => `${idx + 1}. ID: ${note.id}
-Title: ${note.title}
-Date: ${new Date(note.date).toLocaleDateString()}
-Content: ${note.transcript}
----`).join('\n')}
-
-Please respond with only a JSON array of the selected note IDs, like: ["id1", "id2", "id3"]
-Select exactly ${targetNotes} note(s).
-        `;
-        
-        const result = await model.generateContent(selectionPrompt);
-        const responseText = result.response.text().trim();
-        
-        let suggestedNoteIds;
-        try {
-            // Extract JSON from response
-            const jsonMatch = responseText.match(/\[.*\]/);
-            if (jsonMatch) {
-                suggestedNoteIds = JSON.parse(jsonMatch[0]);
-            } else {
-                throw new Error('No JSON array found in response');
-            }
-        } catch (parseError) {
-            console.error('Failed to parse AI response:', responseText);
-            // Fallback: select most recent notes
-            suggestedNoteIds = notesInRange
-                .sort((a, b) => new Date(b.date) - new Date(a.date))
-                .slice(0, targetNotes)
-                .map(note => note.id);
-        }
-        
-        // Filter valid suggestions
-        const validSuggestions = suggestedNoteIds.filter(id => 
-            notesInRange.some(note => note.id === id)
-        );
-        
-        const suggestedNotes = validSuggestions.map(id => 
-            notesInRange.find(note => note.id === id)
-        ).filter(Boolean);
-        
-        res.json({
-            suggestedNotes,
-            availableNotes: notesInRange,
-            recommendedCount: targetNotes,
-            duration
-        });
-        
-    } catch (error) {
-        console.error('Error generating reflection suggestions:', error);
-        res.status(500).send('Failed to generate reflection suggestions.');
-    }
-});
 
 // Generate post-reflection summary
 app.post('/api/reflect/summary', async (req, res) => {
@@ -631,20 +573,23 @@ app.post('/api/meditate', async (req, res) => {
                 console.log("Cleaned Segment for TTS:", cleanedSegment);
 
                 if (cleanedSegment) {
-                    // Generate TTS with OpenAI
-                    const response = await openai.audio.speech.create({
-                        model: "gpt-4o-mini-tts",
-                        voice: "fable", // Calm, soothing voice suitable for meditation
-                        input: cleanedSegment,
-                        response_format: "wav",
-                        speed: 1.0, // Normal pace
-                        instructions: "Speak in a warm, gentle tone that feels safe and inviting. Maintain a slow, steady pace, allowing your words to flow smoothly without rushing. Use natural pauses and short silences to give space for reflection, and let your breath be calm and even so it supports your voice. Enunciate clearly, but keep your articulation soft, never sharp. Keep your volume low but audible, so it feels close and personal without straining the listener."
-                    });
+                    // Generate TTS with Replicate Kokoro
+                    const input = {
+                        text: cleanedSegment,
+                        voice: "af_nicole",
+                        speed: 1.0
+                    };
 
-                    const audioBuffer = Buffer.from(await response.arrayBuffer());
+                    console.log("Generating TTS with Replicate for segment:", cleanedSegment.substring(0, 50) + "...");
                     
-                    // Save as WAV file
-                    await fs.writeFile(audioFilePath, audioBuffer);
+                    const output = await replicate.run(
+                        "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+                        { input }
+                    );
+
+                    // Handle Replicate's FileOutput - write the stream directly to file
+                    console.log("Writing audio stream from Replicate to file:", audioFilePath);
+                    await fs.writeFile(audioFilePath, output);
 
                     playlist.push({ type: 'speech', audioUrl: `/audio/${audioFileName}` });
                 }
@@ -652,7 +597,7 @@ app.post('/api/meditate', async (req, res) => {
         }
 
         // Generate summary for this meditation
-        const summaryModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const summaryModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
         const summaryPrompt = `
 You have just completed a ${duration}-minute guided reflection session based on these personal experiences:
 ---
@@ -716,6 +661,40 @@ app.get('/api/meditations/:id', async (req, res) => {
         return res.status(404).send('Meditation not found.');
     }
     res.status(200).json(meditation);
+});
+
+// Get a pre-saved day reflection meditation
+app.get('/api/meditations/day/default', async (req, res) => {
+    try {
+        const dayAudioPath = path.join(__dirname, 'data', 'day_audio', 'merged_day_meditation.wav');
+        
+        // Check if the merged day meditation file exists
+        if (!fsSync.existsSync(dayAudioPath)) {
+            return res.status(404).json({ error: 'Day reflection audio not found' });
+        }
+        
+        // Return a meditation object that points to the merged audio file
+        const dayMeditation = {
+            id: 'default-day-meditation',
+            title: 'Daily Reflection',
+            createdAt: new Date().toISOString(),
+            timeOfReflection: 'Day',
+            duration: 5, // Approximate duration in minutes
+            summary: 'A guided daily reflection to ground yourself and prepare for the day ahead.',
+            playlist: [
+                {
+                    type: 'speech',
+                    audioUrl: '/day_audio/merged_day_meditation.wav'
+                }
+            ],
+            noteIds: []
+        };
+        
+        res.status(200).json(dayMeditation);
+    } catch (err) {
+        console.error("Error loading default day meditation:", err);
+        res.status(500).json({ error: 'Failed to load day reflection' });
+    }
 });
 
 app.delete('/api/meditations/:id', async (req, res) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, CheckCircle, Circle, Sparkles, Info } from 'lucide-react';
+import { X, CheckCircle, Circle } from 'lucide-react';
 import type { Note } from '../types';
 
 interface ExperienceSelectionModalProps {
@@ -8,14 +8,11 @@ interface ExperienceSelectionModalProps {
     onSelectExperiences: (selectedNoteIds: string[]) => void;
     startDate: string;
     endDate: string;
-    duration: number;
+    calculateRecommendedDuration: (experienceCount: number) => number;
 }
 
-interface SuggestionResponse {
-    suggestedNotes: Note[];
+interface NotesResponse {
     availableNotes: Note[];
-    recommendedCount: number;
-    duration: number;
 }
 
 const API_URL = '/api';
@@ -26,35 +23,25 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     onSelectExperiences,
     startDate,
     endDate,
-    duration,
+    calculateRecommendedDuration,
 }) => {
-    const [suggestions, setSuggestions] = useState<SuggestionResponse | null>(null);
+    const [notesData, setNotesData] = useState<NotesResponse | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
 
-    const fetchSuggestions = useCallback(async () => {
+    const fetchNotes = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         
         try {
-            const response = await fetch(`${API_URL}/reflect/suggest`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    startDate,
-                    endDate,
-                    duration,
-                }),
-            });
+            const response = await fetch(`${API_URL}/notes/date-range?startDate=${startDate}&endDate=${endDate}`);
 
             if (!response.ok) {
-                throw new Error('Failed to fetch suggestions');
+                throw new Error('Failed to fetch notes');
             }
 
-            const data: SuggestionResponse = await response.json();
+            const notes: Note[] = await response.json();
             
             // Filter notes by local date (to handle timezone issues)
             const getLocalDateString = (date: Date): string => {
@@ -64,39 +51,31 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                 return `${year}-${month}-${day}`;
             };
             
-            const filteredAvailableNotes = data.availableNotes.filter(note => {
+            const filteredAvailableNotes = notes.filter(note => {
                 const noteDate = new Date(note.date);
                 const noteDateString = getLocalDateString(noteDate);
                 return noteDateString >= startDate && noteDateString <= endDate;
             });
             
-            const filteredSuggestedNotes = data.suggestedNotes.filter(note => {
-                const noteDate = new Date(note.date);
-                const noteDateString = getLocalDateString(noteDate);
-                return noteDateString >= startDate && noteDateString <= endDate;
+            setNotesData({
+                availableNotes: filteredAvailableNotes
             });
             
-            setSuggestions({
-                ...data,
-                availableNotes: filteredAvailableNotes,
-                suggestedNotes: filteredSuggestedNotes
-            });
-            
-            // Pre-select the AI suggested notes
-            setSelectedNoteIds(new Set(filteredSuggestedNotes.map(note => note.id)));
+            // Clear previous selections
+            setSelectedNoteIds(new Set());
         } catch (err) {
-            console.error('Error fetching suggestions:', err);
+            console.error('Error fetching notes:', err);
             setError('Failed to load experiences. Please try again.');
         } finally {
             setIsLoading(false);
         }
-    }, [startDate, endDate, duration]);
+    }, [startDate, endDate]);
 
     useEffect(() => {
-        if (isOpen && startDate && endDate && duration) {
-            fetchSuggestions();
+        if (isOpen && startDate && endDate) {
+            fetchNotes();
         }
-    }, [isOpen, startDate, endDate, duration, fetchSuggestions]);
+    }, [isOpen, startDate, endDate, fetchNotes]);
 
     const toggleNoteSelection = (noteId: string) => {
         const newSelection = new Set(selectedNoteIds);
@@ -127,9 +106,6 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
         return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
     };
 
-    const isNoteSuggested = (noteId: string) => {
-        return suggestions?.suggestedNotes.some(note => note.id === noteId) || false;
-    };
 
     const getNoteTypeIcon = (note: Note) => {
         return note.type === 'audio' ? '🎙️' : '📸';
@@ -151,16 +127,16 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                     {isLoading ? (
                         <div style={styles.loadingContainer}>
                             <div style={styles.loadingSpinner}>✨</div>
-                            <p style={styles.loadingText}>AI is selecting your most meaningful experiences...</p>
+                            <p style={styles.loadingText}>Loading your experiences...</p>
                         </div>
                     ) : error ? (
                         <div style={styles.errorContainer}>
                             <p style={styles.errorText}>{error}</p>
-                            <button onClick={fetchSuggestions} style={styles.retryButton}>
+                            <button onClick={fetchNotes} style={styles.retryButton}>
                                 Try Again
                             </button>
                         </div>
-                    ) : suggestions ? (
+                    ) : notesData ? (
                         <>
                             <div style={styles.infoSection}>
                                 <div style={styles.sessionInfo}>
@@ -168,24 +144,20 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                         <strong>Period:</strong> {formatDateRange()}
                                     </div>
                                     <div style={styles.sessionDetail}>
-                                        <strong>Duration:</strong> {duration} minutes
-                                    </div>
-                                    <div style={styles.sessionDetail}>
-                                        <strong>Available:</strong> {suggestions.availableNotes.length} experiences
+                                        <strong>Available:</strong> {notesData.availableNotes.length} experiences
                                     </div>
                                 </div>
-
-                                {suggestions.recommendedCount && (
+                                
+                                {selectedNoteIds.size > 0 && (
                                     <div style={styles.recommendationBox}>
-                                        <Info size={16} />
-                                        <span>
-                                            We recommend selecting {suggestions.recommendedCount} experience{suggestions.recommendedCount !== 1 ? 's' : ''} for a {duration}-minute session
+                                        <span style={styles.recommendationText}>
+                                            <strong>Recommended Duration:</strong> {calculateRecommendedDuration(selectedNoteIds.size)} minutes for {selectedNoteIds.size} experience{selectedNoteIds.size !== 1 ? 's' : ''}
                                         </span>
                                     </div>
                                 )}
                             </div>
 
-                            {suggestions.availableNotes.length === 0 ? (
+                            {notesData.availableNotes.length === 0 ? (
                                 <div style={styles.emptyState}>
                                     <div style={styles.emptyIcon}>📅</div>
                                     <h3 style={styles.emptyTitle}>No experiences found</h3>
@@ -202,9 +174,8 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                     </div>
 
                                     <div style={styles.experiencesList}>
-                                        {suggestions.availableNotes.map((note) => {
+                                        {notesData.availableNotes.map((note) => {
                                             const isSelected = selectedNoteIds.has(note.id);
-                                            const isSuggested = isNoteSuggested(note.id);
                                             
                                             return (
                                                 <div
@@ -224,12 +195,6 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                                                 <h4 style={styles.experienceTitle}>
                                                                     {note.title}
                                                                 </h4>
-                                                                {isSuggested && (
-                                                                    <div style={styles.aiTag}>
-                                                                        <Sparkles size={12} />
-                                                                        <span>AI Pick</span>
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                             <div style={styles.experienceDate}>
                                                                 {new Date(note.date).toLocaleDateString()} at {new Date(note.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
@@ -383,15 +348,16 @@ const styles = {
         color: 'var(--text-secondary)',
     },
     recommendationBox: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
         padding: '0.75rem 1rem',
         backgroundColor: 'rgba(var(--primary-color-rgb), 0.05)',
         borderRadius: '8px',
         border: '1px solid rgba(var(--primary-color-rgb), 0.1)',
-        fontSize: '0.85rem',
-        color: 'var(--text-secondary)',
+        marginTop: '1rem',
+    },
+    recommendationText: {
+        fontSize: '0.9rem',
+        color: 'var(--primary-color)',
+        fontWeight: '500',
     },
     experiencesSection: {
         marginBottom: '1rem',
@@ -452,18 +418,6 @@ const styles = {
         fontWeight: '600',
         color: 'var(--text-color)',
         lineHeight: 1.3,
-    },
-    aiTag: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.25rem',
-        padding: '0.125rem 0.5rem',
-        backgroundColor: 'var(--primary-color)',
-        color: 'white',
-        borderRadius: '12px',
-        fontSize: '0.7rem',
-        fontWeight: '600',
-        flexShrink: 0,
     },
     experienceDate: {
         fontSize: '0.75rem',

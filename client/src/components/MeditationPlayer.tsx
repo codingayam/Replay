@@ -54,7 +54,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ playlist, onFinish 
             const audio = audioRef.current;
             if (audio && currentItem.audioUrl) {
                 audio.src = `${currentItem.audioUrl}`;
-                if (!isPaused) {
+                if (!isPaused && audio.paused) {
                     audio.play().then(() => setIsPlaying(true)).catch(e => console.error("Audio play failed:", e));
                 }
             }
