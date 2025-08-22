@@ -7,6 +7,7 @@
     "migrate": "node run-migrations.js",
     "migrate-data": "node migrate-existing-data.js",
     "dev": "nodemon server.js",
+    "build": "cd ../client && npm ci && npm run build",
     "start": "node server.js"
   },
   "keywords": [],
