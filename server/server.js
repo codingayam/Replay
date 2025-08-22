@@ -24,7 +24,8 @@ const port = process.env.PORT || 3001;
 const corsOptions = {
     origin: [
         'http://localhost:5173', // Local development
-        'https://replay-psi.vercel.app' // Production frontend
+        'https://replay-psi.vercel.app', // Vercel default domain (for testing)
+        'https://replay.agrix.ai' // Production custom domain
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
