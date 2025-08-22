@@ -39,7 +39,10 @@ app.use(express.json());
 app.use(clerkMiddleware());
 
 // Serve static files from React build
-app.use(express.static(path.join(__dirname, '../client/dist')));
+const clientDistPath = process.env.NODE_ENV === 'production' 
+  ? path.join(__dirname, 'client/dist')  // Railway copies entire repo, so client is at same level
+  : path.join(__dirname, '../client/dist'); // Local development
+app.use(express.static(clientDistPath));
 
 // File serving endpoints - now using Supabase Storage
 app.get('/audio/:userId/:filename', requireAuth(), async (req, res) => {
@@ -952,7 +955,10 @@ app.get('/api/stats/calendar', requireAuth(), async (req, res) => {
 
 // Catch-all handler: send back React's index.html file for client-side routing
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    const indexPath = process.env.NODE_ENV === 'production' 
+      ? path.join(__dirname, 'client/dist/index.html')  // Railway
+      : path.join(__dirname, '../client/dist/index.html'); // Local
+    res.sendFile(indexPath);
 });
 
 app.listen(port, () => {
