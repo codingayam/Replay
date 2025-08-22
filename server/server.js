@@ -212,6 +212,15 @@ const getFileUrl = async (bucket, filePath) => {
 
 // --- API ROUTES ---
 
+// Debug endpoint
+app.get('/api/debug', (req, res) => {
+    res.json({
+        message: 'Railway backend is working!',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
 // -- Notes --
 app.get('/api/notes', requireAuth(), async (req, res) => {
     try {
