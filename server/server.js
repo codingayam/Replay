@@ -20,7 +20,18 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // --- MIDDLEWARE ---
-app.use(cors());
+// CORS configuration for production
+const corsOptions = {
+    origin: [
+        'http://localhost:5173', // Local development
+        'https://replay-psi.vercel.app' // Production frontend
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Clerk Authentication Middleware
