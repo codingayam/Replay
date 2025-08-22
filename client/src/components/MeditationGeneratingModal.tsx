@@ -53,19 +53,10 @@ const MeditationGeneratingModal: React.FC<MeditationGeneratingModalProps> = ({
 
     // Trigger completion when both conditions are met
     useEffect(() => {
-        console.log('🔍 Completion check:', { 
-            isOpen, 
-            onComplete: !!onComplete, 
-            isCompleted, 
-            animationComplete, 
-            isApiComplete 
-        });
-
         if (!isOpen || !onComplete || isCompleted) return;
 
         // If both animation and API are complete, mark as completed
         if (animationComplete && isApiComplete) {
-            console.log('✅ Both conditions met - setting completed');
             setIsCompleted(true);
         }
     }, [animationComplete, isApiComplete, isCompleted, onComplete, isOpen]);
@@ -74,10 +65,8 @@ const MeditationGeneratingModal: React.FC<MeditationGeneratingModalProps> = ({
     useEffect(() => {
         if (!isOpen || !onComplete || !isCompleted) return;
 
-        console.log('⏰ Starting completion timer');
         // Brief delay to show "Ready!" state, then auto-transition
         const completionTimer = setTimeout(() => {
-            console.log('🚀 Calling onComplete callback');
             onComplete();
         }, 1500);
 

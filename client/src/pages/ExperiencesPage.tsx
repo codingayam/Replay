@@ -1,21 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useRef } from 'react';
 import { PlayCircle, Trash2, Share2, Image as ImageIcon, User } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import type { Note } from '../types';
 import { getCategoryInfo } from '../utils/categoryUtils';
-
-const API_URL = '/api';
+import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
     const [currentAudio, setCurrentAudio] = useState<string | null>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+    
+    const api = useAuthenticatedApi();
 
     const fetchNotes = async () => {
         try {
-            const res = await axios.get(`${API_URL}/notes`);
+            const res = await api.get('/notes');
             // Sort notes by date, most recent first
             const sortedNotes = res.data.sort((a: Note, b: Note) => 
                 new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -35,7 +36,7 @@ const ExperiencesPage: React.FC = () => {
         formData.append('audio', blob, 'recording.wav');
         formData.append('localTimestamp', new Date().toISOString());
         try {
-            await axios.post(`${API_URL}/notes`, formData, {
+            await api.post('/notes', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             fetchNotes();
@@ -53,7 +54,7 @@ const ExperiencesPage: React.FC = () => {
         
         setIsUploadingPhoto(true);
         try {
-            await axios.post(`${API_URL}/notes/photo`, formData, {
+            await api.post('/notes/photo', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             fetchNotes();
@@ -68,7 +69,7 @@ const ExperiencesPage: React.FC = () => {
     const handleDeleteNote = async (id: string) => {
         if (window.confirm('Are you sure you want to delete this note?')) {
             try {
-                await axios.delete(`${API_URL}/notes/${id}`);
+                await api.delete(`/notes/${id}`);
                 fetchNotes();
             } catch (err) {
                 console.error("Error deleting note:", err);
@@ -78,7 +79,15 @@ const ExperiencesPage: React.FC = () => {
 
     const handlePlayNote = (audioUrl: string) => {
         if (audioUrl) {
-            setCurrentAudio(`${audioUrl}`);
+            const fullUrl = getFileUrl(audioUrl);
+            setCurrentAudio(fullUrl);
+            
+            // Update audio source and play
+            if (audioRef.current) {
+                audioRef.current.src = fullUrl;
+                audioRef.current.load();
+                audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+            }
         }
     };
 
@@ -96,14 +105,10 @@ const ExperiencesPage: React.FC = () => {
             {currentAudio && (
                 <div className="card-enhanced" style={styles.playerContainer}>
                     <h3 style={styles.playerTitle}>Now Playing Note</h3>
-                    <audio src={currentAudio} controls autoPlay key={currentAudio} style={styles.audioPlayer} />
+                    <audio ref={audioRef} controls style={styles.audioPlayer} />
                 </div>
             )}
 
-            <div style={styles.header}>
-                <h1 style={styles.title}>Replay</h1>
-                <p style={styles.subtitle}>Your daily reflections</p>
-            </div>
 
             <div style={styles.timeline}>
                 {sortedNotes.map((note, index) => {
@@ -173,7 +178,7 @@ const ExperiencesPage: React.FC = () => {
                                                     <div style={styles.photoPlaceholder}>
                                                         {note.imageUrl && (
                                                             <img 
-                                                                src={note.imageUrl}
+                                                                src={getFileUrl(note.imageUrl)}
                                                                 alt={note.title}
                                                                 style={styles.photo}
                                                             />
@@ -241,24 +246,6 @@ const styles = {
     audioPlayer: {
         width: '100%',
         borderRadius: '8px',
-    },
-    header: {
-        marginBottom: '1.5rem',
-    },
-    title: {
-        margin: 0,
-        fontSize: '1.75rem',
-        fontWeight: '700',
-        color: 'var(--text-color)',
-        fontFamily: 'var(--font-family-heading)',
-        letterSpacing: '-0.025em',
-    },
-    subtitle: {
-        margin: '0.25rem 0 0 0',
-        fontSize: '0.9rem',
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-family)',
-        fontWeight: '400',
     },
     timeline: {
         position: 'relative' as const,

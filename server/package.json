@@ -3,13 +3,18 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "migrate": "node run-migrations.js",
+    "migrate-data": "node migrate-existing-data.js",
+    "dev": "nodemon server.js",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@clerk/express": "^1.7.23",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.55.0",
     "bullmq": "^5.58.0",

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import MeditationPlayer from '../components/MeditationPlayer';
 import ReflectionTypeModal from '../components/ReflectionTypeModal';
 import TimePeriodModal from '../components/TimePeriodModal';
@@ -12,8 +11,7 @@ import StatsCards from '../components/StatsCards';
 import RecentActivityCalendar from '../components/RecentActivityCalendar';
 import CalendarModal from '../components/CalendarModal';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
-
-const API_URL = '/api';
+import { useAuthenticatedApi } from '../utils/api';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -34,6 +32,8 @@ const ReflectionsPage: React.FC = () => {
     const [isLoadingMeditation, setIsLoadingMeditation] = useState(false);
     const [meditationPlaylist, setMeditationPlaylist] = useState<PlaylistItem[] | null>(null);
     const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
+    
+    const api = useAuthenticatedApi();
     
     // Stats state
     const [dayStreak, setDayStreak] = useState(0);
@@ -64,7 +64,7 @@ const ReflectionsPage: React.FC = () => {
 
     const fetchSavedMeditations = async () => {
         try {
-            const res = await axios.get(`${API_URL}/meditations`);
+            const res = await api.get('/meditations');
             setSavedMeditations(res.data);
         } catch (err) {
             console.error("Error fetching meditations:", err);
@@ -74,9 +74,9 @@ const ReflectionsPage: React.FC = () => {
     const fetchStats = async () => {
         try {
             const [streakRes, monthlyRes, calendarRes] = await Promise.all([
-                axios.get(`${API_URL}/stats/streak`),
-                axios.get(`${API_URL}/stats/monthly`),
-                axios.get(`${API_URL}/stats/calendar`)
+                api.get('/stats/streak'),
+                api.get('/stats/monthly'),
+                api.get('/stats/calendar')
             ]);
             
             setDayStreak(streakRes.data.streak);
@@ -95,7 +95,7 @@ const ReflectionsPage: React.FC = () => {
     const handlePlaySavedMeditation = async (meditationId: string) => {
         setIsLoadingMeditation(true);
         try {
-            const res = await axios.get(`${API_URL}/meditations/${meditationId}`);
+            const res = await api.get(`/meditations/${meditationId}`);
             setMeditationPlaylist(res.data.playlist);
         } catch (err) {
             console.error("Error loading meditation:", err);
@@ -108,7 +108,7 @@ const ReflectionsPage: React.FC = () => {
     const handleDeleteSavedMeditation = async (meditationId: string) => {
         if (window.confirm('Are you sure you want to delete this meditation?')) {
             try {
-                await axios.delete(`${API_URL}/meditations/${meditationId}`);
+                await api.delete(`/meditations/${meditationId}`);
                 fetchSavedMeditations();
             } catch (err) {
                 console.error("Error deleting meditation:", err);
@@ -191,7 +191,7 @@ const ReflectionsPage: React.FC = () => {
 
         try {
             // Generate meditation with selected experiences and chosen duration
-            const response = await axios.post(`${API_URL}/meditate`, {
+            const response = await api.post('/meditate', {
                 noteIds: selectedNoteIds,
                 duration: selectedDuration,
                 timeOfReflection: selectedReflectionType
@@ -275,7 +275,7 @@ const ReflectionsPage: React.FC = () => {
     const handlePlayDayReflection = async () => {
         setIsLoadingMeditation(true);
         try {
-            const res = await axios.get(`${API_URL}/meditations/day/default`);
+            const res = await api.get('/meditations/day/default');
             setMeditationPlaylist(res.data.playlist);
         } catch (err) {
             console.error("Error loading day reflection:", err);
@@ -314,10 +314,6 @@ const ReflectionsPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            <div style={styles.header}>
-                <h1 style={styles.title}>Replay</h1>
-                <p style={styles.subtitle}>Your daily reflections</p>
-            </div>
 
             {/* Stats Cards */}
             <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
@@ -470,24 +466,6 @@ const styles = {
         paddingTop: '0.75rem',
         paddingLeft: '1rem',
         paddingRight: '1rem',
-    },
-    header: {
-        marginBottom: '1.5rem',
-    },
-    title: {
-        margin: 0,
-        fontSize: '1.75rem',
-        fontWeight: '700',
-        color: 'var(--text-color)',
-        fontFamily: 'var(--font-family-heading)',
-        letterSpacing: '-0.025em',
-    },
-    subtitle: {
-        margin: '0.25rem 0 0 0',
-        fontSize: '0.9rem',
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-family)',
-        fontWeight: '400',
     },
     generateButton: {
         width: '100%',

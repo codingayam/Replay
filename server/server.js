@@ -12,45 +12,92 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const Replicate = require('replicate');
 const wav = require('wav');
+const { clerkMiddleware, requireAuth } = require('@clerk/express');
+const { db } = require('./database');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-const port = process.env.PORT || 3002;
+const port = process.env.PORT || 3001;
 
 // --- MIDDLEWARE ---
 app.use(cors());
 app.use(express.json());
 
+// Clerk Authentication Middleware
+app.use(clerkMiddleware());
+
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
-app.use('/audio', express.static(path.join(__dirname, 'data/audio')));
-app.use('/day_audio', express.static(path.join(__dirname, 'data/day_audio')));
-app.use('/images', express.static(path.join(__dirname, 'data/images')));
-
-// --- FILE STORAGE SETUP ---
-const NOTES_FILE = path.join(__dirname, 'data/notes.json');
-const PROFILE_FILE = path.join(__dirname, 'data/profile.json');
-const MEDITATIONS_FILE = path.join(__dirname, 'data/meditations.json');
-const audioUploadPath = path.join(__dirname, 'data/audio');
-const imageUploadPath = path.join(__dirname, 'data/images');
-
-// Audio upload storage
-const audioStorage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, audioUploadPath),
-    filename: (req, file, cb) => cb(null, `${uuidv4()}.wav`),
+// File serving endpoints - now using Supabase Storage
+app.get('/audio/:userId/:filename', requireAuth(), async (req, res) => {
+    try {
+        // Verify user can access this audio
+        if (req.auth?.userId !== req.params.userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const { data, error } = await supabase.storage
+            .from('audio')
+            .createSignedUrl(`${req.params.userId}/${req.params.filename}`, 3600); // 1 hour expiry
+            
+        if (error) throw error;
+        
+        res.redirect(data.signedUrl);
+    } catch (error) {
+        console.error('Error serving audio file:', error);
+        res.status(404).json({ error: 'File not found' });
+    }
 });
-const uploadAudio = multer({ storage: audioStorage });
 
-// Image upload storage
-const imageStorage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, imageUploadPath),
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        cb(null, `${uuidv4()}${ext}`);
-    },
+app.get('/images/:userId/:filename', requireAuth(), async (req, res) => {
+    try {
+        // Verify user can access this image
+        if (req.auth?.userId !== req.params.userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const { data, error } = await supabase.storage
+            .from('images')
+            .createSignedUrl(`${req.params.userId}/${req.params.filename}`, 3600); // 1 hour expiry
+            
+        if (error) throw error;
+        
+        res.redirect(data.signedUrl);
+    } catch (error) {
+        console.error('Error serving image file:', error);
+        res.status(404).json({ error: 'File not found' });
+    }
 });
+
+app.get('/meditations/:filename', requireAuth(), async (req, res) => {
+    try {
+        const { data, error } = await supabase.storage
+            .from('meditations')
+            .createSignedUrl(`${req.params.filename}`, 3600); // 1 hour expiry
+            
+        if (error) throw error;
+        
+        res.redirect(data.signedUrl);
+    } catch (error) {
+        console.error('Error serving meditation file:', error);
+        res.status(404).json({ error: 'File not found' });
+    }
+});
+
+// --- STORAGE SETUP ---
+// File storage migrated to Supabase Storage
+// Local file paths no longer needed
+
+// Audio upload storage - using memory storage for Supabase upload
+const uploadAudio = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+});
+
+// Image upload storage - using memory storage for Supabase upload
 const uploadImage = multer({ 
-    storage: imageStorage,
+    storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
@@ -61,9 +108,9 @@ const uploadImage = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Profile picture upload storage (same as images but for profiles)
+// Profile picture upload storage (same as images)
 const uploadProfileImage = multer({ 
-    storage: imageStorage,
+    storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
@@ -78,6 +125,14 @@ const uploadProfileImage = multer({
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const replicate = process.env.REPLICATE_API_TOKEN ? new Replicate({ auth: process.env.REPLICATE_API_TOKEN }) : null;
+
+// Supabase client for storage
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// --- AUTH HELPERS ---
+// Using Clerk's built-in requireAuth middleware
 
 // --- HELPERS ---
 
@@ -122,21 +177,47 @@ const writeData = async (filePath, data) => {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
 };
 
+// --- SUPABASE STORAGE HELPERS ---
+const uploadFileToSupabase = async (bucket, filePath, fileBuffer, contentType) => {
+    const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, fileBuffer, {
+            contentType,
+            duplex: 'half'
+        });
+        
+    if (error) throw error;
+    return data;
+};
+
+const getFileUrl = async (bucket, filePath) => {
+    const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(filePath, 3600); // 1 hour expiry
+        
+    if (error) throw error;
+    return data.signedUrl;
+};
+
 // --- API ROUTES ---
 
 // -- Notes --
-app.get('/api/notes', async (req, res) => {
-    // Provide a default empty array if the file is empty or doesn't exist.
-    const notes = await readData(NOTES_FILE) || [];
-    res.json(notes.sort((a, b) => new Date(b.date) - new Date(a.date)));
+app.get('/api/notes', requireAuth(), async (req, res) => {
+    try {
+        const notes = await db.getNotes(req.auth.userId);
+        res.json(notes);
+    } catch (error) {
+        console.error('Error fetching notes:', error);
+        res.status(500).json({ error: 'Failed to fetch notes' });
+    }
 });
 
 // Get notes within a date range
-app.get('/api/notes/date-range', async (req, res) => {
+app.get('/api/notes/date-range', requireAuth(), async (req, res) => {
     const { startDate, endDate } = req.query;
     
     if (!startDate || !endDate) {
-        return res.status(400).send('Both startDate and endDate are required.');
+        return res.status(400).json({ error: 'Both startDate and endDate are required.' });
     }
     
     try {
@@ -146,28 +227,31 @@ app.get('/api/notes/date-range', async (req, res) => {
         // Set end date to end of day
         end.setHours(23, 59, 59, 999);
         
-        const allNotes = await readData(NOTES_FILE) || [];
-        const filteredNotes = allNotes.filter(note => {
-            const noteDate = new Date(note.date);
-            return noteDate >= start && noteDate <= end;
-        });
-        
-        res.json(filteredNotes.sort((a, b) => new Date(b.date) - new Date(a.date)));
+        const notes = await db.getNotesInDateRange(req.auth.userId, start.toISOString(), end.toISOString());
+        res.json(notes);
     } catch (error) {
         console.error('Error filtering notes by date range:', error);
-        res.status(400).send('Invalid date format. Use ISO format (YYYY-MM-DD).');
+        res.status(400).json({ error: 'Invalid date format. Use ISO format (YYYY-MM-DD).' });
     }
 });
 
-app.post('/api/notes', uploadAudio.single('audio'), async (req, res) => {
+app.post('/api/notes', requireAuth(), uploadAudio.single('audio'), async (req, res) => {
     if (!req.file) {
-        return res.status(400).send('Audio file is required.');
+        return res.status(400).json({ error: 'Audio file is required.' });
     }
+    
     try {
+        const userId = req.auth.userId;
+        const filename = `${uuidv4()}.wav`;
+        const filePath = `${userId}/${filename}`;
+        
+        // Upload file to Supabase Storage
+        await uploadFileToSupabase('audio', filePath, req.file.buffer, 'audio/wav');
+        
         // Check if AI service is available
         if (!genAI) {
             // Fallback when AI service is not available
-            const newNote = {
+            const noteData = {
                 id: uuidv4(),
                 title: 'Audio Note',
                 transcript: 'Transcription not available (AI service not configured)',
@@ -175,19 +259,16 @@ app.post('/api/notes', uploadAudio.single('audio'), async (req, res) => {
                 type: 'audio',
                 date: req.body.localTimestamp || new Date().toISOString(),
                 duration: 0,
-                audioUrl: `/audio/${req.file.filename}`,
+                audioUrl: `/audio/${userId}/${filename}`,
             };
-            const notes = await readData(NOTES_FILE) || [];
-            notes.push(newNote);
-            await writeData(NOTES_FILE, notes);
+            const newNote = await db.createNote(userId, noteData);
             return res.status(201).json(newNote);
         }
 
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
-        const audioFilePath = req.file.path;
-        // 1. Generate Transcript
-        const audioBytes = await fs.readFile(audioFilePath);
-        const audioBase64 = audioBytes.toString('base64');
+        
+        // 1. Generate Transcript using the file buffer
+        const audioBase64 = req.file.buffer.toString('base64');
         const audioPart = {
             inlineData: {
                 data: audioBase64,
@@ -231,7 +312,7 @@ Return as JSON:
         console.log("Generated Title:", parsedResponse.title);
         console.log("Generated Category:", parsedResponse.category);
 
-        const newNote = {
+        const noteData = {
             id: uuidv4(),
             title: parsedResponse.title || 'Untitled Note',
             transcript: parsedResponse.transcript || 'No transcript available.',
@@ -239,55 +320,57 @@ Return as JSON:
             type: 'audio',
             date: req.body.localTimestamp || new Date().toISOString(),
             duration: 0, // Placeholder, can be implemented with an audio library
-            audioUrl: `/audio/${req.file.filename}`,
+            audioUrl: `/audio/${userId}/${filename}`,
         };
-        const notes = await readData(NOTES_FILE) || [];
-        notes.push(newNote);
-        await writeData(NOTES_FILE, notes);
+        
+        const newNote = await db.createNote(userId, noteData);
         res.status(201).json(newNote);
     } catch (error) {
         console.error('Error processing note with AI:', error);
-        res.status(500).send('Failed to process note with AI.');
+        res.status(500).json({ error: 'Failed to process note with AI.' });
     }
-});;
+});
 
 // Photo upload endpoint
-app.post('/api/notes/photo', uploadImage.single('image'), async (req, res) => {
+app.post('/api/notes/photo', requireAuth(), uploadImage.single('image'), async (req, res) => {
     if (!req.file) {
-        return res.status(400).send('Image file is required.');
+        return res.status(400).json({ error: 'Image file is required.' });
     }
     
     const { caption } = req.body;
     if (!caption || !caption.trim()) {
-        return res.status(400).send('Caption is required.');
+        return res.status(400).json({ error: 'Caption is required.' });
     }
 
     try {
+        const userId = req.auth.userId;
+        const filename = `${uuidv4()}${path.extname(req.file.originalname)}`;
+        const filePath = `${userId}/${filename}`;
+        
+        // Upload file to Supabase Storage
+        await uploadFileToSupabase('images', filePath, req.file.buffer, req.file.mimetype);
+        
         // Check if AI service is available
         if (!genAI) {
             // Fallback when AI service is not available
-            const newNote = {
+            const noteData = {
                 id: uuidv4(),
                 title: 'Photo Note',
                 transcript: caption,
                 originalCaption: caption,
                 type: 'photo',
                 date: req.body.localTimestamp || new Date().toISOString(),
-                imageUrl: `/images/${req.file.filename}`,
+                imageUrl: `/images/${userId}/${filename}`,
                 category: 'experience'
             };
-            const notes = await readData(NOTES_FILE) || [];
-            notes.push(newNote);
-            await writeData(NOTES_FILE, notes);
+            const newNote = await db.createNote(userId, noteData);
             return res.status(201).json(newNote);
         }
 
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
-        const imageFilePath = req.file.path;
         
-        // Read and encode the image
-        const imageBytes = await fs.readFile(imageFilePath);
-        const imageBase64 = imageBytes.toString('base64');
+        // Use the file buffer for AI processing
+        const imageBase64 = req.file.buffer.toString('base64');
         const imagePart = {
             inlineData: {
                 data: imageBase64,
@@ -311,112 +394,150 @@ app.post('/api/notes/photo', uploadImage.single('image'), async (req, res) => {
         const title = titleResult.response.text().replace(/"/g, ''); // Remove quotes from title
         console.log("Generated Title:", title);
 
-        const newNote = {
+        const noteData = {
             id: uuidv4(),
             title: title || 'Untitled Photo',
             transcript: enhancedCaption || caption, // Use enhanced caption as transcript
             type: 'photo',
             date: req.body.localTimestamp || new Date().toISOString(),
-            imageUrl: `/images/${req.file.filename}`,
+            imageUrl: `/images/${userId}/${filename}`,
             originalCaption: caption,
         };
 
-        const notes = await readData(NOTES_FILE) || [];
-        notes.push(newNote);
-        await writeData(NOTES_FILE, notes);
+        const newNote = await db.createNote(userId, noteData);
         res.status(201).json(newNote);
     } catch (error) {
         console.error('Error processing photo with AI:', error);
-        res.status(500).send('Failed to process photo with AI.');
+        res.status(500).json({ error: 'Failed to process photo with AI.' });
     }
 });
 
-app.delete('/api/notes/:id', async (req, res) => {
+app.delete('/api/notes/:id', requireAuth(), async (req, res) => {
     const { id } = req.params;
-    let notes = await readData(NOTES_FILE);
-    const noteToDelete = notes.find(n => n.id === id);
-
-    if (!noteToDelete) {
-        return res.status(404).send('Note not found.');
-    }
-
-    // Delete associated files (audio or image)
-    if (noteToDelete.audioUrl) {
-        const audioFilePath = path.join(__dirname, 'data', noteToDelete.audioUrl);
-        try {
-            await fs.unlink(audioFilePath);
-        } catch (err) {
-            console.error(`Failed to delete audio file: ${audioFilePath}`, err);
-            // Continue even if file deletion fails
-        }
-    }
+    const userId = req.auth.userId;
     
-    if (noteToDelete.imageUrl) {
-        const imageFilePath = path.join(__dirname, 'data', noteToDelete.imageUrl);
-        try {
-            await fs.unlink(imageFilePath);
-        } catch (err) {
-            console.error(`Failed to delete image file: ${imageFilePath}`, err);
-            // Continue even if file deletion fails
+    try {
+        // First get the note to find associated files
+        const notes = await db.getNotes(userId);
+        const noteToDelete = notes.find(n => n.id === id);
+
+        if (!noteToDelete) {
+            return res.status(404).json({ error: 'Note not found.' });
         }
+
+        // Delete associated files from Supabase Storage
+        if (noteToDelete.audio_url || noteToDelete.audioUrl) {
+            const audioUrl = noteToDelete.audio_url || noteToDelete.audioUrl;
+            // Extract filename from URL like "/audio/userId/filename.wav"
+            const filename = audioUrl.split('/').pop();
+            const filePath = `${userId}/${filename}`;
+            try {
+                await supabase.storage.from('audio').remove([filePath]);
+            } catch (err) {
+                console.error(`Failed to delete audio file from storage: ${filePath}`, err);
+                // Continue even if file deletion fails
+            }
+        }
+        
+        if (noteToDelete.image_url || noteToDelete.imageUrl) {
+            const imageUrl = noteToDelete.image_url || noteToDelete.imageUrl;
+            // Extract filename from URL like "/images/userId/filename.jpg"
+            const filename = imageUrl.split('/').pop();
+            const filePath = `${userId}/${filename}`;
+            try {
+                await supabase.storage.from('images').remove([filePath]);
+            } catch (err) {
+                console.error(`Failed to delete image file from storage: ${filePath}`, err);
+                // Continue even if file deletion fails
+            }
+        }
+        
+        await db.deleteNote(userId, id);
+        res.status(204).send();
+    } catch (error) {
+        console.error('Error deleting note:', error);
+        res.status(500).json({ error: 'Failed to delete note' });
     }
-    
-    const updatedNotes = notes.filter(n => n.id !== id);
-    await writeData(NOTES_FILE, updatedNotes);
-    res.status(204).send();
 });
 
 // Update note transcript
-app.put('/api/notes/:id/transcript', async (req, res) => {
+app.put('/api/notes/:id/transcript', requireAuth(), async (req, res) => {
     const { id } = req.params;
     const { transcript } = req.body;
+    const userId = req.auth.userId;
     
     if (!transcript || typeof transcript !== 'string') {
         return res.status(400).json({ error: 'Transcript is required and must be a string' });
     }
     
-    let notes = await readData(NOTES_FILE);
-    const noteIndex = notes.findIndex(n => n.id === id);
-    
-    if (noteIndex === -1) {
-        return res.status(404).json({ error: 'Note not found' });
+    try {
+        const updatedNote = await db.updateNote(userId, id, { transcript: transcript.trim() });
+        res.json(updatedNote);
+    } catch (error) {
+        console.error('Error updating transcript:', error);
+        if (error.message.includes('not found')) {
+            res.status(404).json({ error: 'Note not found' });
+        } else {
+            res.status(500).json({ error: 'Failed to update transcript' });
+        }
     }
-    
-    // Update the transcript
-    notes[noteIndex].transcript = transcript.trim();
-    
-    await writeData(NOTES_FILE, notes);
-    res.json(notes[noteIndex]);
 });
 
 
 // -- Profile --
-app.get('/api/profile', async (req, res) => {
-    const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', profileImageUrl: '' };
-    res.json(profile);
+app.get('/api/profile', requireAuth(), async (req, res) => {
+    try {
+        const profile = await db.getProfile(req.auth.userId) || { 
+            name: '', 
+            values: '', 
+            mission: '', 
+            profileImageUrl: '' 
+        };
+        res.json(profile);
+    } catch (error) {
+        console.error('Error fetching profile:', error);
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
 });
 
-app.post('/api/profile', async (req, res) => {
-    await writeData(PROFILE_FILE, req.body);
-    res.status(200).json(req.body);
+app.post('/api/profile', requireAuth(), async (req, res) => {
+    try {
+        const profile = await db.upsertProfile(req.auth.userId, req.body);
+        res.status(200).json(profile);
+    } catch (error) {
+        console.error('Error saving profile:', error);
+        res.status(500).json({ error: 'Failed to save profile' });
+    }
 });
 
 // Profile picture upload endpoint
-app.post('/api/profile/image', uploadProfileImage.single('profileImage'), async (req, res) => {
+app.post('/api/profile/image', requireAuth(), uploadProfileImage.single('profileImage'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No image file uploaded' });
         }
 
+        const userId = req.auth.userId;
+        const filename = `profile_${uuidv4()}${path.extname(req.file.originalname)}`;
+        const filePath = `${userId}/${filename}`;
+        
+        // Upload file to Supabase Storage
+        await uploadFileToSupabase('images', filePath, req.file.buffer, req.file.mimetype);
+        
         // Get current profile
-        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', profileImageUrl: '' };
+        const currentProfile = await db.getProfile(userId) || { 
+            name: '', 
+            values: '', 
+            mission: '', 
+            profileImageUrl: '' 
+        };
         
         // Update profile with new image URL
-        const imageUrl = `/images/${req.file.filename}`;
-        profile.profileImageUrl = imageUrl;
-        
-        // Save updated profile
-        await writeData(PROFILE_FILE, profile);
+        const imageUrl = `/images/${userId}/${filename}`;
+        const updatedProfile = await db.upsertProfile(userId, {
+            ...currentProfile,
+            profileImageUrl: imageUrl
+        });
         
         res.json({ 
             profileImageUrl: imageUrl,
@@ -431,19 +552,20 @@ app.post('/api/profile/image', uploadProfileImage.single('profileImage'), async 
 // -- Reflection --
 
 // Generate post-reflection summary
-app.post('/api/reflect/summary', async (req, res) => {
+app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
     const { noteIds, duration } = req.body;
     
     if (!noteIds || noteIds.length === 0) {
-        return res.status(400).send('Note IDs are required for summary generation.');
+        return res.status(400).json({ error: 'Note IDs are required for summary generation.' });
     }
     
     try {
-        const allNotes = await readData(NOTES_FILE) || [];
+        const userId = req.auth.userId;
+        const allNotes = await db.getNotes(userId);
         const selectedNotes = allNotes.filter(note => noteIds.includes(note.id));
         
         if (selectedNotes.length === 0) {
-            return res.status(404).send('Selected notes not found.');
+            return res.status(404).json({ error: 'Selected notes not found.' });
         }
         
         const transcripts = selectedNotes.map(n => n.transcript).join('\n\n---\n\n');
@@ -475,24 +597,25 @@ The summary should be warm, supportive, and provide closure to the reflection ex
         
     } catch (error) {
         console.error('Error generating reflection summary:', error);
-        res.status(500).send('Failed to generate reflection summary.');
+        res.status(500).json({ error: 'Failed to generate reflection summary.' });
     }
 });
 
 // -- Meditation --
-app.post('/api/meditate', async (req, res) => {
+app.post('/api/meditate', requireAuth(), async (req, res) => {
     const { noteIds, duration = 5, timeOfReflection = 'Day' } = req.body; // Default to 5 minutes and Day if not specified
     if (!noteIds || noteIds.length === 0) {
-        return res.status(400).send('Note IDs are required.');
+        return res.status(400).json({ error: 'Note IDs are required.' });
     }
 
     try {
-        const allNotes = await readData(NOTES_FILE) || [];
-        const profile = await readData(PROFILE_FILE) || { name: '', values: '', mission: '', profileImageUrl: '' };
+        const userId = req.auth.userId;
+        const allNotes = await db.getNotes(userId);
+        const profile = await db.getProfile(userId) || { name: '', values: '', mission: '', profileImageUrl: '' };
 
         const selectedNotes = allNotes.filter(note => noteIds.includes(note.id));
         if (selectedNotes.length === 0) {
-            return res.status(404).send('Selected notes not found.');
+            return res.status(404).json({ error: 'Selected notes not found.' });
         }
         const transcripts = selectedNotes.map(n => n.transcript).join('\n\n---\n\n');
 
@@ -503,7 +626,7 @@ app.post('/api/meditate', async (req, res) => {
         
         if (timeOfReflection === 'Night') {
             masterPrompt = `
-                You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. 
+                You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. Do not generate any asterisks, i.e. * around any words or text.
 
                 Guidelines:
                 - The user is currently in a nighttime reflection session. So the session should be more reflective and introspective and aimed at consolidating or crystallizing the day's experiences.
@@ -566,8 +689,8 @@ app.post('/api/meditate', async (req, res) => {
                 const duration = parseInt(segment.match(/\d+/)[0], 10);
                 playlist.push({ type: 'pause', duration });
             } else {
-                const audioFileName = `${uuidv4()}.wav`;
-                const audioFilePath = path.join(audioUploadPath, audioFileName);
+                const audioFileName = `meditation_${uuidv4()}.wav`;
+                const filePath = `${userId}/${audioFileName}`;
                 
                 const cleanedSegment = segment.replace(/\n/g, ' ').trim();
                 console.log("Cleaned Segment for TTS:", cleanedSegment);
@@ -587,11 +710,11 @@ app.post('/api/meditate', async (req, res) => {
                         { input }
                     );
 
-                    // Handle Replicate's FileOutput - write the stream directly to file
-                    console.log("Writing audio stream from Replicate to file:", audioFilePath);
-                    await fs.writeFile(audioFilePath, output);
+                    // Upload TTS audio to Supabase Storage
+                    console.log("Uploading meditation audio to Supabase Storage:", filePath);
+                    await uploadFileToSupabase('meditations', filePath, output, 'audio/wav');
 
-                    playlist.push({ type: 'speech', audioUrl: `/audio/${audioFileName}` });
+                    playlist.push({ type: 'speech', audioUrl: `/meditations/${audioFileName}` });
                 }
             }
         }
@@ -614,9 +737,8 @@ The summary should be warm, supportive, and provide closure to the reflection ex
         const summary = summaryResult.response.text().trim();
 
         // Save the meditation
-        const meditationId = uuidv4();
-        const meditation = {
-            id: meditationId,
+        const meditationData = {
+            id: uuidv4(),
             title: `${duration}-min Reflection - ${new Date().toLocaleDateString()}`,
             createdAt: new Date().toISOString(),
             playlist,
@@ -627,40 +749,47 @@ The summary should be warm, supportive, and provide closure to the reflection ex
             timeOfReflection
         };
 
-        const meditations = await readData(MEDITATIONS_FILE) || [];
-        meditations.push(meditation);
-        await writeData(MEDITATIONS_FILE, meditations);
+        const savedMeditation = await db.createMeditation(userId, meditationData);
 
-        res.status(200).json({ playlist, meditationId, summary });
+        res.status(200).json({ playlist, meditationId: savedMeditation.id, summary });
 
     } catch (error) {
         console.error("Meditation generation failed:", error);
-        res.status(500).send("Failed to generate meditation.");
+        res.status(500).json({ error: "Failed to generate meditation." });
     }
 });
 
 // -- Saved Meditations --
-app.get('/api/meditations', async (req, res) => {
-    const meditations = await readData(MEDITATIONS_FILE) || [];
-    // Return without the full script to reduce payload size
-    const meditationsList = meditations.map(m => ({
-        id: m.id,
-        title: m.title,
-        createdAt: m.createdAt,
-        noteIds: m.noteIds,
-        summary: m.summary,
-        timeOfReflection: m.timeOfReflection || 'Day' // Default to 'Day' for backward compatibility
-    }));
-    res.status(200).json(meditationsList);
+app.get('/api/meditations', requireAuth(), async (req, res) => {
+    try {
+        const meditations = await db.getMeditations(req.auth.userId);
+        // Return without the full script to reduce payload size
+        const meditationsList = meditations.map(m => ({
+            id: m.id,
+            title: m.title,
+            createdAt: m.created_at || m.createdAt,
+            noteIds: m.note_ids || m.noteIds,
+            summary: m.summary,
+            timeOfReflection: m.time_of_reflection || m.timeOfReflection || 'Day'
+        }));
+        res.status(200).json(meditationsList);
+    } catch (error) {
+        console.error('Error fetching meditations:', error);
+        res.status(500).json({ error: 'Failed to fetch meditations' });
+    }
 });
 
-app.get('/api/meditations/:id', async (req, res) => {
-    const meditations = await readData(MEDITATIONS_FILE) || [];
-    const meditation = meditations.find(m => m.id === req.params.id);
-    if (!meditation) {
-        return res.status(404).send('Meditation not found.');
+app.get('/api/meditations/:id', requireAuth(), async (req, res) => {
+    try {
+        const meditation = await db.getMeditation(req.auth.userId, req.params.id);
+        if (!meditation) {
+            return res.status(404).json({ error: 'Meditation not found.' });
+        }
+        res.status(200).json(meditation);
+    } catch (error) {
+        console.error('Error fetching meditation:', error);
+        res.status(500).json({ error: 'Failed to fetch meditation' });
     }
-    res.status(200).json(meditation);
 });
 
 // Get a pre-saved day reflection meditation
@@ -697,37 +826,41 @@ app.get('/api/meditations/day/default', async (req, res) => {
     }
 });
 
-app.delete('/api/meditations/:id', async (req, res) => {
-    const meditations = await readData(MEDITATIONS_FILE) || [];
-    const index = meditations.findIndex(m => m.id === req.params.id);
-    if (index === -1) {
-        return res.status(404).send('Meditation not found.');
-    }
-    
-    // Delete audio files associated with this meditation
-    const meditation = meditations[index];
-    if (meditation.playlist) {
-        for (const item of meditation.playlist) {
-            if (item.type === 'speech' && item.audioUrl) {
-                const audioFile = path.join(__dirname, 'data', item.audioUrl);
-                try {
-                    await fs.unlink(audioFile);
-                } catch (err) {
-                    console.log(`Could not delete audio file: ${audioFile}`);
+app.delete('/api/meditations/:id', requireAuth(), async (req, res) => {
+    try {
+        const userId = req.auth.userId;
+        const meditation = await db.getMeditation(userId, req.params.id);
+        
+        if (!meditation) {
+            return res.status(404).json({ error: 'Meditation not found.' });
+        }
+        
+        // Delete audio files associated with this meditation
+        if (meditation.playlist) {
+            for (const item of meditation.playlist) {
+                if (item.type === 'speech' && item.audioUrl) {
+                    const audioFile = path.join(__dirname, 'data', item.audioUrl.replace(/^\//, ''));
+                    try {
+                        await fs.unlink(audioFile);
+                    } catch (err) {
+                        console.log(`Could not delete audio file: ${audioFile}`);
+                    }
                 }
             }
         }
+        
+        await db.deleteMeditation(userId, req.params.id);
+        res.status(200).json({ message: 'Meditation deleted successfully.' });
+    } catch (error) {
+        console.error('Error deleting meditation:', error);
+        res.status(500).json({ error: 'Failed to delete meditation' });
     }
-    
-    meditations.splice(index, 1);
-    await writeData(MEDITATIONS_FILE, meditations);
-    res.status(200).json({ message: 'Meditation deleted successfully.' });
 });
 
 // -- Stats Endpoints --
-app.get('/api/stats/streak', async (req, res) => {
+app.get('/api/stats/streak', requireAuth(), async (req, res) => {
     try {
-        const meditations = await readData(MEDITATIONS_FILE) || [];
+        const meditations = await db.getMeditations(req.auth.userId);
         
         // Calculate current streak by checking consecutive days with meditations
         const today = new Date();
@@ -738,7 +871,7 @@ app.get('/api/stats/streak', async (req, res) => {
         while (true) {
             const dateString = checkDate.toISOString().split('T')[0];
             const hasMeditation = meditations.some(m => {
-                const meditationDate = new Date(m.createdAt).toISOString().split('T')[0];
+                const meditationDate = new Date(m.created_at || m.createdAt).toISOString().split('T')[0];
                 return meditationDate === dateString;
             });
             
@@ -757,15 +890,15 @@ app.get('/api/stats/streak', async (req, res) => {
     }
 });
 
-app.get('/api/stats/monthly', async (req, res) => {
+app.get('/api/stats/monthly', requireAuth(), async (req, res) => {
     try {
-        const meditations = await readData(MEDITATIONS_FILE) || [];
+        const meditations = await db.getMeditations(req.auth.userId);
         const currentDate = new Date();
         const currentMonth = currentDate.getMonth();
         const currentYear = currentDate.getFullYear();
         
         const thisMonthCount = meditations.filter(m => {
-            const meditationDate = new Date(m.createdAt);
+            const meditationDate = new Date(m.created_at || m.createdAt);
             return meditationDate.getMonth() === currentMonth && 
                    meditationDate.getFullYear() === currentYear;
         }).length;
@@ -777,13 +910,13 @@ app.get('/api/stats/monthly', async (req, res) => {
     }
 });
 
-app.get('/api/stats/calendar', async (req, res) => {
+app.get('/api/stats/calendar', requireAuth(), async (req, res) => {
     try {
-        const meditations = await readData(MEDITATIONS_FILE) || [];
+        const meditations = await db.getMeditations(req.auth.userId);
         
         // Get all unique dates when meditations were created
         const reflectionDates = meditations.map(m => {
-            return new Date(m.createdAt).toISOString().split('T')[0];
+            return new Date(m.created_at || m.createdAt).toISOString().split('T')[0];
         });
         
         // Remove duplicates

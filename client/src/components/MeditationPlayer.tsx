@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import BottomTabNavigation from './BottomTabNavigation';
+import { getFileUrl } from '../utils/api';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -26,24 +27,11 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     const [status, setStatus] = useState('Starting...');
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
-    const [totalDuration, setTotalDuration] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
     const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pauseStartTimeRef = useRef<number>(0);
 
-    useEffect(() => {
-        const calculateTotalDuration = () => {
-            let total = 0;
-            playlist.forEach(item => {
-                if (item.type === 'pause' && item.duration) {
-                    total += item.duration;
-                }
-            });
-            setTotalDuration(total);
-        };
-        calculateTotalDuration();
-    }, [playlist]);
 
     useEffect(() => {
         if (currentIndex >= playlist.length) {
@@ -53,17 +41,45 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
             return;
         }
 
-        if (isPaused) return;
-
         const currentItem = playlist[currentIndex];
 
         if (currentItem.type === 'speech') {
             setStatus('Speaking...');
             const audio = audioRef.current;
             if (audio && currentItem.audioUrl) {
-                audio.src = `${currentItem.audioUrl}`;
-                if (!isPaused && audio.paused) {
-                    audio.play().then(() => setIsPlaying(true)).catch(e => console.error("Audio play failed:", e));
+                // Only reset and load new source if it's different from current
+                const newUrl = getFileUrl(currentItem.audioUrl);
+                const currentUrl = audio.src;
+                
+                // Compare URLs by normalizing them (remove protocol and domain if present)
+                const normalizeUrl = (url: string) => {
+                    try {
+                        const urlObj = new URL(url, window.location.origin);
+                        return urlObj.pathname + urlObj.search + urlObj.hash;
+                    } catch {
+                        return url;
+                    }
+                };
+                
+                if (normalizeUrl(currentUrl) !== normalizeUrl(newUrl)) {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    audio.src = newUrl;
+                }
+                
+                if (!isPaused) {
+                    // Wait for the audio to be ready before playing
+                    const playAudio = () => {
+                        audio.play()
+                            .then(() => setIsPlaying(true))
+                            .catch(e => console.error("Audio play failed:", e));
+                    };
+                    
+                    if (audio.readyState >= 2) { // HAVE_CURRENT_DATA
+                        playAudio();
+                    } else {
+                        audio.addEventListener('canplay', playAudio, { once: true });
+                    }
                 }
             }
         } else if (currentItem.type === 'pause') {
@@ -79,27 +95,27 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
                 }
             };
         }
-    }, [currentIndex, playlist, onFinish, isPaused]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentIndex, playlist, onFinish]);
 
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
 
         const updateTime = () => setCurrentTime(audio.currentTime);
-        const updateDuration = () => setTotalDuration(audio.duration);
+        const handlePause = () => setIsPlaying(false);
+        const handlePlay = () => setIsPlaying(true);
         
         audio.addEventListener('timeupdate', updateTime);
-        audio.addEventListener('loadedmetadata', updateDuration);
-        audio.addEventListener('pause', () => setIsPlaying(false));
-        audio.addEventListener('play', () => setIsPlaying(true));
+        audio.addEventListener('pause', handlePause);
+        audio.addEventListener('play', handlePlay);
 
         return () => {
             audio.removeEventListener('timeupdate', updateTime);
-            audio.removeEventListener('loadedmetadata', updateDuration);
-            audio.removeEventListener('pause', () => setIsPlaying(false));
-            audio.removeEventListener('play', () => setIsPlaying(true));
+            audio.removeEventListener('pause', handlePause);
+            audio.removeEventListener('play', handlePlay);
         };
-    }, [currentIndex]);
+    }, []);
 
     const handleAudioEnded = () => {
         setCurrentIndex(i => i + 1);
@@ -156,14 +172,14 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     const handlePrevious = () => {
         if (currentIndex > 0) {
             setCurrentIndex(currentIndex - 1);
-            setCurrentTime(0);
+            // Don't manually set currentTime to 0 - let the audio element handle it
         }
     };
 
     const handleNext = () => {
         if (currentIndex < playlist.length - 1) {
             setCurrentIndex(currentIndex + 1);
-            setCurrentTime(0);
+            // Don't manually set currentTime to 0 - let the audio element handle it
         }
     };
 
@@ -174,8 +190,23 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     };
 
     const currentItem = playlist[currentIndex];
-    const audioProgress = currentItem?.type === 'speech' && totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
-    const remainingTime = totalDuration > 0 ? totalDuration - currentTime : 0;
+    const audio = audioRef.current;
+    
+    // For speech items, use the audio's duration and current time
+    // For pause items, use static duration (we don't need real-time progress for pauses)
+    let currentItemDuration = 0;
+    let currentItemProgress = 0;
+    
+    if (currentItem?.type === 'speech' && audio && audio.duration) {
+        currentItemDuration = audio.duration;
+        currentItemProgress = currentTime; // Use state value instead of audio.currentTime
+    } else if (currentItem?.type === 'pause' && currentItem.duration) {
+        currentItemDuration = currentItem.duration;
+        currentItemProgress = 0; // Keep pause progress simple to avoid constant re-renders
+    }
+    
+    const audioProgress = currentItemDuration > 0 ? (currentItemProgress / currentItemDuration) * 100 : 0;
+    const remainingTime = currentItemDuration > 0 ? currentItemDuration - currentItemProgress : 0;
 
     return (
         <div style={styles.container}>
@@ -210,7 +241,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
                                 </div>
                             </div>
                             <div style={styles.timeLabels}>
-                                <div style={styles.timeLabel}>{formatTime(currentTime)}</div>
+                                <div style={styles.timeLabel}>{formatTime(currentTime || 0)}</div>
                                 <div style={styles.timeLabel}>-{formatTime(remainingTime)}</div>
                             </div>
                         </div>

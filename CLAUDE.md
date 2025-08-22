@@ -35,23 +35,30 @@ Located in `server/` directory:
 ### Application Structure
 This is a full-stack reflection and journaling application called "Replay" with:
 - **Frontend**: React 19 + TypeScript + Vite client application with bottom tab navigation
-- **Backend**: Node.js Express server with file-based JSON storage
-- **AI Integration**: Uses Google Gemini for transcription/content generation and OpenAI for text-to-speech
+- **Backend**: Node.js Express server with Supabase PostgreSQL database
+- **Authentication**: Clerk-based JWT authentication with multi-user support
+- **AI Integration**: Uses Google Gemini for transcription/content generation and Replicate API for text-to-speech
 
 ### Core Features
-1. **Audio & Photo Journaling**: Record daily voice notes or upload photos with captions, both transcribed and titled automatically
-2. **Note Categorization**: Automatic categorization of notes into gratitude, experience, reflection, or insight based on content analysis
-3. **Reflection Generation**: Creates personalized guided meditations from selected experiences using AI
-4. **Profile Management**: User values and life mission stored to personalize reflections
-5. **Experience Tracking**: Timeline view of both audio and photo-based experiences with category badges
+1. **Multi-User Authentication**: Secure user registration and login via Clerk with Google OAuth support
+2. **User Onboarding**: 3-step onboarding flow for new users (name, values, mission)
+3. **Audio & Photo Journaling**: Record daily voice notes or upload photos with captions, both transcribed and titled automatically
+4. **Note Categorization**: Automatic categorization of notes into gratitude, experience, reflection, or insight based on content analysis
+5. **Reflection Generation**: Creates personalized guided meditations from selected experiences using AI
+6. **Profile Management**: User-specific profiles with values, mission, and profile picture upload
+7. **Experience Tracking**: Timeline view of both audio and photo-based experiences with category badges
+8. **User Data Isolation**: Complete data separation between users with Row Level Security
 
 ### Key Components
 
 #### Client Architecture (`client/src/`)
-- **App.tsx**: Main router with bottom tab navigation between Experiences, Reflections, and Profile pages
+- **App.tsx**: Main router with Clerk authentication wrapper and protected routes
+- **pages/LoginPage.tsx**: Custom-branded login page with Clerk SignIn component
+- **pages/SignUpPage.tsx**: Registration page with feature preview and Clerk SignUp component  
+- **pages/OnboardingPage.tsx**: 3-step onboarding flow for new users (name, values, mission)
 - **pages/ExperiencesPage.tsx**: Main dashboard showing experiences timeline with both audio and photo notes
 - **pages/ReflectionsPage.tsx**: Reflection generation workflow and saved meditations player
-- **pages/ProfilePage.tsx**: User profile editing (name, values, mission)
+- **pages/ProfilePage.tsx**: User profile editing with profile picture upload functionality
 - **components/AudioRecorder.tsx**: Handles microphone recording with MediaRecorder API
 - **components/MeditationPlayer.tsx**: Plays generated meditation playlists (speech + pause segments)
 - **components/NoteCard.tsx**: Displays individual notes with transcripts (supports both audio and photo)
@@ -65,47 +72,69 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **components/MeditationGenerationModal.tsx**: Progress indicator during meditation creation
 - **components/CategoryBadge.tsx**: Display category badges with color-coded styling
 - **types.ts**: TypeScript interfaces (Note interface supports both audio and photo types)
+- **utils/api.ts**: Authenticated API utility with automatic JWT token handling
 - **utils/dateUtils.ts**: Date formatting and grouping utilities
 - **utils/categoryUtils.ts**: Note categorization logic and category definitions (gratitude, experience, reflection, insight)
 
 #### Server Architecture (`server/`)
-- **server.js**: Single Express server file handling all API routes
-- **File Storage**: JSON files in `data/` directory (notes.json, profile.json, meditations.json)
-- **Media Storage**: Audio files (WAV, MP3) in `data/audio/` and images in `data/images/`
-- **API Routes**:
-  - `GET /api/notes` - Get all notes
-  - `GET /api/notes/date-range` - Get notes within date range for reflection
-  - `POST /api/notes` - Create audio note (with file upload)
-  - `POST /api/notes/photo` - Create photo note (with image upload)
-  - `DELETE /api/notes/:id` - Delete note
-  - `GET/POST /api/profile` - User profile management
-  - `POST /api/reflect/suggest` - Get suggested experiences for reflection
-  - `POST /api/reflect/summary` - Generate reflection summary
-  - `POST /api/meditate` - Generate meditation from selected experiences
-  - `GET/DELETE /api/meditations` - Manage saved meditations
+- **server.js**: Express server with Clerk middleware for authentication and Supabase database integration
+- **Database**: Supabase PostgreSQL with user-specific tables (profiles, notes, meditations)
+- **Media Storage**: User-specific audio files (WAV, MP3) in `data/audio/userId/` and images in `data/images/`
+- **Authentication**: All API routes protected with Clerk `requireAuth()` middleware
+- **API Routes** (all require authentication):
+  - `GET /api/notes` - Get user's notes
+  - `GET /api/notes/date-range` - Get user's notes within date range for reflection
+  - `POST /api/notes` - Create user's audio note (with file upload)
+  - `POST /api/notes/photo` - Create user's photo note (with image upload)
+  - `DELETE /api/notes/:id` - Delete user's note
+  - `GET/POST /api/profile` - User profile management with image upload
+  - `POST /api/reflect/suggest` - Get suggested experiences for user's reflection
+  - `POST /api/reflect/summary` - Generate reflection summary for user
+  - `POST /api/meditate` - Generate meditation from user's selected experiences
+  - `GET/DELETE /api/meditations` - Manage user's saved meditations
 
 ### AI Workflow
 1. **Audio Note Creation**: Audio upload → Gemini transcription → Gemini title generation
 2. **Photo Note Creation**: Image upload + caption → Gemini enhanced description → Gemini title generation
-3. **Reflection Generation**: Selected experiences + profile + date range → Gemini reflection summary → Gemini meditation script → OpenAI TTS → Audio playlist with speech/pause segments
+3. **Reflection Generation**: Selected experiences + profile + date range → Gemini reflection summary → Gemini meditation script → Replicate TTS → Audio playlist with speech/pause segments
 
 ### Environment Variables Required
+
+#### Server Environment (`server/.env`)
 - `GEMINI_API_KEY` - Google Generative AI API key for transcription and content generation
-- `OPENAI_API_KEY` - OpenAI API key for text-to-speech meditation generation
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anonymous key (public)
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (private)
+- `CLERK_PUBLISHABLE_KEY` - Clerk publishable key for authentication
+- `CLERK_SECRET_KEY` - Clerk secret key for server-side authentication
+- `CLERK_WEBHOOK_SECRET` - Clerk webhook secret (optional)
 - `PORT` - Server port (defaults to 3001)
 
+#### Client Environment (`client/.env`)
+- `VITE_CLERK_PUBLISHABLE_KEY` - Clerk publishable key for client-side authentication
+
 ### Data Flow
-Notes support both audio and photo types with fields: id, title, transcript (transcription for audio, enhanced caption for photos), date, type ('audio'|'photo'), audioUrl (audio only), imageUrl (photo only), originalCaption (photo only). Meditations reference noteIds and contain playlists with speech segments (audio files) and pause segments (durations).
+All data is user-specific and isolated by `clerk_user_id`. Notes support both audio and photo types with fields: id, clerk_user_id, title, transcript (transcription for audio, enhanced caption for photos), date, type ('audio'|'photo'), audioUrl (audio only), imageUrl (photo only), originalCaption (photo only). User profiles contain id, clerk_user_id, name, values, mission, and profile_image_url. Meditations are linked to users and reference their noteIds with playlists containing speech segments (audio files) and pause segments (durations).
 
 ### Technology Stack
 - **Frontend**: React 19, TypeScript, Vite, React Router DOM, Lucide React icons, Axios
+- **Authentication**: Clerk (JWT tokens, OAuth providers, user management)
 - **Backend**: Express 4, Multer (file uploads), UUID, CORS, dotenv, WAV processing, Helmet (security), rate limiting
+- **Database**: Supabase PostgreSQL with Row Level Security (RLS)
 - **Infrastructure**: BullMQ (job queues), Redis (caching/queues), Pino (logging)
-- **Database**: Supabase client integration, file system (JSON + media files)
 - **AI**: Google Generative AI (Gemini models), OpenAI (TTS)
-- **Storage**: File system (JSON + media files)
-- remember that to initiate the supabase mcp, follow these steps:
+- **Storage**: User-specific file system organization + Supabase database
+### Database Schema
+The application uses Supabase PostgreSQL with the following tables:
+- **profiles**: User profiles (id, clerk_user_id, name, values, mission, profile_image_url, timestamps)
+- **notes**: User notes (id, clerk_user_id, title, transcript, category, type, date, duration, audio_url, image_url, original_caption, timestamps)  
+- **meditations**: User meditations (id, clerk_user_id, title, playlist, note_ids, script, duration, summary, time_of_reflection, timestamps)
 
-Start Claude Code with your environment:
-  # From your project root
-run "source server/.env && claude"
+All tables have Row Level Security (RLS) enabled for user data isolation.
+
+### Development Setup
+To initialize the Supabase MCP for database operations:
+```bash
+# From your project root
+source server/.env && claude
+```

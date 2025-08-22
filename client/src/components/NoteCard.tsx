@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { PlayCircle, Trash2, Edit2, Save, X, ChevronRight } from 'lucide-react';
 import type { Note } from '../types';
+import { getFileUrl } from '../utils/api';
 
 interface NoteCardProps {
     note: Note;
@@ -78,7 +79,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                     {isPhotoNote && note.imageUrl && (
                         <div style={styles.imageContainer}>
                             <img 
-                                src={`${note.imageUrl}`} 
+                                src={getFileUrl(note.imageUrl)} 
                                 alt={note.title}
                                 style={styles.image}
                             />

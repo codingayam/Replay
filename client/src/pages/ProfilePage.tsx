@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import { Camera } from 'lucide-react';
+import { useAuthenticatedApi } from '../utils/api';
 
 interface Profile {
     name: string;
@@ -9,9 +9,6 @@ interface Profile {
     mission: string;
     profileImageUrl?: string;
 }
-
-const API_URL = '/api';
-
 
 const ProfilePage: React.FC = () => {
     const [profile, setProfile] = useState<Profile>({ name: '', values: [], mission: '', profileImageUrl: '' });
@@ -22,9 +19,11 @@ const ProfilePage: React.FC = () => {
     const [isShowingCamera, setIsShowingCamera] = useState(false);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [tagInput, setTagInput] = useState('');
+    
+    const api = useAuthenticatedApi();
 
     useEffect(() => {
-        axios.get(`${API_URL}/profile`)
+        api.get('/profile')
             .then(res => {
                 if(res.data) {
                     setProfile({
@@ -40,7 +39,7 @@ const ProfilePage: React.FC = () => {
                 }
             })
             .catch(err => console.error("Error fetching profile:", err));
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         return () => {
@@ -72,7 +71,7 @@ const ProfilePage: React.FC = () => {
         formData.append('profileImage', file);
 
         try {
-            const response = await axios.post(`${API_URL}/profile/image`, formData, {
+            const response = await api.post('/profile/image', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -131,7 +130,7 @@ const ProfilePage: React.FC = () => {
             formData.append('profileImage', blob, 'profile-photo.jpg');
 
             try {
-                const response = await axios.post(`${API_URL}/profile/image`, formData, {
+                const response = await api.post('/profile/image', formData, {
                     headers: {
                         'Content-Type': 'multipart/form-data',
                     },
@@ -171,7 +170,7 @@ const ProfilePage: React.FC = () => {
                 ...updatedProfile,
                 values: newValues.join(', ')
             };
-            await axios.post(`${API_URL}/profile`, profileToSave);
+            await api.post('/profile', profileToSave);
         } catch (error) {
             console.error('Error removing tag:', error);
             setStatus('Error removing tag.');
@@ -216,7 +215,7 @@ const ProfilePage: React.FC = () => {
                 ...updatedProfile,
                 values: updatedValues.join(', ')
             };
-            await axios.post(`${API_URL}/profile`, profileToSave);
+            await api.post('/profile', profileToSave);
         } catch (error) {
             console.error('Error saving tags:', error);
             setStatus('Error saving tags.');
@@ -235,17 +234,13 @@ const ProfilePage: React.FC = () => {
             values: profile.values.join(', ')
         };
         
-        axios.post(`${API_URL}/profile`, profileToSave)
+        api.post('/profile', profileToSave)
             .then(() => setStatus('Profile saved successfully!'))
             .catch(() => setStatus('Error saving profile.'));
     };
 
     return (
         <div style={styles.container}>
-            <div style={styles.header}>
-                <h1 style={styles.title}>Replay</h1>
-                <p style={styles.subtitle}>Your daily reflections</p>
-            </div>
             
             <div style={styles.formWrapper}>
                 <p style={styles.description}>
@@ -381,24 +376,6 @@ const styles = {
         paddingTop: '0.75rem',
         paddingLeft: '1rem',
         paddingRight: '1rem',
-    },
-    header: {
-        marginBottom: '1.5rem',
-    },
-    title: {
-        margin: 0,
-        fontSize: '1.75rem',
-        fontWeight: '700',
-        color: 'var(--text-color)',
-        fontFamily: 'var(--font-family-heading)',
-        letterSpacing: '-0.025em',
-    },
-    subtitle: {
-        margin: '0.25rem 0 0 0',
-        fontSize: '0.9rem',
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-family)',
-        fontWeight: '400',
     },
     formWrapper: {
         maxWidth: '600px', 
