@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
+  "buildCommand": "cd client && npm run build",
   "outputDirectory": "client/dist",
-  "installCommand": "npm ci --legacy-peer-deps || (rm -f package-lock.json && npm install --legacy-peer-deps)",
+  "installCommand": "cd client && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps --omit=optional",
   "build": {
     "env": {
       "DISABLE_ESLINT_PLUGIN": "true",
