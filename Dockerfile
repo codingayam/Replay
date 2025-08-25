@@ -4,13 +4,13 @@ FROM node:18-alpine as builder
 # Set working directory
 WORKDIR /app
 
-# Install dependencies for client
-COPY client/package*.json ./client/
-RUN cd client && npm ci --only=production
+# Copy everything first to ensure paths work
+COPY . .
 
-# Build client
-COPY client/ ./client/
-RUN cd client && npm run build
+# Install and build client
+WORKDIR /app/client
+RUN npm ci
+RUN npm run build
 
 # Production stage
 FROM node:18-alpine as production
@@ -23,24 +23,29 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 WORKDIR /app
 
-# Copy server package files
-COPY server/package*.json ./
+# Copy everything to ensure server files are present
+COPY . .
+
+# Install server dependencies
+WORKDIR /app/server
 RUN npm ci --only=production && npm cache clean --force
 
-# Copy server code
-COPY server/ ./
-COPY --from=builder /app/client/dist ./client/dist
+# Copy built client from builder stage
+COPY --from=builder /app/client/dist /app/server/client-dist
 
 # Set ownership
 RUN chown -R nextjs:nodejs /app
 USER nextjs
+
+# Set working directory to server
+WORKDIR /app/server
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 3001) + '/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
 # Expose port
-EXPOSE $PORT
+EXPOSE ${PORT:-3001}
 
 # Start server with dumb-init
 ENTRYPOINT ["dumb-init", "--"]
