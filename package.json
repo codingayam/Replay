@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:client\" \"vercel dev\"",
     "dev:client": "cd client && npm run dev",
-    "build": "npm run build:client",
+    "build": "cd client && npm install && npm run build",
     "build:client": "cd client && npm run build",
     "start": "vercel dev",
     "deploy": "vercel --prod"
