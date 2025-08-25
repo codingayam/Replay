@@ -1,11 +1,53 @@
 // Vercel serverless function for photo notes
-import { verifyAuth, supabase, uploadImage } from '../_middleware.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { v4 as uuidv4 } from 'uuid';
+const { verifyAuth, supabase } = require('../_middleware.js');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { v4: uuidv4 } = require('uuid');
+const busboy = require('busboy');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-export default async function handler(req, res) {
+// Helper function to parse multipart form data for images
+function parseImageForm(req) {
+  return new Promise((resolve, reject) => {
+    const bb = busboy({ headers: req.headers });
+    const fields = {};
+    let imageBuffer = null;
+    let mimetype = null;
+
+    bb.on('file', (name, file, info) => {
+      if (name === 'image') {
+        mimetype = info.mimeType;
+        const chunks = [];
+        file.on('data', (data) => chunks.push(data));
+        file.on('end', () => {
+          imageBuffer = Buffer.concat(chunks);
+        });
+      } else {
+        file.resume();
+      }
+    });
+
+    bb.on('field', (name, val) => {
+      fields[name] = val;
+    });
+
+    bb.on('finish', () => {
+      resolve({
+        imageBuffer,
+        mimetype,
+        ...fields
+      });
+    });
+
+    bb.on('error', (err) => {
+      reject(err);
+    });
+
+    req.pipe(bb);
+  });
+}
+
+module.exports = async function handler(req, res) {
   try {
     // Verify authentication
     const user = await verifyAuth(req);
@@ -14,28 +56,23 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Handle multipart form data with multer
-    await new Promise((resolve, reject) => {
-      uploadImage.single('image')(req, res, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    // Handle multipart form data with busboy
+    const imageData = await parseImageForm(req);
 
-    if (!req.file) {
+    if (!imageData.imageBuffer) {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    const { originalCaption = '' } = req.body;
-    const imageBuffer = req.file.buffer;
-    const fileName = `${uuidv4()}-${Date.now()}.${req.file.mimetype.split('/')[1]}`;
+    const { caption: originalCaption = '' } = imageData;
+    const imageBuffer = imageData.imageBuffer;
+    const fileName = `${uuidv4()}-${Date.now()}.${imageData.mimetype.split('/')[1]}`;
     const filePath = `${user.id}/${fileName}`;
 
     // Upload image to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('images')
       .upload(filePath, imageBuffer, {
-        contentType: req.file.mimetype,
+        contentType: imageData.mimetype,
         cacheControl: '3600',
         upsert: false
       });
@@ -65,14 +102,14 @@ Enhance and expand on their caption while maintaining their intent. Focus on:
 
 Keep the description engaging and personal, as if writing in a journal entry. Limit to 2-3 sentences.`;
 
-    const imageData = {
+    const imageDataForAI = {
       inlineData: {
         data: imageBuffer.toString('base64'),
-        mimeType: req.file.mimetype
+        mimeType: imageData.mimetype
       }
     };
 
-    const enhancedResult = await model.generateContent([enhancedPrompt, imageData]);
+    const enhancedResult = await model.generateContent([enhancedPrompt, imageDataForAI]);
     const enhancedDescription = enhancedResult.response.text();
 
     // Generate title using the enhanced description
@@ -124,7 +161,7 @@ Just return the title, nothing else.`;
 }
 
 // Disable body parser for multipart form data
-export const config = {
+module.exports.config = {
   api: {
     bodyParser: false,
   },

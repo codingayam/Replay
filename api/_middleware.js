@@ -1,6 +1,6 @@
 // Shared middleware for Vercel API functions
-import { createClient } from '@supabase/supabase-js';
-import multer from 'multer';
+const { createClient } = require('@supabase/supabase-js');
+const multer = require('multer');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -8,7 +8,7 @@ const supabase = createClient(
 );
 
 // Auth middleware
-export async function verifyAuth(req) {
+async function verifyAuth(req) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     throw new Error('No authorization token');
@@ -28,19 +28,25 @@ export async function verifyAuth(req) {
 }
 
 // Multer setup for memory storage
-export const uploadAudio = multer({ 
+const uploadAudio = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
 
-export const uploadImage = multer({ 
+const uploadImage = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-export const uploadProfileImage = multer({
+const uploadProfileImage = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-export { supabase };
+module.exports = {
+  verifyAuth,
+  supabase,
+  uploadAudio,
+  uploadImage,
+  uploadProfileImage
+};
