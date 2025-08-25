@@ -1,36 +1,18 @@
 {
   "version": 2,
-  "outputDirectory": "client/dist",
-  "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/((?!api|_next|static|favicon.ico|manifest.json|robots.txt).*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        }
-      ]
-    }
-  ],
   "functions": {
-    "client/dist/**": {
+    "api/**/*.js": {
       "maxDuration": 30
     }
   },
-  "regions": ["iad1"]
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/((?!api/.*).*)",
+      "destination": "/index.html"
+    }
+  ]
 }

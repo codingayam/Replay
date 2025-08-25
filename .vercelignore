@@ -55,12 +55,12 @@ server/data/
 *.mp3
 *.mp4
 
-# Build artifacts that aren't needed
-dist/
-build/
+# Build artifacts that aren't needed (but keep client/dist for output)
+# dist/
+# build/
 
-# Package lock files (vercel handles dependency installation)
-package-lock.json
+# Package lock files - keep client's package-lock.json for reliable builds
+# package-lock.json
 yarn.lock
 
 # Docker files
