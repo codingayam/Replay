@@ -1,0 +1,158 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: replay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+            
+      - name: Install client dependencies
+        working-directory: ./client
+        run: npm ci --prefer-offline --no-audit
+        
+      - name: Install server dependencies
+        working-directory: ./server
+        run: npm ci --prefer-offline --no-audit
+        
+      - name: Lint and type check
+        working-directory: ./client
+        run: |
+          npm run lint
+          npx tsc --noEmit
+          
+      - name: Test client
+        working-directory: ./client
+        run: npm run test:ci
+        env:
+          NODE_ENV: test
+          
+      - name: Test server
+        working-directory: ./server
+        run: npm run test:ci
+        env:
+          NODE_ENV: test
+          POSTGRES_URL: postgres://postgres:postgres@localhost:5432/replay_test
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test-key
+          GEMINI_API_KEY: test-key
+          OPENAI_API_KEY: test-key
+          
+      - name: Build client
+        working-directory: ./client
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_API_URL: https://replay-production-fab1.up.railway.app
+
+  deploy-frontend:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          vercel-args: '--prod'
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./
+
+  deploy-backend:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+        
+      - name: Deploy to Railway
+        run: railway up --service ${{ secrets.RAILWAY_SERVICE_ID }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  verify-deployment:
+    needs: [deploy-frontend, deploy-backend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Health check backend
+        run: |
+          echo "Waiting for backend to be ready..."
+          timeout 300 bash -c 'until curl -f https://replay-production-fab1.up.railway.app/health; do sleep 5; done'
+          
+      - name: Health check frontend
+        run: |
+          echo "Checking frontend deployment..."
+          curl -f https://replay.agrix.ai/
+          
+      - name: API connectivity test
+        run: |
+          echo "Testing API connectivity..."
+          curl -f https://replay.agrix.ai/api/health || echo "API endpoint check failed - this may be expected if auth is required"
+          
+  notify:
+    needs: [deploy-frontend, deploy-backend, verify-deployment]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Notify on success
+        if: needs.verify-deployment.result == 'success'
+        run: |
+          echo "✅ Deployment successful!"
+          echo "🌐 Frontend: https://replay.agrix.ai/"
+          echo "🔧 Backend: https://replay-production-fab1.up.railway.app/health"
+          
+      - name: Notify on failure
+        if: contains(needs.*.result, 'failure')
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs for details."
+          exit 1

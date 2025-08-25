@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, CheckCircle, Circle } from 'lucide-react';
 import type { Note } from '../types';
+import { useAuthenticatedApi } from '../utils/api';
 
 interface ExperienceSelectionModalProps {
     isOpen: boolean;
@@ -15,8 +16,6 @@ interface NotesResponse {
     availableNotes: Note[];
 }
 
-const API_URL = '/api';
-
 const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     isOpen,
     onClose,
@@ -26,22 +25,34 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     calculateRecommendedDuration,
 }) => {
     const [notesData, setNotesData] = useState<NotesResponse | null>(null);
+    const api = useAuthenticatedApi();
+    const apiRef = useRef(api);
     const [isLoading, setIsLoading] = useState(false);
+    const isLoadingRef = useRef(false);
     const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
+    
+    // Update refs when values change, but don't trigger re-renders
+    useEffect(() => {
+        apiRef.current = api;
+    }, [api]);
+    
+    useEffect(() => {
+        isLoadingRef.current = isLoading;
+    }, [isLoading]);
 
     const fetchNotes = useCallback(async () => {
+        if (!startDate || !endDate) return;
+        
+        // Prevent concurrent requests
+        if (isLoadingRef.current) return;
+        
         setIsLoading(true);
         setError(null);
         
         try {
-            const response = await fetch(`${API_URL}/notes/date-range?startDate=${startDate}&endDate=${endDate}`);
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch notes');
-            }
-
-            const notes: Note[] = await response.json();
+            const response = await apiRef.current.get(`/notes/date-range?startDate=${startDate}&endDate=${endDate}`);
+            const notes: Note[] = response.data;
             
             // Filter notes by local date (to handle timezone issues)
             const getLocalDateString = (date: Date): string => {
@@ -74,6 +85,10 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     useEffect(() => {
         if (isOpen && startDate && endDate) {
             fetchNotes();
+        } else if (!isOpen) {
+            // Clear selections when modal closes
+            setSelectedNoteIds(new Set());
+            setError(null);
         }
     }, [isOpen, startDate, endDate, fetchNotes]);
 

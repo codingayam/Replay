@@ -1,15 +1,60 @@
-import React from 'react';
-import { SignUp } from '@clerk/clerk-react';
-import { Navigate } from 'react-router-dom';
-import { useUser } from '@clerk/clerk-react';
+import React, { useState } from 'react';
+import { Navigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const SignUpPage: React.FC = () => {
-  const { isLoaded, isSignedIn } = useUser();
+  const { user, loading, signUp } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   // If user is already signed in, redirect to main app
-  if (isLoaded && isSignedIn) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (user) {
     return <Navigate to="/onboarding" replace />;
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      setIsLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await signUp(email, password);
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccessMessage('Check your email for a verification link!');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center p-4">
@@ -22,24 +67,91 @@ const SignUpPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Clerk Sign Up Component */}
+        {/* Sign Up Form */}
         <div className="bg-white rounded-2xl shadow-xl p-6">
-          <SignUp 
-            redirectUrl="/onboarding"
-            appearance={{
-              elements: {
-                formButtonPrimary: "bg-green-600 hover:bg-green-700 text-white",
-                card: "shadow-none",
-                headerTitle: "text-2xl font-semibold text-gray-900",
-                headerSubtitle: "text-gray-600",
-                socialButtonsBlockButton: "border border-gray-300 hover:bg-gray-50",
-                dividerLine: "bg-gray-200",
-                dividerText: "text-gray-500",
-                formFieldInput: "border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500",
-                footerActionLink: "text-green-600 hover:text-green-700"
-              }
-            }}
-          />
+          <h2 className="text-2xl font-semibold text-gray-900 text-center mb-2">
+            Create Account
+          </h2>
+          <p className="text-gray-600 text-center mb-6">
+            Join Replay to begin your journey
+          </p>
+
+          {/* Success Message */}
+          {successMessage && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-600 text-sm">{successMessage}</p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-600 text-sm">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block text-gray-700 font-medium text-sm mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                placeholder="Enter your email"
+                required
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-gray-700 font-medium text-sm mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                placeholder="Create a password"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-gray-700 font-medium text-sm mb-2">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                placeholder="Confirm your password"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg py-3 font-medium transition-colors"
+            >
+              {isLoading ? 'Creating Account...' : 'Create Account'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <span className="text-gray-500 text-sm">
+              Already have an account?{' '}
+            </span>
+            <Link to="/login" className="text-green-600 hover:text-green-700 font-medium text-sm">
+              Sign in
+            </Link>
+          </div>
         </div>
 
         {/* Features Preview */}

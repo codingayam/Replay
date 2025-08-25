@@ -1,0 +1,78 @@
+# Dockerignore for Replay application
+
+# Node modules
+node_modules/
+client/node_modules/
+server/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (secrets should not be in container)
+.env
+.env.local
+.env.development
+.env.production
+client/.env*
+server/.env*
+
+# Build outputs (client build is copied in Dockerfile)
+client/dist/
+client/build/
+server/dist/
+
+# Development files
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+client/coverage/
+server/coverage/
+tests/
+client/src/**/__tests__/
+server/tests/
+playwright-report/
+test-results/
+.playwright-mcp/
+
+# Documentation
+README*.md
+CLAUDE.md
+*.md
+
+# Deployment
+.vercel/
+railway.toml
+vercel.json
+deploy.sh
+deployment.md
+
+# Logs
+logs/
+*.log
+server/server_output.log
+
+# Local data (should use external storage in production)
+server/data/
+
+# Temporary files
+*.tmp
+tmp/
+temp/

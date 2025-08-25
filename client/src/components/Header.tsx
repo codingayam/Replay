@@ -1,14 +1,27 @@
-import React, { useState } from 'react';
-import { useUser, useClerk } from '@clerk/clerk-react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { LogOut } from 'lucide-react';
 
 const Header: React.FC = () => {
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, signOut } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
-  const handleSignOut = () => {
-    signOut();
+  // For now, we'll use basic user info from Supabase auth
+  // Later we can fetch user profile from our database
+  useEffect(() => {
+    if (user) {
+      setUserProfile({
+        email: user.email,
+        firstName: user.user_metadata?.firstName || user.email?.split('@')[0],
+        fullName: user.user_metadata?.fullName || user.email,
+        avatarUrl: user.user_metadata?.avatarUrl
+      });
+    }
+  }, [user]);
+
+  const handleSignOut = async () => {
+    await signOut();
     setShowUserMenu(false);
   };
 
@@ -18,7 +31,7 @@ const Header: React.FC = () => {
         <div>
           <h1 style={styles.appName}>Replay</h1>
           <p style={styles.subtitle}>
-            {user?.firstName ? `Welcome back, ${user.firstName}` : 'Your daily reflections'}
+            {userProfile?.firstName ? `Welcome back, ${userProfile.firstName}` : 'Your daily reflections'}
           </p>
         </div>
       </div>
@@ -30,15 +43,15 @@ const Header: React.FC = () => {
               onClick={() => setShowUserMenu(!showUserMenu)}
               style={styles.userButton}
             >
-              {user.imageUrl ? (
+              {userProfile?.avatarUrl ? (
                 <img 
-                  src={user.imageUrl} 
+                  src={userProfile.avatarUrl} 
                   alt="Profile" 
                   style={styles.userAvatar}
                 />
               ) : (
                 <div style={styles.userInitials}>
-                  {user.firstName?.[0] || user.emailAddresses[0]?.emailAddress[0] || 'U'}
+                  {userProfile?.firstName?.[0] || userProfile?.email?.[0] || 'U'}
                 </div>
               )}
             </button>
@@ -47,10 +60,10 @@ const Header: React.FC = () => {
               <div style={styles.userMenu}>
                 <div style={styles.userInfo}>
                   <div style={styles.userName}>
-                    {user.fullName || user.emailAddresses[0]?.emailAddress}
+                    {userProfile?.fullName || userProfile?.email}
                   </div>
                   <div style={styles.userEmail}>
-                    {user.emailAddresses[0]?.emailAddress}
+                    {userProfile?.email}
                   </div>
                 </div>
                 <hr style={styles.menuDivider} />

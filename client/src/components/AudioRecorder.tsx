@@ -12,7 +12,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
     const [recordingTime, setRecordingTime] = useState(0);
     const mediaRecorder = useRef<MediaRecorder | null>(null);
     const audioChunks = useRef<Blob[]>([]);
-    const timerRef = useRef<number | null>(null);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         if (isRecording) {

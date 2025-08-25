@@ -1,0 +1,55 @@
+{
+  "name": "replay",
+  "version": "1.0.0",
+  "description": "Full-stack reflection and journaling application",
+  "private": true,
+  "scripts": {
+    "install:all": "npm run install:client && npm run install:server",
+    "install:client": "cd client && npm install",
+    "install:server": "cd server && npm install",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build": "npm run build:client",
+    "build:client": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "test": "npm run test:client && npm run test:server",
+    "test:client": "cd client && npm test",
+    "test:server": "cd server && npm test",
+    "test:ci": "npm run test:client:ci && npm run test:server:ci",
+    "test:client:ci": "cd client && npm run test:ci",
+    "test:server:ci": "cd server && npm run test:ci",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "lint": "npm run lint:client",
+    "lint:client": "cd client && npm run lint"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "devDependencies": {
+    "@playwright/test": "^1.42.1",
+    "concurrently": "^8.2.2",
+    "playwright": "^1.42.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/replay.git"
+  },
+  "keywords": [
+    "journaling",
+    "reflection",
+    "meditation",
+    "mindfulness",
+    "react",
+    "node.js",
+    "supabase"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

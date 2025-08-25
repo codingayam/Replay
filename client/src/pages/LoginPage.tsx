@@ -1,15 +1,43 @@
-import React from 'react';
-import { SignIn } from '@clerk/clerk-react';
-import { Navigate } from 'react-router-dom';
-import { useUser } from '@clerk/clerk-react';
+import React, { useState } from 'react';
+import { Navigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const LoginPage: React.FC = () => {
-  const { isLoaded, isSignedIn } = useUser();
+  const { user, loading, signIn } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   // If user is already signed in, redirect to main app
-  if (isLoaded && isSignedIn) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (user) {
     return <Navigate to="/experiences" replace />;
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const { error } = await signIn(email, password);
+      if (error) {
+        setError(error.message);
+      }
+    } catch (err) {
+      setError('An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -22,36 +50,69 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Sign In Component */}
-          <SignIn 
-            redirectUrl="/experiences"
-            appearance={{
-              elements: {
-                rootBox: "w-full",
-                card: "shadow-none p-0 w-full",
-                headerTitle: "text-2xl font-semibold text-gray-900 text-center mb-2",
-                headerSubtitle: "text-gray-500 text-center text-base mb-8",
-                socialButtonsBlockButton: "w-full border border-gray-200 hover:bg-gray-50 rounded-xl py-3 mb-3 text-gray-700 font-medium",
-                socialButtonsBlockButtonText: "font-medium",
-                dividerLine: "bg-gray-200",
-                dividerText: "text-gray-500 text-sm",
-                formFieldLabel: "text-gray-700 font-medium text-sm mb-2",
-                formFieldInput: "w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900",
-                formButtonPrimary: "w-full bg-gray-800 hover:bg-gray-900 text-white rounded-xl py-3 font-medium text-base mt-4",
-                footerActionLink: "text-gray-600 hover:text-gray-800 font-medium",
-                footerActionText: "text-gray-500",
-                identityPreviewText: "text-gray-700",
-                identityPreviewEditButton: "text-blue-600 hover:text-blue-700"
-              },
-              layout: {
-                socialButtonsPlacement: "top",
-                showOptionalFields: false
-              },
-              variables: {
-                borderRadius: "0.75rem"
-              }
-            }}
-          />
+          {/* Title */}
+          <h2 className="text-2xl font-semibold text-gray-900 text-center mb-2">
+            Welcome back
+          </h2>
+          <p className="text-gray-500 text-center text-base mb-8">
+            Sign in to your Replay account
+          </p>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-red-600 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* Sign In Form */}
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="text-gray-700 font-medium text-sm mb-2 block">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                placeholder="Enter your email"
+                required
+              />
+            </div>
+            
+            <div className="mb-6">
+              <label className="text-gray-700 font-medium text-sm mb-2 block">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                placeholder="Enter your password"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gray-800 hover:bg-gray-900 disabled:opacity-50 text-white rounded-xl py-3 font-medium text-base transition-colors"
+            >
+              {isLoading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+
+          {/* Footer */}
+          <div className="mt-6 text-center">
+            <span className="text-gray-500 text-sm">
+              Don't have an account?{' '}
+            </span>
+            <Link to="/signup" className="text-gray-600 hover:text-gray-800 font-medium text-sm">
+              Sign up
+            </Link>
+          </div>
         </div>
       </div>
     </div>

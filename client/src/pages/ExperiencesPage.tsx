@@ -4,6 +4,8 @@ import FloatingUploadButton from '../components/FloatingUploadButton';
 import type { Note } from '../types';
 import { getCategoryInfo } from '../utils/categoryUtils';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -13,6 +15,7 @@ const ExperiencesPage: React.FC = () => {
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
     
     const api = useAuthenticatedApi();
+    const { user } = useAuth();
 
     const fetchNotes = async () => {
         try {
@@ -77,16 +80,47 @@ const ExperiencesPage: React.FC = () => {
         }
     };
 
-    const handlePlayNote = (audioUrl: string) => {
-        if (audioUrl) {
-            const fullUrl = getFileUrl(audioUrl);
-            setCurrentAudio(fullUrl);
-            
-            // Update audio source and play
-            if (audioRef.current) {
-                audioRef.current.src = fullUrl;
-                audioRef.current.load();
-                audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+    const handlePlayNote = async (audioUrl: string) => {
+        if (audioUrl && user) {
+            try {
+                let signedUrl = '';
+                
+                // Check if this is a Supabase Storage path or server path
+                if (audioUrl.startsWith('/audio/')) {
+                    // Extract the file path from server URL format: /audio/userId/filename
+                    const pathParts = audioUrl.split('/');
+                    if (pathParts.length >= 4) {
+                        const userId = pathParts[2];
+                        const filename = pathParts.slice(3).join('/');
+                        const storagePath = `${userId}/${filename}`;
+                        
+                        // Generate signed URL from Supabase Storage
+                        const { data, error } = await supabase.storage
+                            .from('audio')
+                            .createSignedUrl(storagePath, 3600); // 1 hour expiry
+                            
+                        if (error) {
+                            console.error('Error creating signed URL:', error);
+                            return;
+                        }
+                        
+                        signedUrl = data.signedUrl;
+                    }
+                } else {
+                    // If it's already a full URL, use it directly
+                    signedUrl = audioUrl;
+                }
+                
+                setCurrentAudio(signedUrl);
+                
+                // Update audio source and play
+                if (audioRef.current && signedUrl) {
+                    audioRef.current.src = signedUrl;
+                    audioRef.current.load();
+                    audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+                }
+            } catch (error) {
+                console.error('Error preparing audio for playback:', error);
             }
         }
     };

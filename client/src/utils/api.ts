@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../contexts/AuthContext';
 
 // Get API base URL from environment or use default
 const getApiBaseUrl = () => {
@@ -53,7 +53,8 @@ export const useAuthenticatedApi = () => {
     (error) => {
       if (error.response?.status === 401) {
         console.error('Authentication failed - redirecting to login');
-        // Clerk will handle the redirect automatically
+        // Redirect to login page
+        window.location.href = '/login';
       }
       return Promise.reject(error);
     }

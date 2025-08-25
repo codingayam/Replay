@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import BottomTabNavigation from './BottomTabNavigation';
-import { getFileUrl } from '../utils/api';
+import { useAuthenticatedApi } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -31,72 +32,112 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     const audioRef = useRef<HTMLAudioElement>(null);
     const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pauseStartTimeRef = useRef<number>(0);
+    
+    const { user } = useAuth();
+    const api = useAuthenticatedApi();
+
+    // Helper function to get signed URLs for audio files
+    const getSignedAudioUrl = async (audioUrl: string): Promise<string> => {
+        if (!audioUrl || !user) return '';
+        
+        try {
+            // Check if this is a server path that needs to be converted to Supabase Storage
+            if (audioUrl.startsWith('/meditations/')) {
+                // Call server API to get signed URL
+                const response = await api.post('/meditations/signed-url', {
+                    filePath: audioUrl
+                });
+                
+                if (response.data?.signedUrl) {
+                    return response.data.signedUrl;
+                } else {
+                    console.error('No signed URL returned from server');
+                    return audioUrl; // Fallback to original URL
+                }
+            }
+            
+            // If it's already a full URL, use it directly
+            return audioUrl;
+        } catch (error) {
+            console.error('Error getting signed audio URL:', error);
+            return audioUrl; // Fallback to original URL
+        }
+    };
 
 
     useEffect(() => {
-        if (currentIndex >= playlist.length) {
-            setStatus('Meditation complete.');
-            setIsPlaying(false);
-            onFinish(true);
-            return;
-        }
-
-        const currentItem = playlist[currentIndex];
-
-        if (currentItem.type === 'speech') {
-            setStatus('Speaking...');
-            const audio = audioRef.current;
-            if (audio && currentItem.audioUrl) {
-                // Only reset and load new source if it's different from current
-                const newUrl = getFileUrl(currentItem.audioUrl);
-                const currentUrl = audio.src;
-                
-                // Compare URLs by normalizing them (remove protocol and domain if present)
-                const normalizeUrl = (url: string) => {
-                    try {
-                        const urlObj = new URL(url, window.location.origin);
-                        return urlObj.pathname + urlObj.search + urlObj.hash;
-                    } catch {
-                        return url;
-                    }
-                };
-                
-                if (normalizeUrl(currentUrl) !== normalizeUrl(newUrl)) {
-                    audio.pause();
-                    audio.currentTime = 0;
-                    audio.src = newUrl;
-                }
-                
-                if (!isPaused) {
-                    // Wait for the audio to be ready before playing
-                    const playAudio = () => {
-                        audio.play()
-                            .then(() => setIsPlaying(true))
-                            .catch(e => console.error("Audio play failed:", e));
-                    };
-                    
-                    if (audio.readyState >= 2) { // HAVE_CURRENT_DATA
-                        playAudio();
-                    } else {
-                        audio.addEventListener('canplay', playAudio, { once: true });
-                    }
-                }
+        const handleCurrentItem = async () => {
+            if (currentIndex >= playlist.length) {
+                setStatus('Meditation complete.');
+                setIsPlaying(false);
+                onFinish(true);
+                return;
             }
-        } else if (currentItem.type === 'pause') {
-            setStatus(`Pausing for ${currentItem.duration} seconds...`);
-            pauseStartTimeRef.current = Date.now();
-            const timer = setTimeout(() => {
-                setCurrentIndex(i => i + 1);
-            }, (currentItem.duration || 0) * 1000);
-            pauseTimerRef.current = timer;
-            return () => {
-                if (pauseTimerRef.current) {
-                    clearTimeout(pauseTimerRef.current);
+
+            const currentItem = playlist[currentIndex];
+
+            if (currentItem.type === 'speech') {
+                setStatus('Speaking...');
+                const audio = audioRef.current;
+                if (audio && currentItem.audioUrl) {
+                    try {
+                        // Get signed URL for the audio file
+                        const newUrl = await getSignedAudioUrl(currentItem.audioUrl);
+                        const currentUrl = audio.src;
+                        
+                        // Compare URLs by normalizing them (remove protocol and domain if present)
+                        const normalizeUrl = (url: string) => {
+                            try {
+                                const urlObj = new URL(url, window.location.origin);
+                                return urlObj.pathname + urlObj.search + urlObj.hash;
+                            } catch {
+                                return url;
+                            }
+                        };
+                        
+                        if (normalizeUrl(currentUrl) !== normalizeUrl(newUrl)) {
+                            audio.pause();
+                            audio.currentTime = 0;
+                            audio.src = newUrl;
+                        }
+                        
+                        if (!isPaused) {
+                            // Wait for the audio to be ready before playing
+                            const playAudio = () => {
+                                audio.play()
+                                    .then(() => setIsPlaying(true))
+                                    .catch(e => console.error("Audio play failed:", e));
+                            };
+                            
+                            if (audio.readyState >= 2) { // HAVE_CURRENT_DATA
+                                playAudio();
+                            } else {
+                                audio.addEventListener('canplay', playAudio, { once: true });
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error loading audio:', error);
+                    }
                 }
-            };
-        }
+            } else if (currentItem.type === 'pause') {
+                setStatus(`Pausing for ${currentItem.duration} seconds...`);
+                pauseStartTimeRef.current = Date.now();
+                const timer = setTimeout(() => {
+                    setCurrentIndex(i => i + 1);
+                }, (currentItem.duration || 0) * 1000);
+                pauseTimerRef.current = timer;
+            }
+        };
+        
+        handleCurrentItem();
+        
+        return () => {
+            if (pauseTimerRef.current) {
+                clearTimeout(pauseTimerRef.current);
+            }
+        };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentIndex, playlist, onFinish]);
+    }, [currentIndex, playlist, onFinish, user]);
 
     useEffect(() => {
         const audio = audioRef.current;

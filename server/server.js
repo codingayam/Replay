@@ -12,9 +12,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const Replicate = require('replicate');
 const wav = require('wav');
-const { clerkMiddleware, requireAuth } = require('@clerk/express');
+const { requireAuth, supabase } = require('./middleware/auth');
 const { db } = require('./database');
-const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -23,9 +22,12 @@ const port = process.env.PORT || 3001;
 // CORS configuration for production
 const corsOptions = {
     origin: [
-        'http://localhost:5173', // Local development
+        'http://localhost:5173', // Local development (default Vite port)
+        'http://localhost:5178', // Local development (alternative Vite port)
         'https://replay-psi.vercel.app', // Vercel default domain (for testing)
-        'https://replay.agrix.ai' // Production custom domain
+        'https://replay.agrix.ai', // Production custom domain
+        'https://replay.vercel.app', // Alternative Vercel domain
+        /https:\/\/.*\.vercel\.app$/ // Allow any Vercel app subdomain
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -35,8 +37,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Clerk Authentication Middleware
-app.use(clerkMiddleware());
+// Supabase Authentication Middleware (applied per route)
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../client/dist')));
@@ -82,11 +83,36 @@ app.get('/images/:userId/:filename', requireAuth(), async (req, res) => {
     }
 });
 
-app.get('/meditations/:filename', requireAuth(), async (req, res) => {
+// Profile image serving endpoint - no auth required for images
+app.get('/profiles/:userId/:filename', async (req, res) => {
     try {
         const { data, error } = await supabase.storage
+            .from('profiles')
+            .createSignedUrl(`${req.params.userId}/${req.params.filename}`, 3600); // 1 hour expiry
+            
+        if (error) {
+            console.error('Error creating signed URL for profile image:', error);
+            throw error;
+        }
+        
+        res.redirect(data.signedUrl);
+    } catch (error) {
+        console.error('Error serving profile image file:', error);
+        res.status(404).json({ error: 'File not found' });
+    }
+});
+
+app.get('/meditations/:userId/:filename', requireAuth(), async (req, res) => {
+    try {
+        // Verify user can access this meditation file
+        if (req.auth?.userId !== req.params.userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const fullPath = `${req.params.userId}/${req.params.filename}`;
+        const { data, error } = await supabase.storage
             .from('meditations')
-            .createSignedUrl(`${req.params.filename}`, 3600); // 1 hour expiry
+            .createSignedUrl(fullPath, 3600); // 1 hour expiry
             
         if (error) throw error;
         
@@ -94,6 +120,47 @@ app.get('/meditations/:filename', requireAuth(), async (req, res) => {
     } catch (error) {
         console.error('Error serving meditation file:', error);
         res.status(404).json({ error: 'File not found' });
+    }
+});
+
+// API endpoint to get signed URL for meditation audio files
+app.post('/api/meditations/signed-url', requireAuth(), async (req, res) => {
+    try {
+        const { filePath } = req.body;
+        
+        if (!filePath) {
+            return res.status(400).json({ error: 'File path is required' });
+        }
+        
+        // Extract userId and filename from the path
+        // Expected format: /meditations/userId/filename
+        if (!filePath.startsWith('/meditations/')) {
+            return res.status(400).json({ error: 'Invalid file path format' });
+        }
+        
+        const pathWithoutPrefix = filePath.substring('/meditations/'.length);
+        const [fileUserId, ...filenameParts] = pathWithoutPrefix.split('/');
+        const filename = filenameParts.join('/');
+        
+        // Verify user can access this file
+        if (req.auth?.userId !== fileUserId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const fullPath = `${fileUserId}/${filename}`;
+        const { data, error } = await supabase.storage
+            .from('meditations')
+            .createSignedUrl(fullPath, 3600); // 1 hour expiry
+            
+        if (error) {
+            console.error('Error creating signed URL:', error);
+            return res.status(404).json({ error: 'File not found' });
+        }
+        
+        res.json({ signedUrl: data.signedUrl });
+    } catch (error) {
+        console.error('Error creating signed URL:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -139,12 +206,8 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPE
 const replicate = process.env.REPLICATE_API_TOKEN ? new Replicate({ auth: process.env.REPLICATE_API_TOKEN }) : null;
 
 // Supabase client for storage
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
 // --- AUTH HELPERS ---
-// Using Clerk's built-in requireAuth middleware
+// Using Supabase JWT authentication via middleware
 
 // --- HELPERS ---
 
@@ -191,15 +254,27 @@ const writeData = async (filePath, data) => {
 
 // --- SUPABASE STORAGE HELPERS ---
 const uploadFileToSupabase = async (bucket, filePath, fileBuffer, contentType) => {
-    const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, fileBuffer, {
-            contentType,
-            duplex: 'half'
-        });
+    try {
+        console.log(`Attempting upload to bucket '${bucket}', path '${filePath}', content type '${contentType}'`);
         
-    if (error) throw error;
-    return data;
+        const { data, error } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, fileBuffer, {
+                contentType,
+                duplex: 'half'
+            });
+            
+        if (error) {
+            console.error(`Upload failed for ${filePath}:`, error);
+            throw error;
+        }
+        
+        console.log(`Upload successful for ${filePath}:`, data);
+        return data;
+    } catch (error) {
+        console.error(`Upload error for ${filePath}:`, error);
+        throw error;
+    }
 };
 
 const getFileUrl = async (bucket, filePath) => {
@@ -508,13 +583,18 @@ app.put('/api/notes/:id/transcript', requireAuth(), async (req, res) => {
 // -- Profile --
 app.get('/api/profile', requireAuth(), async (req, res) => {
     try {
-        const profile = await db.getProfile(req.auth.userId) || { 
+        console.log('Fetching profile for user:', req.auth.userId);
+        const profile = await db.getProfile(req.auth.userId);
+        console.log('Raw profile data from DB:', profile);
+        
+        const responseProfile = profile || { 
             name: '', 
             values: '', 
             mission: '', 
             profileImageUrl: '' 
         };
-        res.json(profile);
+        console.log('Returning profile:', responseProfile);
+        res.json(responseProfile);
     } catch (error) {
         console.error('Error fetching profile:', error);
         res.status(500).json({ error: 'Failed to fetch profile' });
@@ -523,7 +603,10 @@ app.get('/api/profile', requireAuth(), async (req, res) => {
 
 app.post('/api/profile', requireAuth(), async (req, res) => {
     try {
+        console.log('Saving profile for user:', req.auth.userId);
+        console.log('Profile data to save:', req.body);
         const profile = await db.upsertProfile(req.auth.userId, req.body);
+        console.log('Profile saved successfully:', profile);
         res.status(200).json(profile);
     } catch (error) {
         console.error('Error saving profile:', error);
@@ -542,8 +625,8 @@ app.post('/api/profile/image', requireAuth(), uploadProfileImage.single('profile
         const filename = `profile_${uuidv4()}${path.extname(req.file.originalname)}`;
         const filePath = `${userId}/${filename}`;
         
-        // Upload file to Supabase Storage
-        await uploadFileToSupabase('images', filePath, req.file.buffer, req.file.mimetype);
+        // Upload file to Supabase Storage in profiles bucket
+        await uploadFileToSupabase('profiles', filePath, req.file.buffer, req.file.mimetype);
         
         // Get current profile
         const currentProfile = await db.getProfile(userId) || { 
@@ -553,15 +636,25 @@ app.post('/api/profile/image', requireAuth(), uploadProfileImage.single('profile
             profileImageUrl: '' 
         };
         
-        // Update profile with new image URL
-        const imageUrl = `/images/${userId}/${filename}`;
+        // Generate a signed URL for immediate use
+        const { data, error } = await supabase.storage
+            .from('profiles')
+            .createSignedUrl(filePath, 3600 * 24 * 7); // 1 week expiry
+            
+        if (error) {
+            console.error('Error creating signed URL for profile image:', error);
+            throw error;
+        }
+        
+        // Store the storage path (not the signed URL) in the database
+        const storageImageUrl = `/profiles/${userId}/${filename}`;
         const updatedProfile = await db.upsertProfile(userId, {
             ...currentProfile,
-            profileImageUrl: imageUrl
+            profileImageUrl: storageImageUrl
         });
         
         res.json({ 
-            profileImageUrl: imageUrl,
+            profileImageUrl: storageImageUrl,
             message: 'Profile picture uploaded successfully' 
         });
     } catch (error) {
@@ -705,6 +798,8 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
         console.log("Segments for TTS:", segments);
 
         const playlist = [];
+        const uploadPromises = [];
+        
         for (const segment of segments) {
             if (segment.startsWith('[PAUSE=')) {
                 const duration = parseInt(segment.match(/\d+/)[0], 10);
@@ -731,14 +826,27 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
                         { input }
                     );
 
-                    // Upload TTS audio to Supabase Storage
+                    // Upload TTS audio to Supabase Storage - add to promises array
                     console.log("Uploading meditation audio to Supabase Storage:", filePath);
-                    await uploadFileToSupabase('meditations', filePath, output, 'audio/wav');
-
-                    playlist.push({ type: 'speech', audioUrl: `/meditations/${audioFileName}` });
+                    const uploadPromise = uploadFileToSupabase('meditations', filePath, output, 'audio/wav')
+                        .then(() => {
+                            console.log("Successfully uploaded meditation audio:", filePath);
+                        })
+                        .catch(uploadError => {
+                            console.error("Failed to upload meditation audio:", uploadError);
+                            throw uploadError; // Re-throw to fail the entire operation
+                        });
+                    
+                    uploadPromises.push(uploadPromise);
+                    playlist.push({ type: 'speech', audioUrl: `/meditations/${filePath}` });
                 }
             }
         }
+        
+        // Wait for all audio uploads to complete before proceeding
+        console.log(`Waiting for ${uploadPromises.length} audio file uploads to complete...`);
+        await Promise.all(uploadPromises);
+        console.log("All meditation audio files uploaded successfully!");
 
         // Generate summary for this meditation
         const summaryModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
@@ -948,6 +1056,16 @@ app.get('/api/stats/calendar', requireAuth(), async (req, res) => {
         console.error('Error getting calendar data:', error);
         res.status(500).json({ error: 'Failed to get calendar data' });
     }
+});
+
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development'
+    });
 });
 
 // Catch-all handler: send back React's index.html file for client-side routing

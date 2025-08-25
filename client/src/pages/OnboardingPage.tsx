@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuth } from '../contexts/AuthContext';
 import { Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const OnboardingPage: React.FC = () => {
-  const { isLoaded, isSignedIn, user } = useUser();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    name: user?.fullName || '',
+    name: user?.user_metadata?.fullName || user?.email?.split('@')[0] || '',
     values: '',
     mission: ''
   });
   const [loading, setLoading] = useState(false);
 
   // Redirect if not authenticated
-  if (isLoaded && !isSignedIn) {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
@@ -135,10 +143,6 @@ const OnboardingPage: React.FC = () => {
         return null;
     }
   };
-
-  if (!isLoaded) {
-    return <div>Loading...</div>;
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-100 flex items-center justify-center p-4">

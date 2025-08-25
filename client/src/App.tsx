@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { AuthProvider, SignedIn, SignedOut } from './contexts/AuthContext';
 import ExperiencesPage from './pages/ExperiencesPage';
 import ReflectionsPage from './pages/ReflectionsPage';
 import ProfilePage from './pages/ProfilePage';
@@ -9,15 +9,9 @@ import OnboardingPage from './pages/OnboardingPage';
 import Header from './components/Header';
 import BottomTabNavigation from './components/BottomTabNavigation';
 
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!CLERK_PUBLISHABLE_KEY) {
-  throw new Error("Missing Clerk Publishable Key");
-}
-
 function App() {
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <AuthProvider>
       <Router>
         <Routes>
           {/* Public Routes - Authentication */}
@@ -109,7 +103,7 @@ function App() {
           />
         </Routes>
       </Router>
-    </ClerkProvider>
+    </AuthProvider>
   );
 }
 

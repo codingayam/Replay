@@ -1,0 +1,61 @@
+{
+  "version": 2,
+  "name": "replay-client",
+  "outputDirectory": "client/dist",
+  "framework": "vite",
+  "installCommand": "npm ci --prefer-offline --no-audit --prefix client",
+  "devCommand": "cd client && npm run dev",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://replay-production-fab1.up.railway.app/api/$1"
+    },
+    {
+      "source": "/audio/(.*)",
+      "destination": "https://replay-production-fab1.up.railway.app/audio/$1"
+    },
+    {
+      "source": "/day_audio/(.*)",
+      "destination": "https://replay-production-fab1.up.railway.app/day_audio/$1"
+    },
+    {
+      "source": "/images/(.*)",
+      "destination": "https://replay-production-fab1.up.railway.app/images/$1"
+    },
+    {
+      "source": "/((?!api|audio|day_audio|images|_next|static|favicon.ico|manifest.json|robots.txt).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "VITE_SUPABASE_URL": "@vite_supabase_url",
+    "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key",
+    "VITE_API_URL": "https://replay-production-fab1.up.railway.app"
+  },
+  "functions": {
+    "client/dist/**": {
+      "maxDuration": 30
+    }
+  },
+  "regions": ["iad1"],
+  "buildCommand": "cd client && npm ci --prefer-offline --no-audit --ignore-scripts && npm run build"
+}

@@ -36,11 +36,12 @@ Located in `server/` directory:
 This is a full-stack reflection and journaling application called "Replay" with:
 - **Frontend**: React 19 + TypeScript + Vite client application with bottom tab navigation
 - **Backend**: Node.js Express server with Supabase PostgreSQL database
-- **Authentication**: Clerk-based JWT authentication with multi-user support
-- **AI Integration**: Uses Google Gemini for transcription/content generation and Replicate API for text-to-speech
+- **Authentication**: Supabase Auth with JWT authentication and multi-user support
+- **File Storage**: Supabase Storage for audio files, images, and profile pictures
+- **AI Integration**: Uses Google Gemini for transcription/content generation and OpenAI for text-to-speech
 
 ### Core Features
-1. **Multi-User Authentication**: Secure user registration and login via Clerk with Google OAuth support
+1. **Multi-User Authentication**: Secure user registration and login via Supabase Auth with email/password authentication
 2. **User Onboarding**: 3-step onboarding flow for new users (name, values, mission)
 3. **Audio & Photo Journaling**: Record daily voice notes or upload photos with captions, both transcribed and titled automatically
 4. **Note Categorization**: Automatic categorization of notes into gratitude, experience, reflection, or insight based on content analysis
@@ -52,9 +53,11 @@ This is a full-stack reflection and journaling application called "Replay" with:
 ### Key Components
 
 #### Client Architecture (`client/src/`)
-- **App.tsx**: Main router with Clerk authentication wrapper and protected routes
-- **pages/LoginPage.tsx**: Custom-branded login page with Clerk SignIn component
-- **pages/SignUpPage.tsx**: Registration page with feature preview and Clerk SignUp component  
+- **App.tsx**: Main router with Supabase AuthProvider wrapper and protected routes
+- **contexts/AuthContext.tsx**: Supabase authentication context and hooks
+- **lib/supabase.ts**: Supabase client configuration
+- **pages/LoginPage.tsx**: Custom-branded login page with Supabase Auth integration
+- **pages/SignUpPage.tsx**: Registration page with feature preview and Supabase Auth integration  
 - **pages/OnboardingPage.tsx**: 3-step onboarding flow for new users (name, values, mission)
 - **pages/ExperiencesPage.tsx**: Main dashboard showing experiences timeline with both audio and photo notes
 - **pages/ReflectionsPage.tsx**: Reflection generation workflow and saved meditations player
@@ -77,10 +80,11 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **utils/categoryUtils.ts**: Note categorization logic and category definitions (gratitude, experience, reflection, insight)
 
 #### Server Architecture (`server/`)
-- **server.js**: Express server with Clerk middleware for authentication and Supabase database integration
+- **server.js**: Express server with Supabase JWT authentication and database integration
+- **middleware/auth.js**: Custom Supabase JWT verification middleware
 - **Database**: Supabase PostgreSQL with user-specific tables (profiles, notes, meditations)
-- **Media Storage**: User-specific audio files (WAV, MP3) in `data/audio/userId/` and images in `data/images/`
-- **Authentication**: All API routes protected with Clerk `requireAuth()` middleware
+- **Media Storage**: Supabase Storage with user-specific buckets for audio files, images, and profile pictures
+- **Authentication**: All API routes protected with custom Supabase `requireAuth()` middleware
 - **API Routes** (all require authentication):
   - `GET /api/notes` - Get user's notes
   - `GET /api/notes/date-range` - Get user's notes within date range for reflection
@@ -102,35 +106,36 @@ This is a full-stack reflection and journaling application called "Replay" with:
 
 #### Server Environment (`server/.env`)
 - `GEMINI_API_KEY` - Google Generative AI API key for transcription and content generation
+- `OPENAI_API_KEY` - OpenAI API key for text-to-speech generation
+- `REPLICATE_API_TOKEN` - Replicate API token for alternative TTS
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_ANON_KEY` - Supabase anonymous key (public)
-- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (private)
-- `CLERK_PUBLISHABLE_KEY` - Clerk publishable key for authentication
-- `CLERK_SECRET_KEY` - Clerk secret key for server-side authentication
-- `CLERK_WEBHOOK_SECRET` - Clerk webhook secret (optional)
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (private, for server operations)
 - `PORT` - Server port (defaults to 3001)
 
 #### Client Environment (`client/.env`)
-- `VITE_CLERK_PUBLISHABLE_KEY` - Clerk publishable key for client-side authentication
+- `VITE_SUPABASE_URL` - Supabase project URL for client-side operations
+- `VITE_SUPABASE_ANON_KEY` - Supabase anonymous key for client-side authentication
+- `VITE_API_URL` - API base URL (http://localhost:3001 for local development)
 
 ### Data Flow
-All data is user-specific and isolated by `clerk_user_id`. Notes support both audio and photo types with fields: id, clerk_user_id, title, transcript (transcription for audio, enhanced caption for photos), date, type ('audio'|'photo'), audioUrl (audio only), imageUrl (photo only), originalCaption (photo only). User profiles contain id, clerk_user_id, name, values, mission, and profile_image_url. Meditations are linked to users and reference their noteIds with playlists containing speech segments (audio files) and pause segments (durations).
+All data is user-specific and isolated by `user_id` (Supabase Auth UUID). Notes support both audio and photo types with fields: id, user_id, title, transcript (transcription for audio, enhanced caption for photos), date, type ('audio'|'photo'), audioUrl (Supabase Storage URLs), imageUrl (Supabase Storage URLs), originalCaption (photo only). User profiles contain id, user_id, name, values, mission, and profile_image_url. Meditations are linked to users and reference their noteIds with playlists containing speech segments (Supabase Storage audio URLs) and pause segments (durations).
 
 ### Technology Stack
 - **Frontend**: React 19, TypeScript, Vite, React Router DOM, Lucide React icons, Axios
-- **Authentication**: Clerk (JWT tokens, OAuth providers, user management)
+- **Authentication**: Supabase Auth (JWT tokens, email/password authentication, user management)
 - **Backend**: Express 4, Multer (file uploads), UUID, CORS, dotenv, WAV processing, Helmet (security), rate limiting
 - **Database**: Supabase PostgreSQL with Row Level Security (RLS)
+- **Storage**: Supabase Storage (audio files, images, profile pictures) with signed URLs
 - **Infrastructure**: BullMQ (job queues), Redis (caching/queues), Pino (logging)
-- **AI**: Google Generative AI (Gemini models), OpenAI (TTS)
-- **Storage**: User-specific file system organization + Supabase database
+- **AI**: Google Generative AI (Gemini models), OpenAI (TTS), Replicate (alternative TTS)
 ### Database Schema
 The application uses Supabase PostgreSQL with the following tables:
-- **profiles**: User profiles (id, clerk_user_id, name, values, mission, profile_image_url, timestamps)
-- **notes**: User notes (id, clerk_user_id, title, transcript, category, type, date, duration, audio_url, image_url, original_caption, timestamps)  
-- **meditations**: User meditations (id, clerk_user_id, title, playlist, note_ids, script, duration, summary, time_of_reflection, timestamps)
+- **profiles**: User profiles (id, user_id, name, values, mission, profile_image_url, timestamps)
+- **notes**: User notes (id, user_id, title, transcript, category, type, date, duration, audio_url, image_url, original_caption, timestamps)  
+- **meditations**: User meditations (id, user_id, title, playlist, note_ids, script, duration, summary, time_of_reflection, timestamps)
 
-All tables have Row Level Security (RLS) enabled for user data isolation.
+All tables have Row Level Security (RLS) enabled for user data isolation using `auth.uid()`.
 
 ### Development Setup
 To initialize the Supabase MCP for database operations:
@@ -138,3 +143,17 @@ To initialize the Supabase MCP for database operations:
 # From your project root
 source server/.env && claude
 ```
+
+### Migration from Clerk to Supabase Auth
+The application has been migrated from Clerk authentication to Supabase Auth. Key migration tasks completed:
+- ✅ Replaced Clerk React components with custom Supabase Auth forms
+- ✅ Updated authentication context to use Supabase Auth hooks
+- ✅ Migrated server middleware from Clerk to custom Supabase JWT verification
+- ✅ Updated database schema to use `user_id` instead of `clerk_user_id`
+- ✅ Migrated file storage from local file system to Supabase Storage
+- ✅ Updated RLS policies to use `auth.uid()`
+
+Remaining manual tasks:
+- [ ] Update database schema via Supabase dashboard (add `user_id` columns, update RLS policies)
+- [ ] Create Supabase Storage buckets (`audio`, `images`, `profiles`)
+- [ ] Migrate existing local files to Supabase Storage using provided migration script

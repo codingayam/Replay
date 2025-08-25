@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera } from 'lucide-react';
-import { useAuthenticatedApi } from '../utils/api';
+import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 
 interface Profile {
     name: string;
@@ -23,10 +23,13 @@ const ProfilePage: React.FC = () => {
     const api = useAuthenticatedApi();
 
     useEffect(() => {
+        console.log('ProfilePage: Fetching profile...');
         api.get('/profile')
             .then(res => {
+                console.log('ProfilePage: API response:', res);
+                console.log('ProfilePage: Profile data:', res.data);
                 if(res.data) {
-                    setProfile({
+                    const mappedProfile = {
                         name: res.data.name || '',
                         values: Array.isArray(res.data.values) 
                             ? res.data.values 
@@ -35,11 +38,22 @@ const ProfilePage: React.FC = () => {
                                 : [],
                         mission: res.data.mission || '',
                         profileImageUrl: res.data.profileImageUrl || ''
-                    });
+                    };
+                    console.log('ProfilePage: Setting profile state:', mappedProfile);
+                    setProfile(mappedProfile);
+                    console.log('ProfilePage: Profile state after setting:', profile);
                 }
             })
-            .catch(err => console.error("Error fetching profile:", err));
+            .catch(err => {
+                console.error("Error fetching profile:", err);
+                console.error("Error details:", err.response?.data);
+            });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Track profile state changes
+    useEffect(() => {
+        console.log('ProfilePage: Profile state changed:', profile);
+    }, [profile]);
 
     useEffect(() => {
         return () => {
@@ -252,7 +266,7 @@ const ProfilePage: React.FC = () => {
                     <div style={styles.profilePictureContainer} onClick={handleProfilePictureClick}>
                         {profile.profileImageUrl ? (
                             <img 
-                                src={profile.profileImageUrl} 
+                                src={getFileUrl(profile.profileImageUrl)} 
                                 alt="Profile" 
                                 style={styles.profileImage} 
                             />
