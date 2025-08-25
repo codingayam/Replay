@@ -2,8 +2,9 @@
 # These files are excluded when deploying to Railway
 
 # Large local data directories (use Supabase Storage instead)
+server/data/**
+uploads/**
 server/data/
-uploads/
 
 # Test artifacts and screenshots
 .playwright-mcp/
