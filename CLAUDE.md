@@ -38,7 +38,7 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **Backend**: Node.js Express server with Supabase PostgreSQL database
 - **Authentication**: Supabase Auth with JWT authentication and multi-user support
 - **File Storage**: Supabase Storage for audio files, images, and profile pictures
-- **AI Integration**: Uses Google Gemini for transcription/content generation and OpenAI for text-to-speech
+- **AI Integration**: Uses Google Gemini for transcription/content generation and Replicate for text-to-speech
 
 ### Core Features
 1. **Multi-User Authentication**: Secure user registration and login via Supabase Auth with email/password authentication
@@ -106,12 +106,13 @@ This is a full-stack reflection and journaling application called "Replay" with:
 
 #### Server Environment (`server/.env`)
 - `GEMINI_API_KEY` - Google Generative AI API key for transcription and content generation
-- `OPENAI_API_KEY` - OpenAI API key for text-to-speech generation
-- `REPLICATE_API_TOKEN` - Replicate API token for alternative TTS
+- `REPLICATE_API_TOKEN` - Replicate API token for TTS (text-to-speech generation)
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_ANON_KEY` - Supabase anonymous key (public)
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (private, for server operations)
 - `PORT` - Server port (defaults to 3001)
+
+Note: OpenAI API key is NOT required - the app uses Replicate for TTS instead
 
 #### Client Environment (`client/.env`)
 - `VITE_SUPABASE_URL` - Supabase project URL for client-side operations
@@ -128,7 +129,7 @@ All data is user-specific and isolated by `user_id` (Supabase Auth UUID). Notes 
 - **Database**: Supabase PostgreSQL with Row Level Security (RLS)
 - **Storage**: Supabase Storage (audio files, images, profile pictures) with signed URLs
 - **Infrastructure**: BullMQ (job queues), Redis (caching/queues), Pino (logging)
-- **AI**: Google Generative AI (Gemini models), OpenAI (TTS), Replicate (alternative TTS)
+- **AI**: Google Generative AI (Gemini models), Replicate (TTS)
 ### Database Schema
 The application uses Supabase PostgreSQL with the following tables:
 - **profiles**: User profiles (id, user_id, name, values, mission, profile_image_url, timestamps)
