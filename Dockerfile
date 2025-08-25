@@ -1,5 +1,8 @@
-# Multi-stage production Dockerfile for Railway
+# Optimized multi-stage production Dockerfile for Railway
 FROM node:18-alpine as builder
+
+# Increase memory for Node.js processes to prevent OOM
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Set working directory
 WORKDIR /app
@@ -9,26 +12,43 @@ COPY package*.json ./
 COPY client/package*.json ./client/
 COPY server/package*.json ./server/
 
-# Install all dependencies (including dev) for build stage
+# Install client dependencies with optimization flags
 WORKDIR /app/client
-RUN npm ci
+RUN npm ci --no-audit --no-fund --prefer-offline
 
-# Copy client source and build
+# Copy client source files
 COPY client/ ./
-RUN npm run build
 
-# Production dependencies stage
+# Set production environment and build with production config
+ENV NODE_ENV=production
+RUN npm run build -- --config vite.config.production.ts || (echo "Build failed. Checking for TypeScript errors..." && npx tsc --noEmit --listFiles | head -20 && exit 1)
+
+# Production dependencies stage - optimized for Railway memory constraints
 FROM node:18-alpine as deps
+
+# Set memory limits and optimize for low-memory environments
+ENV NODE_OPTIONS="--max-old-space-size=1024 --max-semi-space-size=128"
+ENV NPM_CONFIG_MAXSOCKETS=1
+
+# Install only essential system packages
+RUN apk add --no-cache --virtual .build-deps \
+    python3 \
+    make \
+    g++ \
+    && apk del .build-deps
 
 WORKDIR /app
 
 # Copy server package files
 COPY server/package*.json ./server/
 
-# Install only production dependencies using npm install instead of npm ci
-# This avoids the lockfile sync issue with npm ci --only=production
+# Install server dependencies with aggressive memory optimization
 WORKDIR /app/server
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set maxsockets 1 && \
+    npm ci --omit=dev --no-audit --no-fund --prefer-offline --progress=false && \
+    npm cache clean --force --silent && \
+    npm config delete maxsockets
 
 # Production stage
 FROM node:18-alpine as production

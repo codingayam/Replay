@@ -3,8 +3,22 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "cd server && node server.js"
+startCommand = "node server.js"
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+
+# Environment variables for build process
+[build.watchPatterns]
+include = ["**/*.js", "**/*.ts", "**/*.tsx", "**/*.json"]
+ignore = ["node_modules/**", "dist/**", ".git/**"]
+
+# Service configuration
+[environments.production.variables]
+NODE_ENV = "production"
+PORT = "${{RAILWAY_PORT}}"
+
+# Build optimization for Railway
+[build.buildCommand]
+# This will be handled by Dockerfile, but we can set memory limits here
+NODE_OPTIONS = "--max-old-space-size=2048"
