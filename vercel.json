@@ -2,8 +2,6 @@
   "version": 2,
   "outputDirectory": "client/dist",
   "framework": "vite",
-  "installCommand": "npm ci --prefer-offline --no-audit --prefix client",
-  "devCommand": "cd client && npm run dev",
   "rewrites": [
     {
       "source": "/((?!api|_next|static|favicon.ico|manifest.json|robots.txt).*)",
@@ -35,5 +33,4 @@
     }
   },
   "regions": ["iad1"],
-  "buildCommand": "cd client && npm ci --prefer-offline --no-audit --ignore-scripts && npm run build"
 }
