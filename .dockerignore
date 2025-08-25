@@ -1,37 +1,92 @@
-# Dockerignore for Replay application
+# Dockerignore for Replay application Railway deployment
+# This reduces Docker build context size for faster deployments
 
-# Node modules
-node_modules/
-client/node_modules/
-server/node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Environment files (secrets should not be in container)
-.env
-.env.local
-.env.development
-.env.production
-client/.env*
-server/.env*
-
-# Build outputs (client build is copied in Dockerfile)
-client/dist/
-client/build/
-server/dist/
-
-# Development files
+# Git
 .git/
 .gitignore
 .github/
+.gitattributes
+
+# Documentation
+README*.md
+TESTING_STRATEGY.md
+DEPLOYMENT_STATUS.md
+deployment.md
+CLAUDE.md
+docs/
+LICENSE
+CONTRIBUTING.md
+CHANGELOG.md
+TODO.md
+*.md
+
+# Development files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
 *~
+.editorconfig
+.eslintrc*
+.prettierrc*
+.stylelintrc*
 
-# OS generated files
+# Test files and coverage
+**/__tests__/**
+**/*.test.*
+**/*.spec.*
+jest.config.*
+playwright.config.*
+test-results/
+playwright-report/
+coverage/
+.nyc_output/
+tests/
+e2e/
+.playwright-mcp/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+screenshots/
+
+# Environment files (set in Railway dashboard)
+.env
+.env.*
+*.env
+.env.example
+client/.env*
+server/.env*
+
+# Node modules (installed during build)
+node_modules/
+*/node_modules/
+.npm/
+.yarn/
+.pnp
+.pnp.js
+
+# Build artifacts (generated during build)
+dist/
+build/
+*/dist/
+*/build/
+.next/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+logs/
+server_output.log
+
+# OS files
 .DS_Store
 .DS_Store?
 ._*
@@ -39,40 +94,144 @@ server/dist/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Testing
-coverage/
-.nyc_output/
-client/coverage/
-server/coverage/
-tests/
-client/src/**/__tests__/
-server/tests/
-playwright-report/
-test-results/
-.playwright-mcp/
-
-# Documentation
-README*.md
-CLAUDE.md
-*.md
-
-# Deployment
-.vercel/
-railway.toml
-vercel.json
-deploy.sh
-deployment.md
-
-# Logs
-logs/
-*.log
-server/server_output.log
-
-# Local data (should use external storage in production)
-server/data/
+# Package manager files (only package.json needed)
+pnpm-lock.yaml
+yarn.lock
+.yarn-integrity
+.pnp
+.pnp.js
+package-lock.json
+!server/package-lock.json
+!client/package-lock.json
 
 # Temporary files
 *.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+.cache/
+.parcel-cache/
+.turbo/
 tmp/
 temp/
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+.circleci/
+.drone.yml
+appveyor.yml
+azure-pipelines.yml
+
+# Platform specific
+.vercel/
+vercel.json
+.vercelignore
+railway.toml
+netlify.toml
+.netlify/
+fly.toml
+render.yaml
+heroku.yml
+Procfile
+
+# Development scripts and tools
+deploy.sh
+screenshot.js
+migrate-*.js
+setup-*.js
+test-*.js
+fix-*.js
+run-*.js
+cleanup-*.js
+recover-*.js
+add-*.js
+simple-*.js
+automated-*.js
+enhanced-*.js
+scripts/dev/
+
+# Database files and migrations
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+migrations/dev/
+seeds/dev/
+
+# Performance and monitoring
+.lighthouserc.js
+lighthouse-report.html
+bundle-stats.json
+webpack-stats.json
+
+# Server data (using Supabase Storage)
+server/data/
+uploads/
+public/uploads/
+
+# Media files
+*.wav
+*.mp3
+*.mp4
+*.webm
+*.ogg
+*.avi
+*.mov
+*.mkv
+*.flac
+*.aac
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+*.bz2
+
+# Editor backup files
+*.backup
+*.bak
+*.orig
+*.rej
+*.sublime-*
+*.code-workspace
+*.iml
+
+# Python (if any)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# Miscellaneous
+.npmrc
+.yarnrc
+.yarnrc.yml
+.eslintcache
+.stylelintcache
+.env.vault
+.env.me
+*.pem
+*.key
+*.crt
+*.cert
+
+# Project specific ignores
+README_TESTING.md
+ADD-UNIQUE-CONSTRAINT.md
+server/middleware/__tests__/
+client/src/contexts/__tests__/
+client/src/test/
+server/supabase-dashboard-migration.sql
+server/migrate-to-supabase-auth.sql

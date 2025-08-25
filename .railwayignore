@@ -1,0 +1,56 @@
+# Railway deployment ignore file
+# These files are excluded when deploying to Railway
+
+# Large local data directories (use Supabase Storage instead)
+server/data/
+uploads/
+
+# Test artifacts and screenshots
+.playwright-mcp/
+test-results/
+playwright-report/
+coverage/
+screenshots/
+
+# Development and test files
+tests/
+e2e/
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+
+# Media files that shouldn't be in deployment
+*.wav
+*.mp3
+*.mp4
+*.webm
+*.ogg
+
+# Documentation
+*.md
+docs/
+
+# CI/CD files for other platforms
+.vercel/
+vercel.json
+.vercelignore
+netlify.toml
+.netlify/
+
+# Development scripts
+migrate-*.js
+setup-*.js
+test-*.js
+fix-*.js
+cleanup-*.js
+recover-*.js
+
+# SQL migration files (handle via Railway dashboard)
+*.sql
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
