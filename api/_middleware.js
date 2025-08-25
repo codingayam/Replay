@@ -1,6 +1,6 @@
 // Shared middleware for Vercel API functions
-const { createClient } = require('@supabase/supabase-js');
-const multer = require('multer');
+import { createClient } from '@supabase/supabase-js';
+import multer from 'multer';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -43,7 +43,7 @@ const uploadProfileImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-module.exports = {
+export {
   verifyAuth,
   supabase,
   uploadAudio,

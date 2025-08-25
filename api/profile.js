@@ -1,8 +1,8 @@
 // Vercel serverless function for user profile management
-const { verifyAuth, supabase, uploadProfileImage } = require('./_middleware.js');
-const { v4: uuidv4 } = require('uuid');
+import { verifyAuth, supabase, uploadProfileImage } from './_middleware.js';
+import { v4 as uuidv4 } from 'uuid';
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   try {
     // Verify authentication
     const user = await verifyAuth(req);

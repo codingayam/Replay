@@ -1,5 +1,5 @@
 // Debug endpoint to check environment variables
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   try {
     const envStatus = {
       GEMINI_API_KEY: !!process.env.GEMINI_API_KEY ? 'Set' : 'Missing',
