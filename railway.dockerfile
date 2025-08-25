@@ -1,34 +1,19 @@
-# Multi-stage production Dockerfile for Railway
+# Alternative Dockerfile specifically for Railway deployment
+# This version uses npm install instead of npm ci to avoid lockfile sync issues
+
 FROM node:18-alpine as builder
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files first for better layer caching
-COPY package*.json ./
+# Copy package files
 COPY client/package*.json ./client/
-COPY server/package*.json ./server/
 
-# Install all dependencies (including dev) for build stage
+# Install client dependencies and build
 WORKDIR /app/client
-RUN npm ci
-
-# Copy client source and build
+RUN npm install
 COPY client/ ./
 RUN npm run build
-
-# Production dependencies stage
-FROM node:18-alpine as deps
-
-WORKDIR /app
-
-# Copy server package files
-COPY server/package*.json ./server/
-
-# Install only production dependencies using npm install instead of npm ci
-# This avoids the lockfile sync issue with npm ci --only=production
-WORKDIR /app/server
-RUN npm install --omit=dev && npm cache clean --force
 
 # Production stage
 FROM node:18-alpine as production
@@ -41,21 +26,19 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 WORKDIR /app
 
-# Copy server source files
+# Copy server files
 COPY server/ ./server/
 
-# Copy production node_modules from deps stage
-COPY --from=deps /app/server/node_modules ./server/node_modules
+# Install server dependencies using npm install (more forgiving than npm ci)
+WORKDIR /app/server
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy built client from builder stage
-COPY --from=builder /app/client/dist ./server/client-dist
+COPY --from=builder /app/client/dist ./client-dist
 
 # Set ownership
 RUN chown -R nextjs:nodejs /app
 USER nextjs
-
-# Set working directory to server
-WORKDIR /app/server
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
