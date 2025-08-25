@@ -40,7 +40,11 @@ app.use(express.json());
 // Supabase Authentication Middleware (applied per route)
 
 // Serve static files from React build
-app.use(express.static(path.join(__dirname, '../client/dist')));
+// Support both local dev structure and Railway's Nixpacks structure
+const clientPath = fsSync.existsSync(path.join(__dirname, '../client/dist')) 
+    ? path.join(__dirname, '../client/dist')
+    : path.join(__dirname, 'client-dist');
+app.use(express.static(clientPath));
 
 // File serving endpoints - now using Supabase Storage
 app.get('/audio/:userId/:filename', requireAuth(), async (req, res) => {
@@ -1070,7 +1074,7 @@ app.get('/health', (req, res) => {
 
 // Catch-all handler: send back React's index.html file for client-side routing
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    res.sendFile(path.join(clientPath, 'index.html'));
 });
 
 app.listen(port, () => {
