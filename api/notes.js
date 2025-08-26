@@ -80,16 +80,22 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       // Check if this is a multipart form (audio upload)
       if (req.headers['content-type']?.includes('multipart/form-data')) {
-        console.log('Processing audio upload...');
+        console.log('🎵 Processing audio upload...');
         
-        // Handle audio upload using busboy
-        const audioData = await parseMultipartForm(req);
-        
-        console.log('Parsed audio data:', {
-          hasAudioBuffer: !!audioData.audioBuffer,
-          audioBufferSize: audioData.audioBuffer?.length,
-          fields: Object.keys(audioData)
-        });
+        let audioData;
+        try {
+          // Handle audio upload using busboy
+          audioData = await parseMultipartForm(req);
+          
+          console.log('✅ Parsed audio data successfully:', {
+            hasAudioBuffer: !!audioData.audioBuffer,
+            audioBufferSize: audioData.audioBuffer?.length,
+            fields: Object.keys(audioData)
+          });
+        } catch (parseError) {
+          console.error('❌ STEP 1 ERROR - Form parsing failed:', parseError);
+          throw new Error(`Form parsing failed: ${parseError.message}`);
+        }
         
         if (!audioData.audioBuffer) {
           console.error('No audio buffer found in form data');
@@ -99,58 +105,78 @@ export default async function handler(req, res) {
         const audioFileName = `${uuidv4()}.wav`;
         const audioPath = `${user.id}/${audioFileName}`;
 
-        console.log('Uploading to Supabase Storage:', { audioPath, audioFileName });
+        console.log('📁 STEP 2: Uploading to Supabase Storage:', { audioPath, audioFileName });
 
-        // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('audio')
-          .upload(audioPath, audioData.audioBuffer, {
-            contentType: 'audio/wav',
-          });
+        let uploadData;
+        try {
+          // Upload to Supabase Storage
+          const uploadResult = await supabase.storage
+            .from('audio')
+            .upload(audioPath, audioData.audioBuffer, {
+              contentType: 'audio/wav',
+            });
 
-        if (uploadError) {
-          console.error('Supabase storage upload error:', uploadError);
-          throw new Error(`Storage upload failed: ${uploadError.message}`);
+          if (uploadResult.error) {
+            console.error('❌ STEP 2 ERROR - Supabase storage upload error:', uploadResult.error);
+            throw new Error(`Storage upload failed: ${uploadResult.error.message}`);
+          }
+
+          uploadData = uploadResult.data;
+          console.log('✅ STEP 2 SUCCESS - Upload successful:', uploadData);
+        } catch (storageError) {
+          console.error('❌ STEP 2 FATAL ERROR - Storage operation failed:', storageError);
+          throw new Error(`Storage operation failed: ${storageError.message}`);
         }
 
-        console.log('Upload successful:', uploadData);
-
         // Convert audio buffer to base64 for Gemini API
+        console.log('🤖 STEP 3: Preparing for Gemini API...');
         const base64Audio = audioData.audioBuffer.toString('base64');
-        console.log('Prepared base64 audio for Gemini, length:', base64Audio.length);
+        console.log('✅ Prepared base64 audio for Gemini, length:', base64Audio.length);
 
-        // Get transcription using Gemini
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-        
-        console.log('Requesting transcription from Gemini...');
-        const transcriptionResult = await model.generateContent([
-          {
-            inlineData: {
-              mimeType: 'audio/wav',
-              data: base64Audio
-            }
-          },
-          'Please transcribe this audio recording accurately. Only return the transcribed text, no additional commentary.'
-        ]);
+        let transcript, title, category;
+        try {
+          // Get transcription using Gemini
+          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+          
+          console.log('🔮 STEP 3A: Requesting transcription from Gemini...');
+          const transcriptionResult = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: 'audio/wav',
+                data: base64Audio
+              }
+            },
+            'Please transcribe this audio recording accurately. Only return the transcribed text, no additional commentary.'
+          ]);
 
-        const transcript = transcriptionResult.response.text().trim();
-        console.log('Transcription received:', transcript.substring(0, 100) + '...');
+          transcript = transcriptionResult.response.text().trim();
+          console.log('✅ STEP 3A SUCCESS - Transcription received:', transcript.substring(0, 100) + '...');
 
-        // Generate title from transcript
-        const titleResult = await model.generateContent([
-          `Based on this journal entry transcript, generate a concise, meaningful title (maximum 8 words): "${transcript}"`
-        ]);
+          // Generate title from transcript
+          console.log('🏷️ STEP 3B: Generating title from transcript...');
+          const titleResult = await model.generateContent([
+            `Based on this journal entry transcript, generate a concise, meaningful title (maximum 8 words): "${transcript}"`
+          ]);
 
-        const title = titleResult.response.text().trim().replace(/['"]/g, '');
+          title = titleResult.response.text().trim().replace(/['"]/g, '');
+          console.log('✅ STEP 3B SUCCESS - Title generated:', title);
 
-        // Determine category based on content
-        const categoryResult = await model.generateContent([
-          `Analyze this journal entry and categorize it as one of: gratitude, experience, reflection, or insight. Only return the category name: "${transcript}"`
-        ]);
+          // Determine category based on content
+          console.log('🗂️ STEP 3C: Determining category...');
+          const categoryResult = await model.generateContent([
+            `Analyze this journal entry and categorize it as one of: gratitude, experience, reflection, or insight. Only return the category name: "${transcript}"`
+          ]);
 
-        const category = categoryResult.response.text().trim().toLowerCase();
+          category = categoryResult.response.text().trim().toLowerCase();
+          console.log('✅ STEP 3C SUCCESS - Category determined:', category);
+          
+        } catch (geminiError) {
+          console.error('❌ STEP 3 ERROR - Gemini API failed:', geminiError);
+          throw new Error(`Gemini AI processing failed: ${geminiError.message}`);
+        }
 
         // Create note record
+        console.log('💾 STEP 4: Preparing database insertion...');
         const noteData = {
           user_id: user.id,
           title,
@@ -162,20 +188,30 @@ export default async function handler(req, res) {
           date: audioData.localTimestamp || new Date().toISOString(),
         };
 
-        console.log('Inserting note data:', noteData);
+        console.log('📝 Note data prepared:', noteData);
 
-        const { data: note, error } = await supabase
-          .from('notes')
-          .insert([noteData])
-          .select()
-          .single();
+        let note;
+        try {
+          console.log('🗄️ STEP 4: Inserting into database...');
+          const insertResult = await supabase
+            .from('notes')
+            .insert([noteData])
+            .select()
+            .single();
 
-        if (error) {
-          console.error('Database insertion error:', error);
-          throw new Error(`Database insert failed: ${error.message}`);
+          if (insertResult.error) {
+            console.error('❌ STEP 4 ERROR - Database insertion error:', insertResult.error);
+            throw new Error(`Database insert failed: ${insertResult.error.message}`);
+          }
+
+          note = insertResult.data;
+          console.log('✅ STEP 4 SUCCESS - Note created successfully:', note);
+        } catch (dbError) {
+          console.error('❌ STEP 4 FATAL ERROR - Database operation failed:', dbError);
+          throw new Error(`Database operation failed: ${dbError.message}`);
         }
 
-        console.log('Note created successfully:', note);
+        console.log('🎉 AUDIO NOTE CREATION COMPLETE - Returning response');
         return res.status(201).json(note);
 
       } else {
@@ -204,13 +240,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
 
   } catch (error) {
-    console.error('Notes API error:', error);
-    console.error('Error stack:', error.stack);
-    console.error('Error details:', {
+    console.error('❌ NOTES API FATAL ERROR:', error);
+    console.error('📍 Error location: API endpoint main try/catch');
+    console.error('📋 Error stack:', error.stack);
+    console.error('🔍 Error details:', {
       message: error.message,
       name: error.name,
       code: error.code,
-      statusCode: error.statusCode
+      statusCode: error.statusCode,
+      cause: error.cause,
+      originalError: error.originalError?.message
+    });
+    
+    // Log additional context for debugging
+    console.error('🌐 Request context:', {
+      method: req.method,
+      contentType: req.headers['content-type'],
+      hasAuth: !!req.headers.authorization,
+      url: req.url
     });
     
     if (error.message === 'No authorization token' || error.message === 'Invalid token' || error.message === 'Authentication failed') {
@@ -222,7 +269,9 @@ export default async function handler(req, res) {
       error: 'Internal server error', 
       details: error.message,
       type: error.name || 'Unknown',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      step: 'main_handler',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };
