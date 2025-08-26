@@ -178,6 +178,7 @@ export default async function handler(req, res) {
         // Create note record
         console.log('💾 STEP 4: Preparing database insertion...');
         const noteData = {
+          id: uuidv4(), // Explicitly generate ID to fix "null value in column id" error
           user_id: user.id,
           title,
           transcript,

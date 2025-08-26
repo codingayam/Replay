@@ -132,6 +132,7 @@ Just return the title, nothing else.`;
 
     // Save to database
     const noteData = {
+      id: uuidv4(), // Explicitly generate ID for consistency
       user_id: user.id,
       title,
       transcript: enhancedDescription,
