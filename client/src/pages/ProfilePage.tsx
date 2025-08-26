@@ -170,7 +170,7 @@ const ProfilePage: React.FC = () => {
 
 
     const removeTag = async (tagToRemove: string) => {
-        const newValues = profile.values.filter(tag => tag !== tagToRemove);
+        const newValues = (profile.values || []).filter(tag => tag !== tagToRemove);
         const updatedProfile = {
             ...profile,
             values: newValues
@@ -208,14 +208,14 @@ const ProfilePage: React.FC = () => {
         if (values.length === 0) return;
         
         // Filter out values that already exist
-        const newValues = values.filter(value => !profile.values.includes(value));
+        const newValues = values.filter(value => !(profile.values || []).includes(value));
         
         if (newValues.length === 0) {
             setTagInput('');
             return;
         }
         
-        const updatedValues = [...profile.values, ...newValues];
+        const updatedValues = [...(profile.values || []), ...newValues];
         const updatedProfile = {
             ...profile,
             values: updatedValues
@@ -245,7 +245,7 @@ const ProfilePage: React.FC = () => {
         // Convert values array to string for backend compatibility
         const profileToSave = {
             ...profile,
-            values: profile.values.join(', ')
+            values: (profile.values || []).join(', ')
         };
         
         api.post('/profile', profileToSave)
@@ -333,7 +333,7 @@ const ProfilePage: React.FC = () => {
                 <div style={styles.field}>
                     <label htmlFor="values" style={styles.label}>Core Values</label>
                     <div style={styles.tagCloud}>
-                        {profile.values.map((tag, index) => (
+                        {(profile.values || []).map((tag, index) => (
                             <div 
                                 key={index} 
                                 style={styles.tag}

@@ -28,22 +28,78 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
     // Audio recording functions
     const startRecording = async () => {
         try {
+            console.log('Requesting microphone access...');
+            
+            // Check if we're on HTTPS or localhost (required for getUserMedia)
+            const isSecureContext = window.isSecureContext || 
+                                   location.protocol === 'https:' || 
+                                   location.hostname === 'localhost' || 
+                                   location.hostname === '127.0.0.1';
+                                   
+            if (!isSecureContext) {
+                throw new Error('Audio recording requires HTTPS or localhost');
+            }
+            
+            // Check if getUserMedia is supported
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Media recording is not supported in this browser');
+            }
+            
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('Microphone access granted, creating MediaRecorder...');
+            
+            // Check if MediaRecorder is supported
+            if (!window.MediaRecorder) {
+                throw new Error('MediaRecorder is not supported in this browser');
+            }
+            
             mediaRecorder.current = new MediaRecorder(stream);
+            console.log('MediaRecorder created successfully');
+            
             mediaRecorder.current.ondataavailable = (event) => {
+                console.log('Audio data available:', event.data.size, 'bytes');
                 audioChunks.current.push(event.data);
             };
+            
             mediaRecorder.current.onstop = () => {
+                console.log('Recording stopped, processing audio...');
                 const blob = new Blob(audioChunks.current, { type: 'audio/wav' });
+                console.log('Audio blob created:', blob.size, 'bytes');
                 setAudioBlob(blob);
                 audioChunks.current = [];
                 setShowAudioControls(true);
+                
+                // Stop the stream to release microphone
+                stream.getTracks().forEach(track => track.stop());
             };
+            
+            mediaRecorder.current.onerror = (event) => {
+                console.error('MediaRecorder error:', event);
+                alert('Recording error occurred. Please try again.');
+            };
+            
             mediaRecorder.current.start();
+            console.log('Recording started');
             setIsRecording(true);
         } catch (err) {
             console.error("Error accessing microphone:", err);
-            alert("Could not access microphone. Please ensure permission is granted.");
+            let errorMessage = "Could not access microphone. ";
+            
+            if (err instanceof Error) {
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    errorMessage += "Please allow microphone permission and try again.";
+                } else if (err.name === 'NotFoundError') {
+                    errorMessage += "No microphone found. Please check your device.";
+                } else if (err.name === 'NotSupportedError') {
+                    errorMessage += "Your browser doesn't support audio recording.";
+                } else {
+                    errorMessage += err.message;
+                }
+            } else {
+                errorMessage += "Unknown error occurred.";
+            }
+            
+            alert(errorMessage);
         }
     };
 
@@ -73,8 +129,13 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
     };
 
     const handleSelectAudio = () => {
+        console.log('Audio recording selected');
         setShowOptionsModal(false);
-        startRecording();
+        // Add a small delay to ensure modal closes first
+        setTimeout(() => {
+            console.log('Starting audio recording...');
+            startRecording();
+        }, 100);
     };
 
     const handleSelectPhoto = () => {

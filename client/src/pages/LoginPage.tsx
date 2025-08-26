@@ -1,13 +1,21 @@
-import React, { useState } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const LoginPage: React.FC = () => {
   const { user, loading, signIn } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Handle redirect when user becomes authenticated
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/experiences', { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   // If user is already signed in, redirect to main app
   if (loading) {
@@ -28,9 +36,12 @@ const LoginPage: React.FC = () => {
     setError('');
 
     try {
-      const { error } = await signIn(email, password);
+      const { user: signedInUser, error } = await signIn(email, password);
       if (error) {
         setError(error.message);
+      } else if (signedInUser) {
+        // Successful login - the useEffect will handle the navigation
+        // No need to manually navigate here as the auth context will update
       }
     } catch (err) {
       setError('An unexpected error occurred');

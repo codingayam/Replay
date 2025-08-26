@@ -225,9 +225,9 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                                     </div>
                                                     <div style={styles.experienceContent}>
                                                         <p style={styles.experienceTranscript}>
-                                                            {note.transcript.length > 150
-                                                                ? `${note.transcript.substring(0, 150)}...`
-                                                                : note.transcript
+                                                            {(note.transcript || '').length > 150
+                                                                ? `${(note.transcript || '').substring(0, 150)}...`
+                                                                : (note.transcript || '')
                                                             }
                                                         </p>
                                                     </div>
