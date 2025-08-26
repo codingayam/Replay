@@ -52,6 +52,13 @@ const config = {
 
 export default async function handler(req, res) {
   try {
+    console.log('Notes API called:', req.method, req.headers['content-type']);
+    console.log('Environment check:', {
+      hasGeminiKey: !!process.env.GEMINI_API_KEY,
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+    });
+    
     // Verify authentication
     const user = await verifyAuth(req);
 
@@ -73,33 +80,49 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       // Check if this is a multipart form (audio upload)
       if (req.headers['content-type']?.includes('multipart/form-data')) {
+        console.log('Processing audio upload...');
+        
         // Handle audio upload using busboy
         const audioData = await parseMultipartForm(req);
         
+        console.log('Parsed audio data:', {
+          hasAudioBuffer: !!audioData.audioBuffer,
+          audioBufferSize: audioData.audioBuffer?.length,
+          fields: Object.keys(audioData)
+        });
+        
         if (!audioData.audioBuffer) {
+          console.error('No audio buffer found in form data');
           return res.status(400).json({ error: 'No audio file provided' });
         }
 
         const audioFileName = `${uuidv4()}.wav`;
         const audioPath = `${user.id}/${audioFileName}`;
 
+        console.log('Uploading to Supabase Storage:', { audioPath, audioFileName });
+
         // Upload to Supabase Storage
-        const { error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
           .from('audio')
           .upload(audioPath, audioData.audioBuffer, {
             contentType: 'audio/wav',
           });
 
         if (uploadError) {
-          throw uploadError;
+          console.error('Supabase storage upload error:', uploadError);
+          throw new Error(`Storage upload failed: ${uploadError.message}`);
         }
+
+        console.log('Upload successful:', uploadData);
 
         // Convert audio buffer to base64 for Gemini API
         const base64Audio = audioData.audioBuffer.toString('base64');
+        console.log('Prepared base64 audio for Gemini, length:', base64Audio.length);
 
         // Get transcription using Gemini
         const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         
+        console.log('Requesting transcription from Gemini...');
         const transcriptionResult = await model.generateContent([
           {
             inlineData: {
@@ -111,6 +134,7 @@ export default async function handler(req, res) {
         ]);
 
         const transcript = transcriptionResult.response.text().trim();
+        console.log('Transcription received:', transcript.substring(0, 100) + '...');
 
         // Generate title from transcript
         const titleResult = await model.generateContent([
@@ -138,6 +162,8 @@ export default async function handler(req, res) {
           date: audioData.localTimestamp || new Date().toISOString(),
         };
 
+        console.log('Inserting note data:', noteData);
+
         const { data: note, error } = await supabase
           .from('notes')
           .insert([noteData])
@@ -145,9 +171,11 @@ export default async function handler(req, res) {
           .single();
 
         if (error) {
-          throw error;
+          console.error('Database insertion error:', error);
+          throw new Error(`Database insert failed: ${error.message}`);
         }
 
+        console.log('Note created successfully:', note);
         return res.status(201).json(note);
 
       } else {
@@ -177,10 +205,25 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Notes API error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      statusCode: error.statusCode
+    });
+    
     if (error.message === 'No authorization token' || error.message === 'Invalid token' || error.message === 'Authentication failed') {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    return res.status(500).json({ error: 'Internal server error', details: error.message });
+    
+    // More detailed error response for debugging
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message,
+      type: error.name || 'Unknown',
+      timestamp: new Date().toISOString()
+    });
   }
 };
 

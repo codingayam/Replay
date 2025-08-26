@@ -1,8 +1,8 @@
 // Vercel serverless function for photo notes
-const { verifyAuth, supabase } = require('../_middleware.js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { v4: uuidv4 } = require('uuid');
-const busboy = require('busboy');
+import { verifyAuth, supabase } from '../_middleware.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { v4 as uuidv4 } from 'uuid';
+import busboy from 'busboy';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -47,7 +47,7 @@ function parseImageForm(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   try {
     // Verify authentication
     const user = await verifyAuth(req);
@@ -161,7 +161,7 @@ Just return the title, nothing else.`;
 }
 
 // Disable body parser for multipart form data
-module.exports.config = {
+export const config = {
   api: {
     bodyParser: false,
   },

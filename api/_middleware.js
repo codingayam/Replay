@@ -10,19 +10,30 @@ const supabase = createClient(
 // Auth middleware
 async function verifyAuth(req) {
   const authHeader = req.headers.authorization;
+  console.log('Auth header present:', !!authHeader);
+  
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('No valid authorization header found');
     throw new Error('No authorization token');
   }
 
   const token = authHeader.substring(7);
+  console.log('Token length:', token.length);
   
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
+    if (error) {
+      console.error('Supabase auth error:', error);
       throw new Error('Invalid token');
     }
+    if (!user) {
+      console.error('No user found for token');
+      throw new Error('Invalid token');
+    }
+    console.log('User authenticated:', user.id);
     return user;
   } catch (error) {
+    console.error('Authentication failed:', error);
     throw new Error('Authentication failed');
   }
 }

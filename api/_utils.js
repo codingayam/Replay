@@ -12,6 +12,6 @@ function runMiddleware(req, res, fn) {
   });
 }
 
-module.exports = {
+export {
   runMiddleware
 };
