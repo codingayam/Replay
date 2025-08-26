@@ -133,13 +133,13 @@ Just return the title, nothing else.`;
     // Save to database
     const noteData = {
       id: uuidv4(), // Explicitly generate ID for consistency
-      user_id: user.id,
-      title,
-      transcript: enhancedDescription,
+      user_id: user.id, // UUID from Supabase auth
+      title: title || 'Untitled Photo Note', // Ensure title is never empty
+      transcript: enhancedDescription || originalCaption || 'No description available', // Ensure transcript is never empty
       type: 'photo',
       image_url: imageUrl,
       original_caption: originalCaption,
-      date: new Date().toISOString()
+      date: new Date().toISOString() // Server time in correct ISO format
     };
 
     const { data: note, error: dbError } = await supabase

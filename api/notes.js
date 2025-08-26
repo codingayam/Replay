@@ -179,14 +179,14 @@ export default async function handler(req, res) {
         console.log('💾 STEP 4: Preparing database insertion...');
         const noteData = {
           id: uuidv4(), // Explicitly generate ID to fix "null value in column id" error
-          user_id: user.id,
-          title,
-          transcript,
+          user_id: user.id, // This should already be UUID from Supabase auth
+          title: title || 'Untitled Audio Note', // Ensure title is never empty
+          transcript: transcript || 'No transcript available', // Ensure transcript is never empty
           category: ['gratitude', 'experience', 'reflection', 'insight'].includes(category) ? category : 'experience',
           type: 'audio',
-          audio_url: `/audio/${audioPath}`,
-          duration: audioData.duration || null,
-          date: audioData.localTimestamp || new Date().toISOString(),
+          audio_url: audioPath ? `/audio/${audioPath}` : null,
+          duration: audioData.duration ? parseInt(audioData.duration) : null,
+          date: new Date().toISOString(), // Always use server time in correct ISO format
         };
 
         console.log('📝 Note data prepared:', noteData);
@@ -194,6 +194,8 @@ export default async function handler(req, res) {
         let note;
         try {
           console.log('🗄️ STEP 4: Inserting into database...');
+          console.log('📊 Detailed note data being inserted:', JSON.stringify(noteData, null, 2));
+          
           const insertResult = await supabase
             .from('notes')
             .insert([noteData])
@@ -201,14 +203,26 @@ export default async function handler(req, res) {
             .single();
 
           if (insertResult.error) {
-            console.error('❌ STEP 4 ERROR - Database insertion error:', insertResult.error);
-            throw new Error(`Database insert failed: ${insertResult.error.message}`);
+            console.error('❌ STEP 4 ERROR - Database insertion error details:', {
+              error: insertResult.error,
+              code: insertResult.error.code,
+              message: insertResult.error.message,
+              details: insertResult.error.details,
+              hint: insertResult.error.hint
+            });
+            throw new Error(`Database insert failed: ${insertResult.error.message} (Code: ${insertResult.error.code})`);
           }
 
           note = insertResult.data;
           console.log('✅ STEP 4 SUCCESS - Note created successfully:', note);
         } catch (dbError) {
           console.error('❌ STEP 4 FATAL ERROR - Database operation failed:', dbError);
+          console.error('🔍 Error analysis:', {
+            name: dbError.name,
+            message: dbError.message,
+            cause: dbError.cause,
+            stack: dbError.stack
+          });
           throw new Error(`Database operation failed: ${dbError.message}`);
         }
 
