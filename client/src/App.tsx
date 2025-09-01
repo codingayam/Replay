@@ -18,17 +18,27 @@ function App() {
           <Route 
             path="/login" 
             element={
-              <SignedOut>
-                <LoginPage />
-              </SignedOut>
+              <>
+                <SignedIn>
+                  <Navigate to="/experiences" replace />
+                </SignedIn>
+                <SignedOut>
+                  <LoginPage />
+                </SignedOut>
+              </>
             } 
           />
           <Route 
             path="/signup" 
             element={
-              <SignedOut>
-                <SignUpPage />
-              </SignedOut>
+              <>
+                <SignedIn>
+                  <Navigate to="/experiences" replace />
+                </SignedIn>
+                <SignedOut>
+                  <SignUpPage />
+                </SignedOut>
+              </>
             } 
           />
           

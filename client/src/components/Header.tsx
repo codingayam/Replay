@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LogOut } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
@@ -23,6 +25,7 @@ const Header: React.FC = () => {
   const handleSignOut = async () => {
     await signOut();
     setShowUserMenu(false);
+    navigate('/', { replace: true });
   };
 
   return (
