@@ -52,7 +52,7 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
         
         try {
             const response = await apiRef.current.get(`/notes/date-range?startDate=${startDate}&endDate=${endDate}`);
-            const notes: Note[] = response.data;
+            const notes: Note[] = response.data.notes;
             
             // Filter notes by local date (to handle timezone issues)
             const getLocalDateString = (date: Date): string => {

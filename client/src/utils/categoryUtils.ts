@@ -1,6 +1,6 @@
 import type { Note } from '../types';
 
-export type Category = 'experience' | 'knowledge' | 'book';
+export type Category = 'gratitude' | 'experience' | 'reflection' | 'insight';
 
 export interface CategoryInfo {
     name: string;
@@ -9,20 +9,25 @@ export interface CategoryInfo {
 }
 
 export const categoryMap: Record<Category, CategoryInfo> = {
+    gratitude: {
+        name: 'gratitude',
+        color: '#059669',
+        backgroundColor: '#d1fae5',
+    },
     experience: {
         name: 'experience',
-        color: 'var(--experience-color)',
-        backgroundColor: 'var(--experience-bg)',
+        color: '#3b82f6',
+        backgroundColor: '#dbeafe',
     },
-    knowledge: {
-        name: 'knowledge',
-        color: 'var(--knowledge-color)',
-        backgroundColor: 'var(--knowledge-bg)',
+    reflection: {
+        name: 'reflection',
+        color: '#7c3aed',
+        backgroundColor: '#ede9fe',
     },
-    book: {
-        name: 'book',
-        color: 'var(--book-color)',
-        backgroundColor: 'var(--book-bg)',
+    insight: {
+        name: 'insight',
+        color: '#dc2626',
+        backgroundColor: '#fee2e2',
     },
 };
 

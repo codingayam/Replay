@@ -5,12 +5,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:client\" \"vercel dev\"",
     "dev:client": "cd client && npm run dev",
     "build": "npm run install:clean && cd client && npm run build",
     "build:client": "cd client && npm run build",
     "install:clean": "cd client && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps",
-    "start": "vercel dev",
     "deploy": "vercel --prod"
   },
   "dependencies": {

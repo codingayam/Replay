@@ -26,7 +26,7 @@ const RecentActivityCalendar: React.FC<RecentActivityCalendarProps> = ({
 
     const hasReflection = (date: Date): boolean => {
         const dateString = date.toISOString().split('T')[0];
-        return reflectionDates.includes(dateString);
+        return reflectionDates && reflectionDates.includes(dateString);
     };
 
     const formatDayName = (date: Date): string => {

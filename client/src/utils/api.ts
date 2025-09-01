@@ -63,17 +63,52 @@ export const useAuthenticatedApi = () => {
   return authenticatedApi;
 };
 
-// Helper function to get full file URL for audio/images
+// Helper function to get signed URL for Supabase Storage files
+export const getSignedUrl = async (filePath: string, authenticatedApi: any): Promise<string> => {
+  if (!filePath) return '';
+  
+  // If it's already a full URL (including Supabase signed URLs), return as-is
+  if (filePath.startsWith('http')) {
+    return filePath;
+  }
+  
+  // Handle Supabase Storage paths that need signed URLs
+  if (filePath.startsWith('/profiles/') || filePath.startsWith('/images/') || filePath.startsWith('/audio/')) {
+    try {
+      const pathParts = filePath.split('/').filter(p => p);
+      if (pathParts.length >= 3) {
+        const [bucketType, userId, ...filenameParts] = pathParts;
+        const filename = filenameParts.join('/');
+        
+        const response = await authenticatedApi.get(`/files/${bucketType}/${userId}/${filename}`);
+        return response.data.signedUrl;
+      }
+    } catch (error) {
+      console.error('Error getting signed URL:', error);
+      return '';
+    }
+  }
+  
+  return filePath;
+};
+
+// Helper function to get full file URL for audio/images (legacy support)
 export const getFileUrl = (filePath: string) => {
   if (!filePath) return '';
   
-  // If the path starts with /, it's a relative path that needs the backend URL
+  // If it's already a full URL, return as-is
+  if (filePath.startsWith('http')) {
+    return filePath;
+  }
+  
+  // For Supabase Storage paths, we'll need to use getSignedUrl instead
+  // This function now serves as legacy support for non-Supabase paths
   if (filePath.startsWith('/')) {
     const baseUrl = import.meta.env.VITE_API_URL || '';
     return `${baseUrl}${filePath}`;
   }
   
-  // If it's already a full URL, return as-is
+  // Return as-is for other cases
   return filePath;
 };
 

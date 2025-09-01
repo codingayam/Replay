@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "cd client && npm run build",
   "outputDirectory": "client/dist",
-  "installCommand": "cd client && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps --omit=optional",
+  "installCommand": "cd client && npm install --legacy-peer-deps --omit=optional",
   "build": {
     "env": {
       "DISABLE_ESLINT_PLUGIN": "true",
@@ -10,10 +10,6 @@
     }
   },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

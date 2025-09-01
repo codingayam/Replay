@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera } from 'lucide-react';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
+import SupabaseImage from '../components/SupabaseImage';
 
 interface Profile {
     name: string;
@@ -28,20 +29,20 @@ const ProfilePage: React.FC = () => {
             .then(res => {
                 console.log('ProfilePage: API response:', res);
                 console.log('ProfilePage: Profile data:', res.data);
-                if(res.data) {
+                if(res.data && res.data.profile) {
+                    const profileData = res.data.profile;
                     const mappedProfile = {
-                        name: res.data.name || '',
-                        values: Array.isArray(res.data.values) 
-                            ? res.data.values 
-                            : res.data.values 
-                                ? res.data.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
+                        name: profileData.name || '',
+                        values: Array.isArray(profileData.values) 
+                            ? profileData.values 
+                            : profileData.values 
+                                ? profileData.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
                                 : [],
-                        mission: res.data.mission || '',
-                        profileImageUrl: res.data.profileImageUrl || ''
+                        mission: profileData.mission || '',
+                        profileImageUrl: profileData.profile_image_url || ''
                     };
                     console.log('ProfilePage: Setting profile state:', mappedProfile);
                     setProfile(mappedProfile);
-                    console.log('ProfilePage: Profile state after setting:', profile);
                 }
             })
             .catch(err => {
@@ -208,7 +209,8 @@ const ProfilePage: React.FC = () => {
         if (values.length === 0) return;
         
         // Filter out values that already exist
-        const newValues = values.filter(value => !(profile.values || []).includes(value));
+        const existingValues = profile.values || [];
+        const newValues = values.filter(value => !existingValues.includes(value));
         
         if (newValues.length === 0) {
             setTagInput('');
@@ -265,10 +267,16 @@ const ProfilePage: React.FC = () => {
                 <div style={styles.profilePictureSection}>
                     <div style={styles.profilePictureContainer} onClick={handleProfilePictureClick}>
                         {profile.profileImageUrl ? (
-                            <img 
-                                src={getFileUrl(profile.profileImageUrl)} 
-                                alt="Profile" 
-                                style={styles.profileImage} 
+                            <SupabaseImage
+                                src={profile.profileImageUrl}
+                                alt="Profile"
+                                style={styles.profileImage}
+                                fallback={
+                                    <div style={styles.profilePlaceholder}>
+                                        <Camera size={48} color="#666" />
+                                        <span style={styles.profilePlaceholderText}>Add Photo</span>
+                                    </div>
+                                }
                             />
                         ) : (
                             <div style={styles.profilePlaceholder}>

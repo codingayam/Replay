@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PlayCircle, Trash2, Share2, Image as ImageIcon, User } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
+import SupabaseImage from '../components/SupabaseImage';
 import type { Note } from '../types';
 import { getCategoryInfo } from '../utils/categoryUtils';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
@@ -21,7 +22,7 @@ const ExperiencesPage: React.FC = () => {
         try {
             const res = await api.get('/notes');
             // Sort notes by date, most recent first
-            const sortedNotes = res.data.sort((a: Note, b: Note) => 
+            const sortedNotes = res.data.notes.sort((a: Note, b: Note) => 
                 new Date(b.date).getTime() - new Date(a.date).getTime()
             );
             setNotes(sortedNotes);
@@ -149,7 +150,11 @@ const ExperiencesPage: React.FC = () => {
                     const isExpanded = expandedNoteId === note.id;
                     const isLast = index === sortedNotes.length - 1;
                     const category = note.category || 'experience';
-                    const categoryInfo = getCategoryInfo(category);
+                    const categoryInfo = getCategoryInfo(category) || {
+                        name: 'experience',
+                        color: '#3b82f6',
+                        backgroundColor: '#dbeafe',
+                    };
                     
                     return (
                         <div key={note.id} style={styles.timelineItem}>
@@ -211,8 +216,8 @@ const ExperiencesPage: React.FC = () => {
                                                 <div style={styles.photoContainer}>
                                                     <div style={styles.photoPlaceholder}>
                                                         {note.imageUrl && (
-                                                            <img 
-                                                                src={getFileUrl(note.imageUrl)}
+                                                            <SupabaseImage
+                                                                src={note.imageUrl}
                                                                 alt={note.title}
                                                                 style={styles.photo}
                                                             />

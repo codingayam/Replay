@@ -9,6 +9,10 @@ yarn-error.log*
 server/
 server/**/*
 
+# API directory (Vercel serverless functions - using separate backend)
+api/
+api/**/*
+
 # Test files
 **/__tests__/**
 **/*.test.*

@@ -22,8 +22,8 @@ interface PlaylistItem {
 interface SavedMeditation {
     id: string;
     title: string;
-    createdAt: string;
-    noteIds: string[];
+    created_at: string;
+    playlist: PlaylistItem[];
     summary?: string;
 }
 
@@ -65,7 +65,7 @@ const ReflectionsPage: React.FC = () => {
     const fetchSavedMeditations = async () => {
         try {
             const res = await api.get('/meditations');
-            setSavedMeditations(res.data);
+            setSavedMeditations(res.data.meditations || []);
         } catch (err) {
             console.error("Error fetching meditations:", err);
         }
@@ -320,7 +320,7 @@ const ReflectionsPage: React.FC = () => {
             
             {/* Recent Activity Calendar */}
             <RecentActivityCalendar 
-                reflectionDates={reflectionDates}
+                reflectionDates={reflectionDates || []}
                 onExpandClick={() => setShowCalendarModal(true)}
             />
             
@@ -339,7 +339,7 @@ const ReflectionsPage: React.FC = () => {
                 {savedMeditations.length > 0 ? (
                     <div style={styles.meditationsList}>
                     {savedMeditations
-                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                         .map(meditation => {
                         const isExpanded = expandedSummaries.has(meditation.id);
                         return (
@@ -351,7 +351,7 @@ const ReflectionsPage: React.FC = () => {
                                     <div style={styles.cardContent}>
                                         <h3 style={styles.meditationTitle}>{meditation.title}</h3>
                                         <p style={styles.meditationDate}>
-                                            {new Date(meditation.createdAt).toLocaleDateString()}
+                                            {new Date(meditation.created_at).toLocaleDateString()}
                                         </p>
                                     </div>
                                     <div style={styles.expandIcon}>
@@ -454,7 +454,7 @@ const ReflectionsPage: React.FC = () => {
             <CalendarModal 
                 isOpen={showCalendarModal}
                 onClose={() => setShowCalendarModal(false)}
-                reflectionDates={reflectionDates}
+                reflectionDates={reflectionDates || []}
             />
         </div>
     );

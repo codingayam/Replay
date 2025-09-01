@@ -86,16 +86,27 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **Media Storage**: Supabase Storage with user-specific buckets for audio files, images, and profile pictures
 - **Authentication**: All API routes protected with custom Supabase `requireAuth()` middleware
 - **API Routes** (all require authentication):
+  - `GET /api/auth/test` - Test authentication middleware (returns user info)
   - `GET /api/notes` - Get user's notes
   - `GET /api/notes/date-range` - Get user's notes within date range for reflection
   - `POST /api/notes` - Create user's audio note (with file upload)
   - `POST /api/notes/photo` - Create user's photo note (with image upload)
   - `DELETE /api/notes/:id` - Delete user's note
   - `GET/POST /api/profile` - User profile management with image upload
+  - `POST /api/profile/image` - Upload profile image (with file upload)
   - `POST /api/reflect/suggest` - Get suggested experiences for user's reflection
   - `POST /api/reflect/summary` - Generate reflection summary for user
   - `POST /api/meditate` - Generate meditation from user's selected experiences
-  - `GET/DELETE /api/meditations` - Manage user's saved meditations
+  - `GET /api/meditations` - Get user's saved meditations
+  - `GET /api/meditations/:id` - Get specific meditation by ID
+  - `GET /api/meditations/day/default` - Get default day meditation playlist
+  - `DELETE /api/meditations/:id` - Delete user's meditation
+  - `GET /api/stats/streak` - Get user's meditation streak count
+  - `GET /api/stats/monthly` - Get current month's meditation count
+  - `GET /api/stats/calendar` - Get all meditation dates for calendar display
+  - `GET /api/files/profiles/:userId/:filename` - Serve profile images with signed URLs
+  - `GET /api/files/images/:userId/:filename` - Serve note images with signed URLs
+  - `GET /api/files/audio/:userId/:filename` - Serve audio files with signed URLs
 
 ### AI Workflow
 1. **Audio Note Creation**: Audio upload → Gemini transcription → Gemini title generation
@@ -128,7 +139,6 @@ All data is user-specific and isolated by `user_id` (Supabase Auth UUID). Notes 
 - **Backend**: Express 4, Multer (file uploads), UUID, CORS, dotenv, WAV processing, Helmet (security), rate limiting
 - **Database**: Supabase PostgreSQL with Row Level Security (RLS)
 - **Storage**: Supabase Storage (audio files, images, profile pictures) with signed URLs
-- **Infrastructure**: BullMQ (job queues), Redis (caching/queues), Pino (logging)
 - **AI**: Google Generative AI (Gemini models), Replicate (TTS)
 ### Database Schema
 The application uses Supabase PostgreSQL with the following tables:
@@ -137,24 +147,3 @@ The application uses Supabase PostgreSQL with the following tables:
 - **meditations**: User meditations (id, user_id, title, playlist, note_ids, script, duration, summary, time_of_reflection, timestamps)
 
 All tables have Row Level Security (RLS) enabled for user data isolation using `auth.uid()`.
-
-### Development Setup
-To initialize the Supabase MCP for database operations:
-```bash
-# From your project root
-source server/.env && claude
-```
-
-### Migration from Clerk to Supabase Auth
-The application has been migrated from Clerk authentication to Supabase Auth. Key migration tasks completed:
-- ✅ Replaced Clerk React components with custom Supabase Auth forms
-- ✅ Updated authentication context to use Supabase Auth hooks
-- ✅ Migrated server middleware from Clerk to custom Supabase JWT verification
-- ✅ Updated database schema to use `user_id` instead of `clerk_user_id`
-- ✅ Migrated file storage from local file system to Supabase Storage
-- ✅ Updated RLS policies to use `auth.uid()`
-
-Remaining manual tasks:
-- [ ] Update database schema via Supabase dashboard (add `user_id` columns, update RLS policies)
-- [ ] Create Supabase Storage buckets (`audio`, `images`, `profiles`)
-- [ ] Migrate existing local files to Supabase Storage using provided migration script

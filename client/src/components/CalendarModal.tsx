@@ -47,7 +47,7 @@ const CalendarModal: React.FC<CalendarModalProps> = ({
     const hasReflection = (day: number | null): boolean => {
         if (!day) return false;
         const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return reflectionDates.includes(dateString);
+        return reflectionDates && reflectionDates.includes(dateString);
     };
 
     const navigateMonth = (direction: 'prev' | 'next') => {
