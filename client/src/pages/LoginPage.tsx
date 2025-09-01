@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, Link, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const LoginPage: React.FC = () => {
@@ -41,7 +41,6 @@ const LoginPage: React.FC = () => {
         setError(error.message);
       } else if (signedInUser) {
         // Successful login - the useEffect will handle the navigation
-        // No need to manually navigate here as the auth context will update
       }
     } catch (err) {
       setError('An unexpected error occurred');
@@ -52,21 +51,21 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-3xl shadow-lg p-8">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-lg p-8">
           {/* App Icon */}
           <div className="flex justify-center mb-8">
-            <div className="w-16 h-16 bg-gray-700 rounded-2xl flex items-center justify-center">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center">
               <div className="w-8 h-8 bg-white rounded-full"></div>
             </div>
           </div>
 
           {/* Title */}
           <h2 className="text-2xl font-semibold text-gray-900 text-center mb-2">
-            Welcome back
+            Welcome to Replay
           </h2>
           <p className="text-gray-500 text-center text-base mb-8">
-            Sign in to your Replay account
+            Sign in to your account
           </p>
 
           {/* Error Message */}
@@ -86,7 +85,7 @@ const LoginPage: React.FC = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 placeholder="Enter your email"
                 required
               />
@@ -100,7 +99,7 @@ const LoginPage: React.FC = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 placeholder="Enter your password"
                 required
               />
@@ -109,7 +108,7 @@ const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gray-800 hover:bg-gray-900 disabled:opacity-50 text-white rounded-xl py-3 font-medium text-base transition-colors"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl py-3 font-medium text-base transition-colors"
             >
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
@@ -120,7 +119,7 @@ const LoginPage: React.FC = () => {
             <span className="text-gray-500 text-sm">
               Don't have an account?{' '}
             </span>
-            <Link to="/signup" className="text-gray-600 hover:text-gray-800 font-medium text-sm">
+            <Link to="/signup" className="text-blue-600 hover:text-blue-700 font-medium text-sm">
               Sign up
             </Link>
           </div>
