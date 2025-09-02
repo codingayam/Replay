@@ -220,7 +220,7 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
     let title = '';
     
     try {
-      const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+      const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
       
       // Convert audio buffer to base64 for Gemini
       const audioBase64 = req.file.buffer.toString('base64');
@@ -241,7 +241,8 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
       // Generate title from transcript
       if (transcript && transcript !== 'Transcription failed') {
         const titleResult = await model.generateContent(
-          `Create a short, meaningful title (max 50 characters) for this transcribed note: "${transcript}"`
+          `Generate a short, meaningful title (max 50 characters) for this transcribed note: "${transcript}". 
+          Return only the title text itself. Do not include quotes, labels, explanations, punctuation before/after, or any other text.`
         );
         title = titleResult.response.text().trim().substring(0, 50);
       } else {
@@ -329,7 +330,7 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
         enhancedTranscript = enhanceResult.response.text();
 
         // Generate title
-        const titlePrompt = `Create a short, meaningful title (max 50 characters) for this photo description: "${enhancedTranscript}"`;
+        const titlePrompt = `Create a short, meaningful title (max 50 characters) for this photo description: "${enhancedTranscript}". Return only the title, no other text.`;
         const titleResult = await model.generateContent(titlePrompt);
         title = titleResult.response.text().substring(0, 50);
       }
@@ -1101,23 +1102,29 @@ app.get('/api/meditations/:id', requireAuth(), async (req, res) => {
 // GET day reflection default meditation
 app.get('/api/meditations/day/default', requireAuth(), async (req, res) => {
   try {
-    // For now, return a simple default day meditation
+    // Generate signed URL for the default day meditation file
+    const { data: urlData, error: urlError } = await supabase.storage
+      .from('meditations')
+      .createSignedUrl('default/day-meditation.wav', 3600 * 24); // 24 hours expiry
+
+    if (urlError) {
+      console.error('Error generating signed URL for day meditation:', urlError);
+      return res.status(500).json({ error: 'Failed to load day meditation' });
+    }
+
+    // Create playlist with the real audio file
     const defaultPlaylist = [
       {
         type: 'speech',
-        audioUrl: null, // No actual audio for now
-        duration: 5000 // 5 seconds
-      },
-      {
-        type: 'pause',
-        duration: 30000 // 30 seconds of silence
+        audioUrl: urlData.signedUrl,
+        duration: 146000 // 2:26 duration in milliseconds
       }
     ];
 
     res.json({ 
       playlist: defaultPlaylist,
       title: 'Daily Reflection',
-      duration: 35
+      duration: 146 // Duration in seconds
     });
   } catch (error) {
     console.error('Day reflection error:', error);

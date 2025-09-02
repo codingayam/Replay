@@ -41,6 +41,12 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
         if (!audioUrl || !user) return '';
         
         try {
+            // Check if this is already a signed Supabase URL (starts with https and contains supabase.co)
+            if (audioUrl.startsWith('https://') && audioUrl.includes('supabase.co')) {
+                // Already a signed URL from Supabase, use directly
+                return audioUrl;
+            }
+            
             // Check if this is a server path that needs to be converted to Supabase Storage
             if (audioUrl.startsWith('/meditations/')) {
                 // Call server API to get signed URL
