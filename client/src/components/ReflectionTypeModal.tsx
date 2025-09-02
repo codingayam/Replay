@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sun, Moon } from 'lucide-react';
 
 interface ReflectionTypeModalProps {
@@ -12,6 +12,27 @@ const ReflectionTypeModal: React.FC<ReflectionTypeModalProps> = ({
     onClose,
     onSelectType,
 }) => {
+    const [isMobile, setIsMobile] = useState(() => {
+        // Initialize with correct value to prevent flash
+        if (typeof window !== 'undefined') {
+            return window.innerWidth < 480;
+        }
+        return false;
+    });
+
+    useEffect(() => {
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 480);
+        };
+        
+        // Set initial state
+        checkMobile();
+        
+        window.addEventListener('resize', checkMobile);
+        
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     if (!isOpen) return null;
 
     return (
@@ -25,35 +46,35 @@ const ReflectionTypeModal: React.FC<ReflectionTypeModalProps> = ({
                 </div>
 
                 <div style={styles.content}>
-                    <div style={styles.optionsContainer}>
+                    <div style={isMobile ? {...styles.optionsContainer, ...styles.optionsContainerMobile} : styles.optionsContainer}>
                         <button
                             onClick={() => onSelectType('Day')}
-                            style={styles.optionCard}
+                            style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
                         >
                             <div style={styles.iconContainer}>
-                                <div style={{...styles.iconCircle, backgroundColor: '#fef3c7'}}>
-                                    <Sun size={32} color="#f59e0b" />
+                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#fef3c7'} : {...styles.iconCircle, backgroundColor: '#fef3c7'}}>
+                                    <Sun size={isMobile ? 24 : 32} color="#f59e0b" />
                                 </div>
                             </div>
                             <div style={styles.optionContent}>
-                                <h3 style={styles.optionTitle}>Day</h3>
-                                <h4 style={styles.optionSubtitle}>Meditation</h4>
+                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Day</h3>
+                                <h4 style={isMobile ? {...styles.optionSubtitle, ...styles.optionSubtitleMobile} : styles.optionSubtitle}>Meditation</h4>
                                 <p style={styles.optionDescription}>Morning mindfulness</p>
                             </div>
                         </button>
 
                         <button
                             onClick={() => onSelectType('Night')}
-                            style={styles.optionCard}
+                            style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
                         >
                             <div style={styles.iconContainer}>
-                                <div style={{...styles.iconCircle, backgroundColor: '#ddd6fe'}}>
-                                    <Moon size={32} color="#7c3aed" />
+                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#ddd6fe'} : {...styles.iconCircle, backgroundColor: '#ddd6fe'}}>
+                                    <Moon size={isMobile ? 24 : 32} color="#7c3aed" />
                                 </div>
                             </div>
                             <div style={styles.optionContent}>
-                                <h3 style={styles.optionTitle}>Night</h3>
-                                <h4 style={styles.optionSubtitle}>Reflection</h4>
+                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Night</h3>
+                                <h4 style={isMobile ? {...styles.optionSubtitle, ...styles.optionSubtitleMobile} : styles.optionSubtitle}>Reflection</h4>
                                 <p style={styles.optionDescription}>Evening review</p>
                             </div>
                         </button>
@@ -85,6 +106,7 @@ const styles = {
         maxWidth: '480px',
         maxHeight: '90vh',
         overflowY: 'auto' as const,
+        overflowX: 'hidden' as const,
         boxShadow: 'var(--shadow-lg)',
         border: '1px solid var(--card-border)',
     },
@@ -124,6 +146,7 @@ const styles = {
         display: 'flex',
         gap: '1rem',
         flexDirection: 'row' as const,
+        minWidth: 0,
     },
     optionCard: {
         flex: 1,
@@ -175,6 +198,27 @@ const styles = {
         color: 'var(--text-secondary)',
         margin: '0.5rem 0 0 0',
         fontWeight: '400',
+    },
+    
+    // Mobile-specific styles
+    optionsContainerMobile: {
+        flexDirection: 'column' as const,
+        gap: '1rem',
+    },
+    optionCardMobile: {
+        padding: '1.5rem 1rem',
+        minHeight: '160px',
+        flex: 'none',
+    },
+    iconCircleMobile: {
+        width: '64px',
+        height: '64px',
+    },
+    optionTitleMobile: {
+        fontSize: '1.25rem',
+    },
+    optionSubtitleMobile: {
+        fontSize: '1.25rem',
     },
 };
 
