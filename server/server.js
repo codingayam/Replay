@@ -925,7 +925,7 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
         const logFilePath = join(logsDir, logFileName);
 
         // Parse segments for logging
-        const segments = script.split(/\[PAUSE: (\d+) seconds\]/);
+        const segments = script.split(/\[PAUSE=(\d+)s\]/);
         const segmentAnalysis = segments.map((seg, i) => {
           if (seg.trim() && isNaN(seg)) {
             return `Speech Segment ${Math.floor(i/2)}: "${seg.trim().slice(0, 100)}${seg.trim().length > 100 ? '...' : ''}"`;
@@ -962,7 +962,7 @@ Script Length: ${script.length} characters
       }
 
       // Generate TTS for meditation segments
-      const segments = script.split(/\[PAUSE: (\d+) seconds\]/);
+      const segments = script.split(/\[PAUSE=(\d+)s\]/);
       const playlist = [];
 
       for (let i = 0; i < segments.length; i++) {
