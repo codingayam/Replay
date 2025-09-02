@@ -145,17 +145,22 @@ app.get('/api/notes/date-range', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
     const { startDate, endDate } = req.query;
-
+    
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'startDate and endDate are required' });
     }
+
+    // Adjust endDate to include the full day (add one day and use < instead of <=)
+    const endDatePlusOne = new Date(endDate);
+    endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+    const adjustedEndDate = endDatePlusOne.toISOString().split('T')[0];
 
     const { data: notes, error } = await supabase
       .from('notes')
       .select('*')
       .eq('user_id', userId)
       .gte('date', startDate)
-      .lte('date', endDate)
+      .lt('date', adjustedEndDate)  // Use < with next day instead of <= with same day
       .order('date', { ascending: false });
 
     if (error) {
@@ -218,6 +223,7 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
     // Transcribe audio using Gemini 2.0 Flash Lite
     let transcript = '';
     let title = '';
+    let categories = [];
     
     try {
       const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
@@ -248,6 +254,46 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
       } else {
         title = 'Audio Note';
       }
+
+      // Generate categories from transcript
+      if (transcript && transcript !== 'Transcription failed') {
+        try {
+          const categoryResult = await model.generateContent(
+            `Analyze this transcribed note and determine which categories apply: "${transcript}".
+            
+            Categories:
+            - "ideas": Content that represents thoughts, concepts, plans, solutions, creative insights, or intellectual reflections
+            - "feelings": Content that represents emotions, emotional experiences, mood, personal reactions, or emotional processing
+            
+            A note can have both categories if it contains both ideas and emotional content.
+            
+            Respond with ONLY a JSON array containing the applicable categories. Examples:
+            ["ideas"] - if only ideas/thoughts
+            ["feelings"] - if only emotions/feelings  
+            ["ideas", "feelings"] - if both are present
+            
+            Return only the JSON array, no other text.`
+          );
+          
+          const categoryText = categoryResult.response.text().trim();
+          try {
+            const parsedCategories = JSON.parse(categoryText);
+            if (Array.isArray(parsedCategories)) {
+              // Validate that all categories are valid
+              const validCategories = parsedCategories.filter(cat => 
+                cat === 'ideas' || cat === 'feelings'
+              );
+              if (validCategories.length > 0) {
+                categories = validCategories;
+              }
+            }
+          } catch (parseError) {
+            console.error('Category parsing error:', parseError);
+          }
+        } catch (categoryError) {
+          console.error('Category generation error:', categoryError);
+        }
+      }
       
     } catch (aiError) {
       console.error('AI processing error:', aiError);
@@ -263,6 +309,7 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
         user_id: userId,
         title,
         transcript,
+        category: categories.length > 0 ? categories : null,
         type: 'audio',
         date: date || new Date().toISOString(),
         audio_url: urlData?.signedUrl || `${userId}/${fileName}`,
@@ -319,13 +366,14 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
     // Enhance caption and generate title using Gemini
     let enhancedTranscript = caption || 'No caption provided';
     let title = 'Photo Note';
+    let categories = [];
 
     try {
       if (caption) {
         const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
         
         // Generate enhanced description
-        const enhancePrompt = `Enhance this photo caption into a more detailed description: "${caption}"`;
+        const enhancePrompt = `Describe this photo alongside the ${caption}`;
         const enhanceResult = await model.generateContent(enhancePrompt);
         enhancedTranscript = enhanceResult.response.text();
 
@@ -333,6 +381,44 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
         const titlePrompt = `Create a short, meaningful title (max 50 characters) for this photo description: "${enhancedTranscript}". Return only the title, no other text.`;
         const titleResult = await model.generateContent(titlePrompt);
         title = titleResult.response.text().substring(0, 50);
+
+        // Generate categories from caption and enhanced description
+        try {
+          const categoryResult = await model.generateContent(
+            `Analyze this photo note and determine which categories apply: "${enhancedTranscript}".
+            
+            Categories:
+            - "ideas": Content that represents thoughts, concepts, plans, solutions, creative insights, or intellectual reflections
+            - "feelings": Content that represents emotions, emotional experiences, mood, personal reactions, or emotional processing
+            
+            A note can have both categories if it contains both ideas and emotional content.
+            
+            Respond with ONLY a JSON array containing the applicable categories. Examples:
+            ["ideas"] - if only ideas/thoughts
+            ["feelings"] - if only emotions/feelings  
+            ["ideas", "feelings"] - if both are present
+            
+            Return only the JSON array, no other text.`
+          );
+          
+          const categoryText = categoryResult.response.text().trim();
+          try {
+            const parsedCategories = JSON.parse(categoryText);
+            if (Array.isArray(parsedCategories)) {
+              // Validate that all categories are valid
+              const validCategories = parsedCategories.filter(cat => 
+                cat === 'ideas' || cat === 'feelings'
+              );
+              if (validCategories.length > 0) {
+                categories = validCategories;
+              }
+            }
+          } catch (parseError) {
+            console.error('Category parsing error:', parseError);
+          }
+        } catch (categoryError) {
+          console.error('Category generation error:', categoryError);
+        }
       }
     } catch (aiError) {
       console.error('AI processing error:', aiError);
@@ -346,6 +432,7 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
         user_id: userId,
         title,
         transcript: enhancedTranscript,
+        category: categories.length > 0 ? categories : null,
         type: 'photo',
         date: date || new Date().toISOString(),
         image_url: urlData?.signedUrl || `${userId}/${fileName}`,
