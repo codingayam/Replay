@@ -971,19 +971,27 @@ Script Length: ${script.length} characters
         if (segment && isNaN(segment)) {
           // This is a speech segment, generate TTS
           try {
+            console.log(`🔊 Generating TTS for segment ${playlist.length}: "${segment.substring(0, 100)}${segment.length > 100 ? '...' : ''}"`);
+            
+            const replicateInput = {
+              text: segment,
+              voice: "af_nicole",
+              speed: 0.7
+            };
+            
+            console.log('📤 Replicate API call:', {
+              model: "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+              input: replicateInput
+            });
+            
             const output = await replicate.run(
               "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
-              {
-                input: {
-                  text: segment,
-                  voice: "af_nicole",
-                  speed: 0.7
-                }
-              }
+              { input: replicateInput }
             );
 
             // Get the audio URL from the response
             const audioUrl = output.url().toString();
+            console.log('📥 Replicate API response:', { audioUrl });
             
             // Upload TTS audio to Supabase Storage
             const audioResponse = await fetch(audioUrl);
@@ -1003,13 +1011,14 @@ Script Length: ${script.length} characters
                 .from('meditations')
                 .createSignedUrl(`${userId}/${audioFileName}`, 3600 * 24 * 30); // 30 days
 
+              console.log(`✅ Audio uploaded successfully: ${audioFileName}`);
               playlist.push({
                 type: 'speech',
                 audioUrl: urlData?.signedUrl || `${userId}/${audioFileName}`,
                 duration: Math.ceil(segment.length / 10) // Rough estimate: 10 characters per second
               });
             } else {
-              console.error('Audio upload error:', audioError);
+              console.error('❌ Audio upload error:', audioError);
               // Fallback: store without audio - frontend will skip segments without audioUrl
               playlist.push({
                 type: 'speech',
@@ -1018,7 +1027,8 @@ Script Length: ${script.length} characters
             }
 
           } catch (ttsError) {
-            console.error('TTS generation error:', ttsError);
+            console.error('❌ TTS generation failed for segment:', ttsError);
+            console.error('Segment text:', segment.substring(0, 200));
             // Fallback: store without audio - frontend will skip segments without audioUrl
             playlist.push({
               type: 'speech',
@@ -1027,15 +1037,23 @@ Script Length: ${script.length} characters
           }
         } else if (!isNaN(segment)) {
           // This is a pause duration
+          const pauseDuration = parseInt(segment);
+          console.log(`⏸️ Adding pause: ${pauseDuration} seconds`);
           playlist.push({
             type: 'pause',
-            duration: parseInt(segment)
+            duration: pauseDuration
           });
         }
       }
 
       // Calculate total duration
       const totalDuration = playlist.reduce((sum, item) => sum + item.duration, 0);
+      
+      console.log('🎵 Meditation generation complete:');
+      console.log(`- Total segments: ${playlist.length}`);
+      console.log(`- Speech segments: ${playlist.filter(item => item.type === 'speech').length}`);
+      console.log(`- Pause segments: ${playlist.filter(item => item.type === 'pause').length}`);
+      console.log(`- Total duration: ${totalDuration} seconds`);
 
       // Save meditation to database
       const { data: meditation, error: saveError } = await supabase
