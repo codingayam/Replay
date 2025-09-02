@@ -895,7 +895,7 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
       ` : '';
 
       const scriptPrompt = `
-        Create a guided meditation script (${duration} minutes) based on these personal experiences:
+        You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Create a guided meditation script based on the following information:
         
         ${profileContext}
         
@@ -904,14 +904,10 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
         
         Reflection summary: ${summary || 'Based on selected experiences'}
         
-        Create a meditation script with:
-        1. Gentle introduction (30 seconds)
-        2. Breathing guidance (1-2 minutes)
-        3. Reflection on experiences with mindful awareness (majority of time)
-        4. Integration and closing (1-2 minutes)
+        Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for rest and recharge.
         
-        Format as segments separated by [PAUSE: X seconds] where appropriate.
-        Use a warm, personal, calming tone. Reference specific insights from their experiences.
+        
+        IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
       `;
 
       const result = await model.generateContent(scriptPrompt);
