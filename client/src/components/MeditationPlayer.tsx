@@ -6,7 +6,7 @@ import { useAuthenticatedApi } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 
 interface PlaylistItem {
-    type: 'speech' | 'pause';
+    type: 'speech' | 'pause' | 'continuous';
     audioUrl?: string;
     duration?: number;
 }
@@ -82,7 +82,50 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
 
             const currentItem = playlist[currentIndex];
 
-            if (currentItem.type === 'speech') {
+            if (currentItem.type === 'continuous') {
+                setStatus('Playing meditation...');
+                const audio = audioRef.current;
+                if (audio && currentItem.audioUrl) {
+                    try {
+                        // Get signed URL for the audio file
+                        const newUrl = await getSignedAudioUrl(currentItem.audioUrl);
+                        const currentUrl = audio.src;
+                        
+                        // Compare URLs by normalizing them (remove protocol and domain if present)
+                        const normalizeUrl = (url: string) => {
+                            try {
+                                const urlObj = new URL(url, window.location.origin);
+                                return urlObj.pathname + urlObj.search + urlObj.hash;
+                            } catch {
+                                return url;
+                            }
+                        };
+                        
+                        if (normalizeUrl(currentUrl) !== normalizeUrl(newUrl)) {
+                            audio.pause();
+                            audio.currentTime = 0;
+                            audio.src = newUrl;
+                        }
+                        
+                        if (!isPaused) {
+                            // Wait for the audio to be ready before playing
+                            const playAudio = () => {
+                                audio.play()
+                                    .then(() => setIsPlaying(true))
+                                    .catch(e => console.error("Audio play failed:", e));
+                            };
+                            
+                            if (audio.readyState >= 2) { // HAVE_CURRENT_DATA
+                                playAudio();
+                            } else {
+                                audio.addEventListener('canplay', playAudio, { once: true });
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error loading audio:', error);
+                    }
+                }
+            } else if (currentItem.type === 'speech') {
                 setStatus('Speaking...');
                 const audio = audioRef.current;
                 if (audio && currentItem.audioUrl) {
@@ -172,7 +215,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
         const audio = audioRef.current;
         const currentItem = playlist[currentIndex];
 
-        if (currentItem?.type === 'speech') {
+        if (currentItem?.type === 'continuous' || currentItem?.type === 'speech') {
             if (audio) {
                 if (isPlaying) {
                     audio.pause();
@@ -207,7 +250,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
         const audio = audioRef.current;
         const currentItem = playlist[currentIndex];
         
-        if (currentItem?.type === 'speech' && audio && audio.duration) {
+        if ((currentItem?.type === 'continuous' || currentItem?.type === 'speech') && audio && audio.duration) {
             const rect = e.currentTarget.getBoundingClientRect();
             const clickPosition = (e.clientX - rect.left) / rect.width;
             const newTime = clickPosition * audio.duration;
@@ -239,12 +282,12 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     const currentItem = playlist[currentIndex];
     const audio = audioRef.current;
     
-    // For speech items, use the audio's duration and current time
+    // For continuous and speech items, use the audio's duration and current time
     // For pause items, use static duration (we don't need real-time progress for pauses)
     let currentItemDuration = 0;
     let currentItemProgress = 0;
     
-    if (currentItem?.type === 'speech' && audio && audio.duration) {
+    if ((currentItem?.type === 'continuous' || currentItem?.type === 'speech') && audio && audio.duration) {
         currentItemDuration = audio.duration;
         currentItemProgress = currentTime; // Use state value instead of audio.currentTime
     } else if (currentItem?.type === 'pause' && currentItem.duration) {
@@ -295,23 +338,29 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
                         
                         {/* Play Controls */}
                         <div style={styles.playControls}>
-                            <button 
-                                onClick={handlePrevious} 
-                                style={{...styles.controlButton, ...styles.secondaryButton}}
-                                disabled={currentIndex === 0}
-                            >
-                                <SkipBack size={20} />
-                            </button>
+                            {/* Only show skip buttons for legacy segmented playlists */}
+                            {currentItem?.type !== 'continuous' && (
+                                <button 
+                                    onClick={handlePrevious} 
+                                    style={{...styles.controlButton, ...styles.secondaryButton}}
+                                    disabled={currentIndex === 0}
+                                >
+                                    <SkipBack size={20} />
+                                </button>
+                            )}
                             <button onClick={togglePlayPause} style={{...styles.controlButton, ...styles.primaryButton}}>
                                 {isPlaying && !isPaused ? <Pause size={24} /> : <Play size={24} />}
                             </button>
-                            <button 
-                                onClick={handleNext} 
-                                style={{...styles.controlButton, ...styles.secondaryButton}}
-                                disabled={currentIndex >= playlist.length - 1}
-                            >
-                                <SkipForward size={20} />
-                            </button>
+                            {/* Only show skip buttons for legacy segmented playlists */}
+                            {currentItem?.type !== 'continuous' && (
+                                <button 
+                                    onClick={handleNext} 
+                                    style={{...styles.controlButton, ...styles.secondaryButton}}
+                                    disabled={currentIndex >= playlist.length - 1}
+                                >
+                                    <SkipForward size={20} />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

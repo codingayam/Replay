@@ -6,9 +6,14 @@ import multer from 'multer';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Replicate from 'replicate';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+
+const execAsync = promisify(exec);
 
 // Load environment variables
 dotenv.config();
@@ -127,10 +132,12 @@ app.get('/api/notes', requireAuth(), async (req, res) => {
       imageUrl: note.image_url,
       audioUrl: note.audio_url,
       originalCaption: note.original_caption,
+      aiImageDescription: note.ai_image_description,
       // Remove the snake_case versions
       image_url: undefined,
       audio_url: undefined,
-      original_caption: undefined
+      original_caption: undefined,
+      ai_image_description: undefined
     }));
 
     res.json({ notes: transformedNotes });
@@ -174,10 +181,12 @@ app.get('/api/notes/date-range', requireAuth(), async (req, res) => {
       imageUrl: note.image_url,
       audioUrl: note.audio_url,
       originalCaption: note.original_caption,
+      aiImageDescription: note.ai_image_description,
       // Remove the snake_case versions
       image_url: undefined,
       audio_url: undefined,
-      original_caption: undefined
+      original_caption: undefined,
+      ai_image_description: undefined
     }));
 
     res.json({ notes: transformedNotes });
@@ -363,68 +372,131 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
       .from('images')
       .createSignedUrl(`${userId}/${fileName}`, 3600 * 24 * 365); // 1 year
 
-    // Enhance caption and generate title using Gemini
+    // Enhanced AI processing with Gemini Vision integration
+    let aiImageDescription = '';
     let enhancedTranscript = caption || 'No caption provided';
     let title = 'Photo Note';
     let categories = [];
 
     try {
-      if (caption) {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      
+      // Stage 1: Vision Analysis - Analyze the image directly
+      try {
+        console.log('🔍 Starting Gemini Vision analysis...');
         
-        // Generate enhanced description
-        const enhancePrompt = `Describe this photo alongside the ${caption}`;
-        const enhanceResult = await model.generateContent(enhancePrompt);
-        enhancedTranscript = enhanceResult.response.text();
-
-        // Generate title
-        const titlePrompt = `Create a short, meaningful title (max 50 characters) for this photo description: "${enhancedTranscript}". Return only the title, no other text.`;
-        const titleResult = await model.generateContent(titlePrompt);
-        title = titleResult.response.text().substring(0, 50);
-
-        // Generate categories from caption and enhanced description
-        try {
-          const categoryResult = await model.generateContent(
-            `Analyze this photo note and determine which categories apply: "${enhancedTranscript}".
-            
-            Categories:
-            - "ideas": Content that represents thoughts, concepts, plans, solutions, creative insights, or intellectual reflections
-            - "feelings": Content that represents emotions, emotional experiences, mood, personal reactions, or emotional processing
-            
-            A note can have both categories if it contains both ideas and emotional content.
-            
-            Respond with ONLY a JSON array containing the applicable categories. Examples:
-            ["ideas"] - if only ideas/thoughts
-            ["feelings"] - if only emotions/feelings  
-            ["ideas", "feelings"] - if both are present
-            
-            Return only the JSON array, no other text.`
-          );
-          
-          const categoryText = categoryResult.response.text().trim();
-          try {
-            const parsedCategories = JSON.parse(categoryText);
-            if (Array.isArray(parsedCategories)) {
-              // Validate that all categories are valid
-              const validCategories = parsedCategories.filter(cat => 
-                cat === 'ideas' || cat === 'feelings'
-              );
-              if (validCategories.length > 0) {
-                categories = validCategories;
+        // Convert image buffer to base64 for Gemini Vision
+        const imageBase64 = req.file.buffer.toString('base64');
+        
+        // Vision analysis prompt
+        const visionPrompt = `Analyze this image in detail. Describe what you see including: objects, people, setting, colors, lighting, mood, and any notable details. Provide a comprehensive but concise description in 1-3 sentences. Focus on elements that would be meaningful for personal reflection or journaling.`;
+        
+        const visionResult = await Promise.race([
+          model.generateContent([
+            visionPrompt,
+            {
+              inlineData: {
+                data: imageBase64,
+                mimeType: req.file.mimetype
               }
             }
-          } catch (parseError) {
-            console.error('Category parsing error:', parseError);
-          }
-        } catch (categoryError) {
-          console.error('Category generation error:', categoryError);
+          ]),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Vision analysis timeout')), 30000)
+          )
+        ]);
+        
+        aiImageDescription = visionResult.response.text().trim();
+        console.log('✅ Vision analysis completed:', aiImageDescription.substring(0, 100) + '...');
+        
+      } catch (visionError) {
+        console.error('❌ Vision analysis failed:', visionError.message);
+        // Continue without vision analysis - fallback to text-only processing
+      }
+
+      // Stage 2: Caption Combination - Merge user caption with AI image description
+      if (aiImageDescription && caption) {
+        // Both user caption and AI description available
+        enhancedTranscript = `${caption} [AI_ANALYSIS: ${aiImageDescription}]`;
+      } else if (aiImageDescription && !caption) {
+        // Only AI description available (user provided no caption)
+        enhancedTranscript = `[AI_ANALYSIS: ${aiImageDescription}]`;
+      } else if (caption && !aiImageDescription) {
+        // Only user caption available (vision analysis failed)
+        enhancedTranscript = caption;
+      }
+      // If neither available, keep default 'No caption provided'
+
+      // Ensure combined caption doesn't exceed 1000 characters
+      if (enhancedTranscript.length > 1000) {
+        // Truncate AI description to fit within limit
+        if (caption && aiImageDescription) {
+          const availableSpace = 1000 - caption.length - '[AI_ANALYSIS: ]'.length;
+          const truncatedAI = aiImageDescription.substring(0, Math.max(0, availableSpace));
+          enhancedTranscript = `${caption} [AI_ANALYSIS: ${truncatedAI}]`;
+        } else {
+          enhancedTranscript = enhancedTranscript.substring(0, 1000);
         }
       }
+
+      console.log('📝 Combined caption created:', enhancedTranscript.substring(0, 100) + '...');
+
+      // Stage 3: Title Generation - Generate title from combined caption
+      try {
+        const titlePrompt = `Create a short, meaningful title (max 50 characters) for this photo description: "${enhancedTranscript}". Return only the title, no other text.`;
+        const titleResult = await model.generateContent(titlePrompt);
+        title = titleResult.response.text().trim().substring(0, 50);
+      } catch (titleError) {
+        console.error('Title generation error:', titleError);
+        title = 'Photo Note';
+      }
+
+      // Stage 4: Categorization - Generate categories from combined caption
+      try {
+        const categoryResult = await model.generateContent(
+          `Analyze this photo note and determine which categories apply: "${enhancedTranscript}".
+          
+          Categories:
+          - "ideas": Content that represents thoughts, concepts, plans, solutions, creative insights, or intellectual reflections
+          - "feelings": Content that represents emotions, emotional experiences, mood, personal reactions, or emotional processing
+          
+          A note can have both categories if it contains both ideas and emotional content.
+          
+          Respond with ONLY a JSON array containing the applicable categories. Examples:
+          ["ideas"] - if only ideas/thoughts
+          ["feelings"] - if only emotions/feelings  
+          ["ideas", "feelings"] - if both are present
+          
+          Return only the JSON array, no other text.`
+        );
+        
+        const categoryText = categoryResult.response.text().trim();
+        try {
+          const parsedCategories = JSON.parse(categoryText);
+          if (Array.isArray(parsedCategories)) {
+            // Validate that all categories are valid
+            const validCategories = parsedCategories.filter(cat => 
+              cat === 'ideas' || cat === 'feelings'
+            );
+            if (validCategories.length > 0) {
+              categories = validCategories;
+            }
+          }
+        } catch (parseError) {
+          console.error('Category parsing error:', parseError);
+        }
+      } catch (categoryError) {
+        console.error('Category generation error:', categoryError);
+      }
+
     } catch (aiError) {
       console.error('AI processing error:', aiError);
+      // Fallback: use original caption or default
+      enhancedTranscript = caption || 'Photo uploaded successfully';
+      title = 'Photo Note';
     }
 
-    // Create note record
+    // Create note record with new ai_image_description field
     const { data: noteData, error: noteError } = await supabase
       .from('notes')
       .insert([{
@@ -436,7 +508,8 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
         type: 'photo',
         date: date || new Date().toISOString(),
         image_url: urlData?.signedUrl || `${userId}/${fileName}`,
-        original_caption: caption
+        original_caption: caption,
+        ai_image_description: aiImageDescription || null
       }])
       .select()
       .single();
@@ -802,9 +875,19 @@ app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
     try {
       const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
       
-      const experiencesText = notes.map(note => 
-        `${note.date}: ${note.title}\n${note.transcript}`
-      ).join('\n\n---\n\n');
+      const experiencesText = notes.map(note => {
+        // For photo notes, construct combined caption from separate fields for meditation generation
+        let noteContent = note.transcript;
+        if (note.type === 'photo' && note.original_caption && note.ai_image_description) {
+          noteContent = `${note.original_caption} [AI_ANALYSIS: ${note.ai_image_description}]`;
+        } else if (note.type === 'photo' && note.original_caption && !note.ai_image_description) {
+          noteContent = note.original_caption;
+        } else if (note.type === 'photo' && !note.original_caption && note.ai_image_description) {
+          noteContent = `[AI_ANALYSIS: ${note.ai_image_description}]`;
+        }
+        // For audio notes, use transcript as is
+        return `${note.date}: ${note.title}\n${noteContent}`;
+      }).join('\n\n---\n\n');
 
       const profileContext = profile ? `
         User's name: ${profile.name || 'User'}
@@ -884,9 +967,19 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
     try {
       const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
       
-      const experiencesText = notes.map(note => 
-        `${note.date}: ${note.title}\n${note.transcript}`
-      ).join('\n\n---\n\n');
+      const experiencesText = notes.map(note => {
+        // For photo notes, construct combined caption from separate fields for meditation generation
+        let noteContent = note.transcript;
+        if (note.type === 'photo' && note.original_caption && note.ai_image_description) {
+          noteContent = `${note.original_caption} [AI_ANALYSIS: ${note.ai_image_description}]`;
+        } else if (note.type === 'photo' && note.original_caption && !note.ai_image_description) {
+          noteContent = note.original_caption;
+        } else if (note.type === 'photo' && !note.original_caption && note.ai_image_description) {
+          noteContent = `[AI_ANALYSIS: ${note.ai_image_description}]`;
+        }
+        // For audio notes, use transcript as is
+        return `${note.date}: ${note.title}\n${noteContent}`;
+      }).join('\n\n---\n\n');
 
       const profileContext = profile ? `
         User's name: ${profile.name || 'User'}
@@ -961,98 +1054,163 @@ Script Length: ${script.length} characters
         console.error('Failed to save meditation script log:', logError);
       }
 
-      // Generate TTS for meditation segments
+      // Generate TTS for meditation segments and create continuous audio file
       const segments = script.split(/\[PAUSE=(\d+)s\]/);
-      const playlist = [];
-
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i].trim();
-        
-        if (segment && isNaN(segment)) {
-          // This is a speech segment, generate TTS
-          try {
-            console.log(`🔊 Generating TTS for segment ${playlist.length}: "${segment.substring(0, 100)}${segment.length > 100 ? '...' : ''}"`);
-            
-            const replicateInput = {
-              text: segment,
-              voice: "af_nicole",
-              speed: 0.7
-            };
-            
-            console.log('📤 Replicate API call:', {
-              model: "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
-              input: replicateInput
-            });
-            
-            const output = await replicate.run(
-              "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
-              { input: replicateInput }
-            );
-
-            // Get the audio URL from the response
-            const audioUrl = output.url().toString();
-            console.log('📥 Replicate API response:', { audioUrl });
-            
-            // Upload TTS audio to Supabase Storage
-            const audioResponse = await fetch(audioUrl);
-            const arrayBuffer = await audioResponse.arrayBuffer();
-            const audioBuffer = Buffer.from(arrayBuffer);
-            
-            const audioFileName = `${meditationId}-segment-${playlist.length}.wav`;
-            const { data: audioUpload, error: audioError } = await supabase.storage
-              .from('meditations')
-              .upload(`${userId}/${audioFileName}`, audioBuffer, {
-                contentType: 'audio/wav',
-                upsert: false
-              });
-
-            if (!audioError) {
-              const { data: urlData } = await supabase.storage
-                .from('meditations')
-                .createSignedUrl(`${userId}/${audioFileName}`, 3600 * 24 * 30); // 30 days
-
-              console.log(`✅ Audio uploaded successfully: ${audioFileName}`);
-              playlist.push({
-                type: 'speech',
-                audioUrl: urlData?.signedUrl || `${userId}/${audioFileName}`,
-                duration: Math.ceil(segment.length / 10) // Rough estimate: 10 characters per second
-              });
-            } else {
-              console.error('❌ Audio upload error:', audioError);
-              // Fallback: store without audio - frontend will skip segments without audioUrl
-              playlist.push({
-                type: 'speech',
-                duration: Math.ceil(segment.length / 10)
-              });
-            }
-
-          } catch (ttsError) {
-            console.error('❌ TTS generation failed for segment:', ttsError);
-            console.error('Segment text:', segment.substring(0, 200));
-            // Fallback: store without audio - frontend will skip segments without audioUrl
-            playlist.push({
-              type: 'speech',
-              duration: Math.ceil(segment.length / 10)
-            });
-          }
-        } else if (!isNaN(segment)) {
-          // This is a pause duration
-          const pauseDuration = parseInt(segment);
-          console.log(`⏸️ Adding pause: ${pauseDuration} seconds`);
-          playlist.push({
-            type: 'pause',
-            duration: pauseDuration
-          });
-        }
+      const tempAudioFiles = [];
+      const tempDir = path.join(__dirname, 'temp', meditationId);
+      
+      // Create temp directory for processing
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      // Calculate total duration with robust error handling
+      // Declare playlist variable in proper scope
+      let playlist = null;
+
+      try {
+        // Process all segments and create individual audio files
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i].trim();
+          
+          if (segment && isNaN(segment)) {
+            // This is a speech segment, generate TTS
+            try {
+              console.log(`🔊 Generating TTS for segment ${i}: "${segment.substring(0, 100)}${segment.length > 100 ? '...' : ''}"`);
+              
+              const replicateInput = {
+                text: segment,
+                voice: "af_nicole",
+                speed: 0.7
+              };
+              
+              console.log('📤 Replicate API call:', {
+                model: "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+                input: replicateInput
+              });
+              
+              const output = await replicate.run(
+                "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+                { input: replicateInput }
+              );
+
+              // Get the audio URL from the response
+              const audioUrl = output.url().toString();
+              console.log('📥 Replicate API response:', { audioUrl });
+              
+              // Download TTS audio to temp file
+              const audioResponse = await fetch(audioUrl);
+              const arrayBuffer = await audioResponse.arrayBuffer();
+              const audioBuffer = Buffer.from(arrayBuffer);
+              
+              const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
+              fs.writeFileSync(tempFileName, audioBuffer);
+              tempAudioFiles.push(tempFileName);
+              
+              console.log(`✅ TTS segment saved: ${tempFileName}`);
+
+            } catch (ttsError) {
+              console.error('❌ TTS generation failed for segment:', ttsError);
+              console.error('Segment text:', segment.substring(0, 200));
+              // Create a very short silence file as fallback
+              const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
+              await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t 0.1 -c:a pcm_s16le "${tempFileName}"`);
+              tempAudioFiles.push(tempFileName);
+            }
+          } else if (!isNaN(segment)) {
+            // This is a pause duration, create silent audio
+            const pauseDuration = parseInt(segment);
+            console.log(`⏸️ Creating silence: ${pauseDuration} seconds`);
+            
+            const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
+            await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+            tempAudioFiles.push(tempFileName);
+            
+            console.log(`✅ Silence segment created: ${tempFileName}`);
+          }
+        }
+
+        // Create FFmpeg concat file list
+        const concatListPath = path.join(tempDir, 'concat_list.txt');
+        const concatList = tempAudioFiles.map(file => `file '${file}'`).join('\n');
+        fs.writeFileSync(concatListPath, concatList);
+        
+        // Concatenate all audio files into one continuous file
+        const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
+        console.log('🎵 Concatenating audio segments...');
+        
+        await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`);
+        
+        console.log('✅ Audio concatenation complete');
+        
+        // Upload the final continuous audio file to Supabase
+        const finalAudioBuffer = fs.readFileSync(finalAudioPath);
+        const finalAudioFileName = `${meditationId}-complete.wav`;
+        
+        const { data: audioUpload, error: audioError } = await supabase.storage
+          .from('meditations')
+          .upload(`${userId}/${finalAudioFileName}`, finalAudioBuffer, {
+            contentType: 'audio/wav',
+            upsert: false
+          });
+
+        let audioUrl = null;
+        if (!audioError) {
+          const { data: urlData } = await supabase.storage
+            .from('meditations')
+            .createSignedUrl(`${userId}/${finalAudioFileName}`, 3600 * 24 * 30); // 30 days
+          
+          audioUrl = urlData?.signedUrl || `${userId}/${finalAudioFileName}`;
+          console.log(`✅ Complete meditation audio uploaded: ${finalAudioFileName}`);
+        } else {
+          console.error('❌ Final audio upload error:', audioError);
+        }
+        
+        // Create simplified playlist with single continuous audio
+        playlist = [{
+          type: 'continuous',
+          audioUrl: audioUrl,
+          duration: 0 // Will be calculated from actual audio duration
+        }];
+
+        // Clean up temp files
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          console.log('🗑️ Temp files cleaned up');
+        } catch (cleanupError) {
+          console.error('⚠️ Temp file cleanup failed:', cleanupError);
+        }
+
+      } catch (processingError) {
+        console.error('❌ Audio processing failed:', processingError);
+        // Create fallback playlist for error cases
+        playlist = [{
+          type: 'continuous',
+          audioUrl: null,
+          duration: 0
+        }];
+        // Clean up temp files on error
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch (cleanupError) {
+          console.error('⚠️ Temp file cleanup failed:', cleanupError);
+        }
+        // Don't throw error - allow meditation to be saved with empty playlist
+        console.log('⚠️ Continuing with fallback playlist due to audio processing error');
+      }
+
+      // Calculate total duration from the original segments for database storage
       let totalDuration = 0;
-      if (playlist && playlist.length > 0) {
-        totalDuration = playlist.reduce((sum, item) => {
-          const duration = item.duration || 0; // Default to 0 if undefined
-          return sum + (typeof duration === 'number' ? duration : 0);
-        }, 0);
+      const originalSegments = script.split(/\[PAUSE=(\d+)s\]/);
+      
+      for (let i = 0; i < originalSegments.length; i++) {
+        const segment = originalSegments[i].trim();
+        if (segment && isNaN(segment)) {
+          // Speech segment - estimate 10 characters per second
+          totalDuration += Math.ceil(segment.length / 10);
+        } else if (!isNaN(segment)) {
+          // Pause segment
+          totalDuration += parseInt(segment);
+        }
       }
 
       // Ensure we have a minimum valid duration (fallback to requested duration in seconds)
@@ -1066,10 +1224,19 @@ Script Length: ${script.length} characters
       }
       
       console.log('🎵 Meditation generation complete:');
-      console.log(`- Total segments: ${playlist.length}`);
-      console.log(`- Speech segments: ${playlist.filter(item => item.type === 'speech').length}`);
-      console.log(`- Pause segments: ${playlist.filter(item => item.type === 'pause').length}`);
-      console.log(`- Total duration: ${totalDuration} seconds`);
+      console.log(`- Continuous audio file created`);
+      console.log(`- Original segments processed: ${originalSegments.length}`);
+      console.log(`- Estimated total duration: ${totalDuration} seconds`);
+
+      // Ensure playlist is defined before database insertion
+      if (!playlist) {
+        console.warn('⚠️ Playlist is null, creating fallback');
+        playlist = [{
+          type: 'continuous',
+          audioUrl: null,
+          duration: 0
+        }];
+      }
 
       // Save meditation to database
       const { data: meditation, error: saveError } = await supabase
