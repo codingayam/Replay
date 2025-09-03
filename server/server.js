@@ -1046,8 +1046,24 @@ Script Length: ${script.length} characters
         }
       }
 
-      // Calculate total duration
-      const totalDuration = playlist.reduce((sum, item) => sum + item.duration, 0);
+      // Calculate total duration with robust error handling
+      let totalDuration = 0;
+      if (playlist && playlist.length > 0) {
+        totalDuration = playlist.reduce((sum, item) => {
+          const duration = item.duration || 0; // Default to 0 if undefined
+          return sum + (typeof duration === 'number' ? duration : 0);
+        }, 0);
+      }
+
+      // Ensure we have a minimum valid duration (fallback to requested duration in seconds)
+      if (totalDuration <= 0 && duration) {
+        totalDuration = duration * 60; // Convert minutes to seconds
+      }
+
+      // Final fallback if everything fails
+      if (totalDuration <= 0) {
+        totalDuration = 300; // Default 5 minutes in seconds
+      }
       
       console.log('🎵 Meditation generation complete:');
       console.log(`- Total segments: ${playlist.length}`);
@@ -1071,6 +1087,12 @@ Script Length: ${script.length} characters
         }])
         .select()
         .single();
+
+      // Validate required fields before database insert
+      if (!totalDuration || totalDuration <= 0) {
+        console.error('❌ Invalid duration calculated:', totalDuration);
+        return res.status(500).json({ error: 'Failed to calculate meditation duration' });
+      }
 
       if (saveError) {
         console.error('Error saving meditation:', saveError);

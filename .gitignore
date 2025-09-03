@@ -119,3 +119,9 @@ Thumbs.db
 .cache
 .parcel-cache
 .vercel
+
+# Claude Code working directories
+.claude/agents/
+.claude/docs/
+.claude/tasks/
+.playwright-mcp/
