@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { AuthProvider, SignedIn, SignedOut } from './contexts/AuthContext';
+import { JobProvider } from './contexts/JobContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import ExperiencesPage from './pages/ExperiencesPage';
 import ReflectionsPage from './pages/ReflectionsPage';
 import ProfilePage from './pages/ProfilePage';
@@ -8,11 +10,15 @@ import SignUpPage from './pages/SignUpPage';
 import OnboardingPage from './pages/OnboardingPage';
 import Header from './components/Header';
 import BottomTabNavigation from './components/BottomTabNavigation';
+import BackgroundJobIndicator from './components/BackgroundJobIndicator';
+import NotificationContainer from './components/NotificationContainer';
 
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <NotificationProvider>
+        <JobProvider>
+          <Router>
         <Routes>
           {/* Public Routes - Authentication */}
           <Route 
@@ -111,8 +117,10 @@ function App() {
               </>
             } 
           />
-        </Routes>
-      </Router>
+            </Routes>
+          </Router>
+        </JobProvider>
+      </NotificationProvider>
     </AuthProvider>
   );
 }
@@ -121,11 +129,13 @@ function App() {
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <BackgroundJobIndicator />
       <Header />
       <main style={styles.main}>
         {children}
       </main>
       <BottomTabNavigation />
+      <NotificationContainer />
     </>
   );
 }

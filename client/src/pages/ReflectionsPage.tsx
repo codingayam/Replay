@@ -13,6 +13,8 @@ import RecentActivityCalendar from '../components/RecentActivityCalendar';
 import CalendarModal from '../components/CalendarModal';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthenticatedApi } from '../utils/api';
+import { useJobs } from '../contexts/JobContext';
+import { useNotifications } from '../contexts/NotificationContext';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -35,6 +37,8 @@ const ReflectionsPage: React.FC = () => {
     const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
     
     const api = useAuthenticatedApi();
+    const { createJob } = useJobs();
+    const { showNotification } = useNotifications();
     
     // Stats state
     const [dayStreak, setDayStreak] = useState(0);
@@ -224,6 +228,50 @@ const ReflectionsPage: React.FC = () => {
             alert('Failed to generate meditation. Please try again.');
             setIsGeneratingMeditation(false);
             setIsMeditationApiComplete(false);
+        }
+    };
+
+    const handleRunInBackground = async () => {
+        try {
+            console.log('🔄 Starting background meditation generation...');
+            
+            const jobResponse = await createJob({
+                noteIds: selectedNoteIds,
+                duration: selectedDuration,
+                reflectionType: selectedReflectionType,
+                startDate: selectedStartDate,
+                endDate: selectedEndDate
+            });
+
+            console.log('✅ Background job created:', jobResponse);
+
+            // Show success notification
+            showNotification({
+                type: 'success',
+                title: '🔄 Meditation Generating in Background',
+                message: `Your ${selectedReflectionType.toLowerCase()} meditation is being created. Continue using the app and you'll be notified when it's ready.`,
+                autoHide: true,
+                duration: 5000
+            });
+
+            // Reset state after starting background job
+            setSelectedReflectionType('Day');
+            setSelectedStartDate('');
+            setSelectedEndDate('');
+            setSelectedDuration(5);
+            setSelectedNoteIds([]);
+            setGeneratedSummary('');
+            setGeneratedPlaylist(null);
+
+        } catch (error: any) {
+            console.error('❌ Failed to start background job:', error);
+            
+            showNotification({
+                type: 'error',
+                title: 'Failed to Start Background Generation',
+                message: error.message || 'Unable to start background meditation generation',
+                autoHide: false
+            });
         }
     };
 
@@ -469,8 +517,11 @@ const ReflectionsPage: React.FC = () => {
             
             <MeditationGeneratingModal
                 isOpen={isGeneratingMeditation}
+                onClose={() => setIsGeneratingMeditation(false)}
                 onComplete={handleMeditationReady}
                 isApiComplete={isMeditationApiComplete}
+                onRunInBackground={handleRunInBackground}
+                showBackgroundOption={true}
             />
             
             {/* Calendar Modal */}
