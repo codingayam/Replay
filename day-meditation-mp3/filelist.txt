@@ -1,0 +1,6 @@
+file 'day1.wav'
+file 'day2.wav'
+file 'day3.wav'
+file 'day4.wav'
+file 'day5.wav'
+file 'day6.wav'

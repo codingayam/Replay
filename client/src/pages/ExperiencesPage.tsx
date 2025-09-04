@@ -225,7 +225,9 @@ const ExperiencesPage: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 <div style={styles.transcript}>
-                                                    <p style={styles.transcriptText}>{note.transcript}</p>
+                                                    <p style={styles.transcriptText}>
+                                                        {note.type === 'photo' ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                                    </p>
                                                 </div>
                                             </div>
                                         )}

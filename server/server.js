@@ -938,10 +938,66 @@ app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
 app.post('/api/meditate', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
-    const { noteIds, duration = 10, title, summary } = req.body;
+    const { noteIds, duration = 10, title, summary, reflectionType } = req.body;
 
     if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
       return res.status(400).json({ error: 'noteIds array is required' });
+    }
+
+    // Handle Day meditation - use pre-recorded audio file
+    if (reflectionType === 'Day') {
+      try {
+        // Generate signed URL for the default day meditation file
+        const { data: urlData, error: urlError } = await supabase.storage
+          .from('meditations')
+          .createSignedUrl('default/day-meditation.wav', 3600 * 24); // 24 hours expiry
+
+        if (urlError) {
+          console.error('Error generating signed URL for day meditation:', urlError);
+          return res.status(500).json({ error: 'Failed to load day meditation' });
+        }
+
+        // Create playlist with the real audio file
+        const defaultPlaylist = [
+          {
+            type: 'speech',
+            audioUrl: urlData.signedUrl,
+            duration: 146000 // 2:26 duration in milliseconds
+          }
+        ];
+
+        // Save to database
+        const { data: savedMeditation, error: saveError } = await supabase
+          .from('meditations')
+          .insert({
+            user_id: userId,
+            title: title || 'Daily Reflection',
+            playlist: defaultPlaylist,
+            note_ids: noteIds,
+            script: 'Pre-recorded daily meditation',
+            duration: 146,
+            summary: summary || 'Daily reflection meditation',
+            time_of_reflection: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (saveError) {
+          console.error('Error saving day meditation:', saveError);
+          return res.status(500).json({ error: 'Failed to save meditation' });
+        }
+
+        console.log('Day meditation created successfully');
+        return res.json({
+          success: true,
+          meditation: savedMeditation,
+          playlist: defaultPlaylist
+        });
+
+      } catch (error) {
+        console.error('Error in day meditation generation:', error);
+        return res.status(500).json({ error: 'Failed to generate day meditation' });
+      }
     }
 
     const meditationId = uuidv4();
@@ -987,21 +1043,64 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
         Life mission: ${profile.mission || 'Not specified'}
       ` : '';
 
-      const scriptPrompt = `
-        You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Create a guided meditation script based on the following information:
+      // Create different prompts based on reflection type
+      const getScriptPrompt = (type) => {
+        const baseInstructions = `
+          You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses.
+          
+          ${profileContext}
+          
+          Experiences:
+          ${experiencesText}
+          
+          Reflection summary: ${summary || 'Based on selected experiences'}
+          
+          Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for rest and recharge.
+          
+          IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
+        `;
+
+        if (type === 'Ideas') {
+          return `You are an experienced facilitator of knowledge - you have tutored the greats and seek to bring out the genius and best in people. You are great at taking raw experiences and converting them into a ${duration}-minute reflection session. Your role is to provide a focused, reflective space for ideas, thoughts and strokes of inspiration. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses whenever appropriate.
+          
+          ${profileContext}
+          
+          Experiences:
+          ${experiencesText}
+          
+          Reflection summary: ${summary || 'Based on selected experiences'}
+
+          Create a guided meditation/reflection specifically focused on creativity, innovation, idea development and consolidation/crystallization. This session should:
+          
+          1. Foster creative thinking and idea synthesis
+          2. Help connect similar and disparate concepts and insights
+          3. Encourage visualization of implementing creative ideas
+          4. Guide toward clarity on next steps and creative actions
+          5. Cultivate an innovative mindset and openness to new possibilities
+          6. Connect ideas to values and mission if possible and also link them to other domains or life in general if possible 
+          7. Consolidate and crystallize strands of thoughts, ideas, and inspirations in an open-ended, divergent way and not be overly restrictive or too convergent or too presumptive in tone or direction.
+          
+          The tone should be encouraging, nurturing and a teeny bit playful.
+
+          Make sure that the opening and closing of the reflection/meditation is appropriate and eases them into the session and also at the closing, leaves them energized and ready to go back to the drawing board or a sense of having digested/internalized the raw thoughts, ideas and inspirations..
+          
+          IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
+        }
         
-        ${profileContext}
+        // Default prompt for Night meditations
+        return `${baseInstructions}
         
-        Experiences:
-        ${experiencesText}
-        
-        Reflection summary: ${summary || 'Based on selected experiences'}
-        
-        Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for rest and recharge.
-        
-        
-        IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
-      `;
+        Create a guided meditation script that integrates their personal profile and experiences. Connect their experiences to their values and mission, highlighting patterns of growth or learning while acknowledging challenges and insights.
+
+        The meditation should:
+        1. Begin with grounding and breathing
+        2. Incorporate insights from their selected experiences
+        3. Connect meaningfully to their personal values and mission
+        4. Include moments of gratitude and intention-setting
+        5. End with gentle return to awareness`;
+      };
+
+      const scriptPrompt = getScriptPrompt(reflectionType);
 
       const result = await model.generateContent(scriptPrompt);
       const script = result.response.text();
@@ -1138,7 +1237,9 @@ Script Length: ${script.length} characters
         const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
         console.log('🎵 Concatenating audio segments...');
         
-        await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`);
+        await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`, {
+          maxBuffer: 10 * 1024 * 1024 // 10MB buffer to handle FFmpeg warnings
+        });
         
         console.log('✅ Audio concatenation complete');
         

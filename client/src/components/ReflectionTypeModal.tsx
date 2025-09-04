@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sun, Moon } from 'lucide-react';
+import { X, Brain, Lightbulb } from 'lucide-react';
 
 interface ReflectionTypeModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelectType: (type: 'Day' | 'Night') => void;
+    onSelectType: (type: 'Meditation' | 'Ideas') => void;
 }
 
 const ReflectionTypeModal: React.FC<ReflectionTypeModalProps> = ({
@@ -48,34 +48,33 @@ const ReflectionTypeModal: React.FC<ReflectionTypeModalProps> = ({
                 <div style={styles.content}>
                     <div style={isMobile ? {...styles.optionsContainer, ...styles.optionsContainerMobile} : styles.optionsContainer}>
                         <button
-                            onClick={() => onSelectType('Day')}
+                            onClick={() => onSelectType('Meditation')}
                             style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
                         >
                             <div style={styles.iconContainer}>
-                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#fef3c7'} : {...styles.iconCircle, backgroundColor: '#fef3c7'}}>
-                                    <Sun size={isMobile ? 24 : 32} color="#f59e0b" />
+                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#dbeafe'} : {...styles.iconCircle, backgroundColor: '#dbeafe'}}>
+                                    <Brain size={isMobile ? 24 : 32} color="#3b82f6" />
                                 </div>
                             </div>
                             <div style={styles.optionContent}>
-                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Day</h3>
-                                <h4 style={isMobile ? {...styles.optionSubtitle, ...styles.optionSubtitleMobile} : styles.optionSubtitle}>Meditation</h4>
-                                <p style={styles.optionDescription}>Morning mindfulness</p>
+                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Meditation</h3>
+                                <p style={styles.optionDescription}>Guided mindfulness sessions</p>
                             </div>
                         </button>
 
                         <button
-                            onClick={() => onSelectType('Night')}
+                            onClick={() => onSelectType('Ideas')}
                             style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
                         >
                             <div style={styles.iconContainer}>
-                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#ddd6fe'} : {...styles.iconCircle, backgroundColor: '#ddd6fe'}}>
-                                    <Moon size={isMobile ? 24 : 32} color="#7c3aed" />
+                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#f3e8ff'} : {...styles.iconCircle, backgroundColor: '#f3e8ff'}}>
+                                    <Lightbulb size={isMobile ? 24 : 32} color="#8b5cf6" />
                                 </div>
                             </div>
                             <div style={styles.optionContent}>
-                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Night</h3>
+                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Ideas</h3>
                                 <h4 style={isMobile ? {...styles.optionSubtitle, ...styles.optionSubtitleMobile} : styles.optionSubtitle}>Reflection</h4>
-                                <p style={styles.optionDescription}>Evening review</p>
+                                <p style={styles.optionDescription}>Creative inspiration</p>
                             </div>
                         </button>
                     </div>

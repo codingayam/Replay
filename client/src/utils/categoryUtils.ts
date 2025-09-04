@@ -1,6 +1,6 @@
 import type { Note } from '../types';
 
-export type Category = 'gratitude' | 'experience' | 'reflection' | 'insight';
+export type Category = 'ideas' | 'feelings';
 
 export interface CategoryInfo {
     name: string;
@@ -9,35 +9,36 @@ export interface CategoryInfo {
 }
 
 export const categoryMap: Record<Category, CategoryInfo> = {
-    gratitude: {
-        name: 'gratitude',
-        color: '#059669',
-        backgroundColor: '#d1fae5',
-    },
-    experience: {
-        name: 'experience',
-        color: '#3b82f6',
-        backgroundColor: '#dbeafe',
-    },
-    reflection: {
-        name: 'reflection',
+    ideas: {
+        name: 'ideas',
         color: '#7c3aed',
         backgroundColor: '#ede9fe',
     },
-    insight: {
-        name: 'insight',
-        color: '#dc2626',
-        backgroundColor: '#fee2e2',
+    feelings: {
+        name: 'feelings',
+        color: '#059669',
+        backgroundColor: '#d1fae5',
     },
 };
 
-// Note: Categorization is now handled by AI in the backend
-// This function is kept for backward compatibility with existing notes
-export function categorizeNote(note: Note): Category {
-    // Use AI-generated category if available, otherwise default to experience
-    return note.category || 'experience';
+// Get categories from note, handling both old single category format and new array format
+export function getNoteCategories(note: Note): Category[] {
+    return note.category || [];
 }
 
+// Check if note has a specific category
+export function noteHasCategory(note: Note, category: Category): boolean {
+    const categories = getNoteCategories(note);
+    return categories.includes(category);
+}
+
+// Get category info for a specific category
 export function getCategoryInfo(category: Category): CategoryInfo {
     return categoryMap[category];
+}
+
+// Get all category info objects for a note's categories
+export function getNoteCategoryInfos(note: Note): CategoryInfo[] {
+    const categories = getNoteCategories(note);
+    return categories.map(category => getCategoryInfo(category));
 }

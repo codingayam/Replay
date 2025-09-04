@@ -13,22 +13,30 @@ interface NoteCardProps {
 
 const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTranscript }) => {
     const [showDetails, setShowDetails] = useState(false);
-    const [showOriginalCaption, setShowOriginalCaption] = useState(false);
     const [isEditingTranscript, setIsEditingTranscript] = useState(false);
     const [editedTranscript, setEditedTranscript] = useState(note.transcript);
 
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
-    const category = note.category || 'experience';
+    const category = Array.isArray(note.category) && note.category.length > 0 ? note.category[0] : 'experience';
+
+    // Debug logging for photo notes
+    if (isPhotoNote) {
+        console.log('NoteCard DEBUG - Photo Note:', {
+            title: note.title,
+            type: note.type,
+            transcript: note.transcript,
+            originalCaption: note.originalCaption,
+            aiImageDescription: note.aiImageDescription,
+            hasOriginalCaption: !!note.originalCaption
+        });
+    }
 
     // Get emoji based on category
     const getCategoryEmoji = (category: string) => {
         switch (category) {
-            case 'gratitude': return '🌅';
             case 'experience': return '🍽️';
-            case 'reflection': return '🌙';
-            case 'insight': return '💡';
-            default: return '📝';
+            case 'ideas': return '💡';
         }
     };
 
@@ -97,7 +105,9 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                                     autoFocus
                                 />
                             ) : (
-                                <p style={styles.transcriptText}>{note.transcript}</p>
+                                <p style={styles.transcriptText}>
+                                    {isPhotoNote ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                </p>
                             )}
                             {isAudioNote && onUpdateTranscript && (
                                 <div style={styles.transcriptControls}>
@@ -139,24 +149,6 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                                 </div>
                             )}
                         </div>
-                        {isPhotoNote && note.originalCaption && (
-                            <div style={styles.originalCaptionSection}>
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowOriginalCaption(!showOriginalCaption);
-                                    }}
-                                    style={styles.originalCaptionToggle}
-                                >
-                                    {showOriginalCaption ? 'Hide' : 'Show'} Original Caption
-                                </button>
-                                {showOriginalCaption && (
-                                    <div style={styles.originalCaption}>
-                                        <p style={styles.originalCaptionText}>"{note.originalCaption}"</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                     
                     {/* Controls */}
@@ -308,34 +300,6 @@ const styles = {
     cancelButton: {
         borderColor: '#999',
         color: '#999',
-    },
-    originalCaptionSection: {
-        marginTop: '0.75rem',
-        paddingTop: '0.75rem',
-        borderTop: '1px solid #eee',
-    },
-    originalCaptionToggle: {
-        background: 'none',
-        border: 'none',
-        color: 'var(--primary-color)',
-        cursor: 'pointer',
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        padding: 0,
-        textDecoration: 'underline',
-    },
-    originalCaption: {
-        marginTop: '0.5rem',
-        padding: '0.5rem',
-        backgroundColor: '#fff',
-        borderRadius: '4px',
-        border: '1px solid #e0e0e0',
-    },
-    originalCaptionText: {
-        margin: 0,
-        fontSize: '0.85rem',
-        color: '#555',
-        fontStyle: 'italic',
     },
     controls: {
         display: 'flex',

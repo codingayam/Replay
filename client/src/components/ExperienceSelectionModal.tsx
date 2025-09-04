@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, CheckCircle, Circle } from 'lucide-react';
 import type { Note } from '../types';
 import { useAuthenticatedApi } from '../utils/api';
+import { noteHasCategory } from '../utils/categoryUtils';
 
 interface ExperienceSelectionModalProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface ExperienceSelectionModalProps {
     startDate: string;
     endDate: string;
     calculateRecommendedDuration: (experienceCount: number) => number;
+    reflectionType?: 'Day' | 'Night' | 'Ideas';
 }
 
 interface NotesResponse {
@@ -23,6 +25,7 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     startDate,
     endDate,
     calculateRecommendedDuration,
+    reflectionType,
 }) => {
     const [notesData, setNotesData] = useState<NotesResponse | null>(null);
     const api = useAuthenticatedApi();
@@ -65,7 +68,14 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
             const filteredAvailableNotes = notes.filter(note => {
                 const noteDate = new Date(note.date);
                 const noteDateString = getLocalDateString(noteDate);
-                return noteDateString >= startDate && noteDateString <= endDate;
+                const dateInRange = noteDateString >= startDate && noteDateString <= endDate;
+                
+                // For Ideas reflection, only show notes categorized as 'ideas'
+                if (reflectionType === 'Ideas') {
+                    return dateInRange && noteHasCategory(note, 'ideas');
+                }
+                
+                return dateInRange;
             });
             
             setNotesData({
@@ -80,7 +90,7 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
         } finally {
             setIsLoading(false);
         }
-    }, [startDate, endDate]);
+    }, [startDate, endDate, reflectionType]);
 
     useEffect(() => {
         if (isOpen && startDate && endDate) {
@@ -174,10 +184,17 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
 
                             {notesData.availableNotes.length === 0 ? (
                                 <div style={styles.emptyState}>
-                                    <div style={styles.emptyIcon}>📅</div>
-                                    <h3 style={styles.emptyTitle}>No experiences found</h3>
+                                    <div style={styles.emptyIcon}>
+                                        {reflectionType === 'Ideas' ? '💡' : '📅'}
+                                    </div>
+                                    <h3 style={styles.emptyTitle}>
+                                        {reflectionType === 'Ideas' ? 'No ideas found' : 'No experiences found'}
+                                    </h3>
                                     <p style={styles.emptyText}>
-                                        You don't have any recorded experiences for the selected date range.
+                                        {reflectionType === 'Ideas' 
+                                            ? 'You don\'t have any ideas-categorized experiences for the selected date range. Try selecting a different time period or record some creative thoughts first.'
+                                            : 'You don\'t have any recorded experiences for the selected date range.'
+                                        }
                                     </p>
                                 </div>
                             ) : (
@@ -225,10 +242,14 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                                     </div>
                                                     <div style={styles.experienceContent}>
                                                         <p style={styles.experienceTranscript}>
-                                                            {(note.transcript || '').length > 150
-                                                                ? `${(note.transcript || '').substring(0, 150)}...`
-                                                                : (note.transcript || '')
-                                                            }
+                                                            {(() => {
+                                                                const displayText = note.type === 'photo' 
+                                                                    ? (note.originalCaption || 'No caption provided') 
+                                                                    : (note.transcript || '');
+                                                                return displayText.length > 150
+                                                                    ? `${displayText.substring(0, 150)}...`
+                                                                    : displayText;
+                                                            })()}
                                                         </p>
                                                     </div>
                                                 </div>

@@ -104,7 +104,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
                             rows={4}
                         />
                         <small style={styles.hint}>
-                            AI will enhance your caption with additional context about the photo
+                            AI will analyze your photo and enhance your caption with visual details and context
                         </small>
                     </div>
 
@@ -118,7 +118,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
                             }}
                         >
                             <Save size={16} />
-                            {isUploading ? 'Uploading...' : 'Upload Photo'}
+                            {isUploading ? 'Analyzing image and generating description...' : 'Upload Photo'}
                         </button>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import MeditationPlayer from '../components/MeditationPlayer';
 import ReflectionTypeModal from '../components/ReflectionTypeModal';
+import MeditationSubTypeModal from '../components/MeditationSubTypeModal';
 import TimePeriodModal from '../components/TimePeriodModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
 import DurationSelectorModal from '../components/DurationSelectorModal';
@@ -43,6 +44,7 @@ const ReflectionsPage: React.FC = () => {
     
     // New reflection flow state
     const [showReflectionTypeModal, setShowReflectionTypeModal] = useState(false);
+    const [showMeditationSubTypeModal, setShowMeditationSubTypeModal] = useState(false);
     const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
     const [showExperienceModal, setShowExperienceModal] = useState(false);
     const [showDurationModal, setShowDurationModal] = useState(false);
@@ -52,7 +54,7 @@ const ReflectionsPage: React.FC = () => {
     const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     
     // Reflection session data
-    const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night'>('Day');
+    const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night' | 'Ideas'>('Day');
     const [selectedStartDate, setSelectedStartDate] = useState('');
     const [selectedEndDate, setSelectedEndDate] = useState('');
     const [selectedDuration, setSelectedDuration] = useState(5);
@@ -134,9 +136,22 @@ const ReflectionsPage: React.FC = () => {
         setShowReflectionTypeModal(true);
     };
 
-    const handleReflectionTypeSelection = (type: 'Day' | 'Night') => {
-        setSelectedReflectionType(type);
+    const handleReflectionTypeSelection = (type: 'Meditation' | 'Ideas') => {
         setShowReflectionTypeModal(false);
+        
+        if (type === 'Meditation') {
+            // Show meditation sub-type modal
+            setShowMeditationSubTypeModal(true);
+        } else {
+            // For Ideas reflection, set type and continue with time period selection
+            setSelectedReflectionType('Ideas');
+            setShowTimePeriodModal(true);
+        }
+    };
+
+    const handleMeditationSubTypeSelection = (type: 'Day' | 'Night') => {
+        setSelectedReflectionType(type);
+        setShowMeditationSubTypeModal(false);
         
         if (type === 'Day') {
             // For Day meditation, go straight to playback
@@ -194,7 +209,8 @@ const ReflectionsPage: React.FC = () => {
             const response = await api.post('/meditate', {
                 noteIds: selectedNoteIds,
                 duration: selectedDuration,
-                timeOfReflection: selectedReflectionType
+                timeOfReflection: selectedReflectionType,
+                reflectionType: selectedReflectionType
             });
             
             setGeneratedPlaylist(response.data.playlist);
@@ -400,6 +416,12 @@ const ReflectionsPage: React.FC = () => {
                 onSelectType={handleReflectionTypeSelection}
             />
             
+            <MeditationSubTypeModal
+                isOpen={showMeditationSubTypeModal}
+                onClose={() => setShowMeditationSubTypeModal(false)}
+                onSelectType={handleMeditationSubTypeSelection}
+            />
+            
             <TimePeriodModal
                 isOpen={showTimePeriodModal}
                 onClose={() => setShowTimePeriodModal(false)}
@@ -413,6 +435,7 @@ const ReflectionsPage: React.FC = () => {
                 startDate={selectedStartDate}
                 endDate={selectedEndDate}
                 calculateRecommendedDuration={calculateRecommendedDuration}
+                reflectionType={selectedReflectionType}
             />
             
             <DurationSelectorModal
