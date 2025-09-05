@@ -53,7 +53,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
   const [activeJobs, setActiveJobs] = useState<MeditationJob[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
-  const { getToken } = useAuth();
+  const { getToken, user, loading } = useAuth();
   const { showJobCompletion, showJobError } = useJobNotifications();
   
   // Track previous job statuses to detect changes
@@ -77,8 +77,8 @@ export function JobProvider({ children }: { children: ReactNode }) {
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {
-        console.error('Authentication failed - redirecting to login');
-        window.location.href = '/login';
+        console.error('Authentication failed - request unauthorized');
+        // Don't automatically redirect, let AuthContext handle authentication state
       }
       throw error;
     }
@@ -252,8 +252,19 @@ export function JobProvider({ children }: { children: ReactNode }) {
     }
   }, [isPolling, pollingInterval]);
 
-  // Session recovery - check for active jobs on mount
+  // Session recovery - check for active jobs on mount (only when authenticated)
   useEffect(() => {
+    // Wait for auth loading to complete and ensure user is authenticated
+    if (loading) {
+      console.log('⏳ Auth still loading, waiting...');
+      return;
+    }
+
+    if (!user) {
+      console.log('👤 No user authenticated, skipping job recovery');
+      return;
+    }
+
     const checkForActiveJobs = async () => {
       try {
         console.log('🔍 Checking for existing active jobs...');
@@ -287,7 +298,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
     return () => {
       stopPolling();
     };
-  }, [makeAuthenticatedRequest]); // Add makeAuthenticatedRequest to dependencies
+  }, [makeAuthenticatedRequest, user, loading]); // Add user and loading as dependencies
 
   // Cleanup interval on unmount
   useEffect(() => {

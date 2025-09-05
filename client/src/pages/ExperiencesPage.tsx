@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlayCircle, Trash2, Share2, Image as ImageIcon, User } from 'lucide-react';
+import { PlayCircle, Trash2, Share2, Image as ImageIcon, User, X, Play, Pause } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
 import SearchBar from '../components/SearchBar';
@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
     const [currentAudio, setCurrentAudio] = useState<string | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -96,18 +97,22 @@ const ExperiencesPage: React.FC = () => {
     };
 
     const handlePlayNote = async (audioUrl: string) => {
+        console.log('🎵 handlePlayNote called with audioUrl:', audioUrl);
         if (audioUrl && user) {
             try {
                 let signedUrl = '';
                 
                 // Check if this is a Supabase Storage path or server path
                 if (audioUrl.startsWith('/audio/')) {
+                    console.log('🔍 Processing server path:', audioUrl);
                     // Extract the file path from server URL format: /audio/userId/filename
                     const pathParts = audioUrl.split('/');
+                    console.log('📂 Path parts:', pathParts);
                     if (pathParts.length >= 4) {
                         const userId = pathParts[2];
                         const filename = pathParts.slice(3).join('/');
                         const storagePath = `${userId}/${filename}`;
+                        console.log('🗂️ Storage path:', storagePath);
                         
                         // Generate signed URL from Supabase Storage
                         const { data, error } = await supabase.storage
@@ -115,28 +120,50 @@ const ExperiencesPage: React.FC = () => {
                             .createSignedUrl(storagePath, 3600); // 1 hour expiry
                             
                         if (error) {
-                            console.error('Error creating signed URL:', error);
+                            console.error('❌ Error creating signed URL:', error);
                             return;
                         }
                         
                         signedUrl = data.signedUrl;
+                        console.log('✅ Generated signed URL:', signedUrl);
+                    } else {
+                        console.error('❌ Invalid path parts length:', pathParts.length);
                     }
                 } else {
+                    console.log('🌐 Using direct URL:', audioUrl);
                     // If it's already a full URL, use it directly
                     signedUrl = audioUrl;
                 }
                 
+                console.log('🎯 Final signedUrl:', signedUrl);
                 setCurrentAudio(signedUrl);
                 
-                // Update audio source and play
-                if (audioRef.current && signedUrl) {
-                    audioRef.current.src = signedUrl;
-                    audioRef.current.load();
-                    audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+                // Wait for the audio element to be rendered, then set source and play
+                if (signedUrl) {
+                    // Use setTimeout to wait for React to render the audio element
+                    setTimeout(() => {
+                        if (audioRef.current) {
+                            console.log('▶️ Setting audio src and playing');
+                            audioRef.current.src = signedUrl;
+                            audioRef.current.load();
+                            audioRef.current.play()
+                                .then(() => {
+                                    console.log('✅ Audio play succeeded');
+                                    setIsPlaying(true);
+                                })
+                                .catch(e => console.error("❌ Audio play failed:", e));
+                        } else {
+                            console.error('❌ AudioRef still not available after timeout');
+                        }
+                    }, 100); // Wait 100ms for React to render
+                } else {
+                    console.error('❌ No signedUrl available');
                 }
             } catch (error) {
-                console.error('Error preparing audio for playback:', error);
+                console.error('❌ Error preparing audio for playback:', error);
             }
+        } else {
+            console.error('❌ Missing audioUrl or user:', { audioUrl, user: !!user });
         }
     };
 
@@ -187,13 +214,6 @@ const ExperiencesPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            {currentAudio && (
-                <div className="card-enhanced" style={styles.playerContainer}>
-                    <h3 style={styles.playerTitle}>Now Playing Note</h3>
-                    <audio ref={audioRef} controls style={styles.audioPlayer} />
-                </div>
-            )}
-
             {/* Search Bar */}
             <SearchBar
                 onSearch={handleSearch}
@@ -354,30 +374,98 @@ const ExperiencesPage: React.FC = () => {
                 searchQuery={searchQuery}
                 onPlay={handlePlayNote}
             />
+
+            {/* Bottom Audio Player */}
+            {currentAudio && (
+                <div style={styles.bottomPlayerContainer}>
+                    <div style={styles.playerHeader}>
+                        <div style={styles.playerIndicator}>
+                            {isPlaying ? (
+                                <Play size={16} style={{ color: '#3b82f6' }} />
+                            ) : (
+                                <PlayCircle size={16} style={{ color: '#3b82f6' }} />
+                            )}
+                            <span style={styles.playingText}>Playing Note</span>
+                        </div>
+                        <button 
+                            onClick={() => {
+                                setCurrentAudio(null);
+                                setIsPlaying(false);
+                                if (audioRef.current) {
+                                    audioRef.current.pause();
+                                    audioRef.current.src = '';
+                                }
+                            }}
+                            style={styles.closeButton}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    <audio 
+                        ref={audioRef} 
+                        controls 
+                        style={styles.bottomAudioPlayer}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onEnded={() => setIsPlaying(false)}
+                    />
+                </div>
+            )}
         </div>
     );
 };
 
 const styles = {
     container: {
-        paddingBottom: '120px', // Space for FAB and bottom nav
+        paddingBottom: '180px', // Space for FAB, bottom nav, and audio player
         paddingTop: '0.75rem',
         paddingLeft: '1rem',
         paddingRight: '1rem',
     },
-    playerContainer: { 
-        padding: '1.25rem', 
-        marginBottom: '1.5rem',
+    bottomPlayerContainer: {
+        position: 'fixed' as const,
+        bottom: '80px', // Above bottom navigation
+        left: '0',
+        right: '0',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        borderTop: '1px solid #e5e7eb',
+        padding: '12px 16px',
+        zIndex: 1000,
+        boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.1)',
     },
-    playerTitle: {
-        color: 'var(--text-color)',
-        fontSize: '1rem',
-        fontWeight: '600',
-        marginBottom: '0.75rem',
+    playerHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '8px',
     },
-    audioPlayer: {
+    playerIndicator: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
+    closeButton: {
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '4px',
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#6b7280',
+        transition: 'color 0.2s, background-color 0.2s',
+    },
+    playingText: {
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        color: '#3b82f6',
+        fontFamily: 'var(--font-family)',
+    },
+    bottomAudioPlayer: {
         width: '100%',
-        borderRadius: '8px',
+        height: '32px',
     },
     timeline: {
         position: 'relative' as const,

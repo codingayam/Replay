@@ -202,7 +202,7 @@ async function processMeditationJob(job) {
           // Determine voice settings based on reflection type
           const getVoiceSettings = (reflectionType) => {
             if (reflectionType === 'Ideas') {
-              return { voice: "Heart", speed: 1.0 };
+              return { voice: "af_bella", speed: 1.0 };
             }
             // Default for Night and other reflection types
             return { voice: "af_nicole", speed: 0.7 };
@@ -241,7 +241,11 @@ async function processMeditationJob(job) {
         }
       } else if (!isNaN(segment)) {
         // Pause segment
-        const pauseDuration = parseInt(segment);
+        let pauseDuration = parseInt(segment);
+        if (isNaN(pauseDuration) || pauseDuration <= 0) {
+          console.log(`⚠️ Invalid pause duration: ${segment}, using 3 seconds default`);
+          pauseDuration = 3;
+        }
         const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
         await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
         tempAudioFiles.push(tempFileName);
@@ -293,7 +297,14 @@ async function processMeditationJob(job) {
     }
     
     if (totalDuration <= 0) {
-      totalDuration = duration * 60;
+      // Fallback to requested duration or default
+      totalDuration = (duration && duration > 0) ? duration * 60 : 300; // Default 5 minutes
+    }
+    
+    // Final validation to ensure we never have null/undefined duration
+    if (!totalDuration || totalDuration <= 0 || isNaN(totalDuration)) {
+      console.log(`⚠️ Invalid total duration calculated: ${totalDuration}, using default 300 seconds`);
+      totalDuration = 300; // Default 5 minutes in seconds
     }
 
     // Save meditation to database
@@ -1699,7 +1710,7 @@ Script Length: ${script.length} characters
               // Determine voice settings based on reflection type
               const getVoiceSettings = (reflectionType) => {
                 if (reflectionType === 'Ideas') {
-                  return { voice: "Heart", speed: 1.0 };
+                  return { voice: "af_bella", speed: 1.0 };
                 }
                 // Default for Night and other reflection types
                 return { voice: "af_nicole", speed: 0.7 };
@@ -1748,7 +1759,11 @@ Script Length: ${script.length} characters
             }
           } else if (!isNaN(segment)) {
             // This is a pause duration, create silent audio
-            const pauseDuration = parseInt(segment);
+            let pauseDuration = parseInt(segment);
+            if (isNaN(pauseDuration) || pauseDuration <= 0) {
+              console.log(`⚠️ Invalid pause duration: ${segment}, using 3 seconds default`);
+              pauseDuration = 3;
+            }
             console.log(`⏸️ Creating silence: ${pauseDuration} seconds`);
             
             const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
