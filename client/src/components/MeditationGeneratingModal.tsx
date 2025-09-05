@@ -6,13 +6,17 @@ interface MeditationGeneratingModalProps {
     onClose?: () => void;
     onComplete?: () => void;
     isApiComplete?: boolean;
+    onRunInBackground?: () => void;
+    showBackgroundOption?: boolean;
 }
 
 const MeditationGeneratingModal: React.FC<MeditationGeneratingModalProps> = ({
     isOpen,
     onClose,
     onComplete,
-    isApiComplete = false
+    isApiComplete = false,
+    onRunInBackground,
+    showBackgroundOption = true
 }) => {
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [animationClass, setAnimationClass] = useState('');
@@ -169,7 +173,7 @@ const MeditationGeneratingModal: React.FC<MeditationGeneratingModalProps> = ({
                     </div>
                 </div>
 
-                {/* Bottom Message */}
+                {/* Bottom Message and Actions */}
                 <div style={styles.footer}>
                     <p style={styles.footerText}>
                         {animationComplete && !isApiComplete 
@@ -177,6 +181,24 @@ const MeditationGeneratingModal: React.FC<MeditationGeneratingModalProps> = ({
                             : "This usually takes 1-2 minutes"
                         }
                     </p>
+                    
+                    {/* Background Option Button */}
+                    {showBackgroundOption && onRunInBackground && !isCompleted && (
+                        <div style={styles.backgroundButtonContainer}>
+                            <button
+                                style={styles.backgroundButton}
+                                onClick={() => {
+                                    onRunInBackground();
+                                    if (onClose) onClose();
+                                }}
+                            >
+                                🔄 Run in Background
+                            </button>
+                            <p style={styles.backgroundButtonSubtext}>
+                                Continue using the app while your meditation generates
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -344,6 +366,36 @@ const styles = {
         color: 'var(--text-secondary)',
         margin: 0,
         lineHeight: 1.4,
+    },
+    backgroundButtonContainer: {
+        marginTop: '2rem',
+        textAlign: 'center' as const,
+    },
+    backgroundButton: {
+        backgroundColor: 'rgba(var(--primary-color-rgb), 0.1)',
+        border: '2px solid var(--primary-color)',
+        borderRadius: '12px',
+        color: 'var(--primary-color)',
+        padding: '0.75rem 2rem',
+        fontSize: '0.875rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        marginBottom: '0.5rem',
+        ':hover': {
+            backgroundColor: 'rgba(var(--primary-color-rgb), 0.2)',
+            transform: 'translateY(-1px)',
+        },
+        ':active': {
+            transform: 'translateY(0)',
+        },
+    },
+    backgroundButtonSubtext: {
+        fontSize: '0.75rem',
+        color: 'var(--text-secondary)',
+        lineHeight: 1.3,
+        maxWidth: '280px',
+        margin: '0.5rem auto 0 auto',
     },
 };
 

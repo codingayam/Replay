@@ -16,5 +16,19 @@ export interface Profile {
     name: string;
     values: string;
     mission: string;
+    thinking_about?: string;
     profileImageUrl?: string;
+}
+
+export interface SearchResult {
+    id: string;
+    title: string;
+    date: string;
+    type: 'audio' | 'photo';
+    category: 'ideas' | 'experience';
+    snippet: {
+        text: string;
+        matchCount: number;
+    };
+    relevanceScore: number;
 }

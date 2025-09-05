@@ -8,11 +8,12 @@ interface Profile {
     name: string;
     values: string[];
     mission: string;
+    thinking_about?: string;
     profileImageUrl?: string;
 }
 
 const ProfilePage: React.FC = () => {
-    const [profile, setProfile] = useState<Profile>({ name: '', values: [], mission: '', profileImageUrl: '' });
+    const [profile, setProfile] = useState<Profile>({ name: '', values: [], mission: '', thinking_about: '', profileImageUrl: '' });
     const [status, setStatus] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,6 +40,7 @@ const ProfilePage: React.FC = () => {
                                 ? profileData.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
                                 : [],
                         mission: profileData.mission || '',
+                        thinking_about: profileData.thinking_about || '',
                         profileImageUrl: profileData.profile_image_url || ''
                     };
                     console.log('ProfilePage: Setting profile state:', mappedProfile);
@@ -380,6 +382,17 @@ const ProfilePage: React.FC = () => {
                         onChange={handleChange} 
                         style={styles.textarea}
                         placeholder="What drives you? What do you want to achieve in life?"
+                    ></textarea>
+                </div>
+                <div style={styles.field}>
+                    <label htmlFor="thinking_about" style={styles.label}>Thinking about/Working on</label>
+                    <textarea 
+                        id="thinking_about" 
+                        name="thinking_about" 
+                        value={profile.thinking_about || ''} 
+                        onChange={handleChange} 
+                        style={styles.textarea}
+                        placeholder="What are you currently thinking about or working on?"
                     ></textarea>
                 </div>
                 <button type="submit" className="btn-primary" style={styles.button}>

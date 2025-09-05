@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import fs from 'fs';
@@ -34,6 +35,365 @@ const replicate = new Replicate({
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Background job processing system
+let jobWorkerInterval = null;
+
+// Background worker functions
+async function processMeditationJob(job) {
+  try {
+    console.log(`🔄 Starting background processing for job ${job.id}`);
+    
+    // Mark job as processing
+    await supabase
+      .from('meditation_jobs')
+      .update({
+        status: 'processing',
+        started_at: new Date().toISOString()
+      })
+      .eq('id', job.id);
+
+    // Extract job parameters
+    const { 
+      note_ids: noteIds, 
+      duration, 
+      reflection_type: reflectionType,
+      user_id: userId 
+    } = job;
+
+    // Generate meditation using existing meditation logic
+    // Get selected notes and user profile (same as synchronous version)
+    const { data: notes, error: notesError } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', noteIds);
+
+    if (notesError) {
+      throw new Error(`Failed to fetch notes: ${notesError.message}`);
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name, values, mission, thinking_about')
+      .eq('user_id', userId)
+      .single();
+
+    // Handle Day meditation with pre-recorded audio
+    if (reflectionType === 'Day') {
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('meditations')
+        .createSignedUrl('default/day-meditation.wav', 3600 * 24);
+
+      if (urlError) {
+        throw new Error(`Failed to load day meditation: ${urlError.message}`);
+      }
+
+      const defaultPlaylist = [{
+        type: 'speech',
+        audioUrl: urlData.signedUrl,
+        duration: 146000
+      }];
+
+      // Save meditation to database
+      const { data: savedMeditation, error: saveError } = await supabase
+        .from('meditations')
+        .insert({
+          user_id: userId,
+          title: 'Daily Reflection',
+          playlist: defaultPlaylist,
+          note_ids: noteIds,
+          script: 'Pre-recorded daily meditation',
+          duration: 146,
+          summary: 'Daily reflection meditation',
+          time_of_reflection: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (saveError) {
+        throw new Error(`Failed to save day meditation: ${saveError.message}`);
+      }
+
+      // Mark job as completed
+      await supabase
+        .from('meditation_jobs')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          meditation_id: savedMeditation.id
+        })
+        .eq('id', job.id);
+
+      console.log(`✅ Day meditation job ${job.id} completed successfully`);
+      return;
+    }
+
+    // Generate custom meditation for Night/Ideas reflections
+    const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    // Build experience text from notes
+    const experiencesText = notes.map(note => {
+      let noteContent = note.transcript;
+      if (note.type === 'photo' && note.original_caption && note.ai_image_description) {
+        noteContent = `${note.original_caption} [AI_ANALYSIS: ${note.ai_image_description}]`;
+      } else if (note.type === 'photo' && note.original_caption && !note.ai_image_description) {
+        noteContent = note.original_caption;
+      } else if (note.type === 'photo' && !note.original_caption && note.ai_image_description) {
+        noteContent = `[AI_ANALYSIS: ${note.ai_image_description}]`;
+      }
+      return `${note.date}: ${note.title}\n${noteContent}`;
+    }).join('\n\n---\n\n');
+
+    const profileContext = profile ? `
+      User's name: ${profile.name || 'User'}
+      Personal values: ${profile.values || 'Not specified'}
+      Life mission: ${profile.mission || 'Not specified'}
+      Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
+    ` : '';
+
+    // Create meditation script based on reflection type
+    const getScriptPrompt = (type) => {
+      if (type === 'Ideas') {
+        return `You are an experienced facilitator of knowledge. Create a ${duration}-minute reflection session focused on creativity, innovation, and idea development. Use the format [PAUSE=Xs] for pauses.
+        
+        ${profileContext}
+        
+        Experiences:
+        ${experiencesText}
+        
+        Write as plain spoken text only. No markdown formatting.`;
+      }
+      
+      // Default Night meditation
+      return `You are an experienced meditation practitioner. Create a ${duration}-minute meditation session with loving-kindness elements. Use the format [PAUSE=Xs] for pauses.
+      
+      ${profileContext}
+      
+      Experiences:
+      ${experiencesText}
+      
+      Include metta meditation sending loving-kindness to people and situations from their experiences.
+      Write as plain spoken text only. No markdown formatting.`;
+    };
+
+    const scriptPrompt = getScriptPrompt(reflectionType);
+    const result = await model.generateContent(scriptPrompt);
+    const script = result.response.text();
+
+    // Generate TTS and process audio (simplified for background processing)
+    const meditationId = uuidv4();
+    const segments = script.split(/\[PAUSE=(\d+)s\]/);
+    const tempDir = path.join(__dirname, 'temp', meditationId);
+    
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const tempAudioFiles = [];
+
+    // Process segments for TTS
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i].trim();
+      
+      if (segment && isNaN(segment)) {
+        // Speech segment - generate TTS
+        try {
+          // Determine voice settings based on reflection type
+          const getVoiceSettings = (reflectionType) => {
+            if (reflectionType === 'Ideas') {
+              return { voice: "Heart", speed: 1.0 };
+            }
+            // Default for Night and other reflection types
+            return { voice: "af_nicole", speed: 0.7 };
+          };
+          
+          const voiceSettings = getVoiceSettings(reflectionType);
+          
+          const output = await replicate.run(
+            "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+            {
+              input: {
+                text: segment,
+                voice: voiceSettings.voice,
+                speed: voiceSettings.speed
+              }
+            }
+          );
+
+          const audioUrl = output.url().toString();
+          const audioResponse = await fetch(audioUrl);
+          const arrayBuffer = await audioResponse.arrayBuffer();
+          const audioBuffer = Buffer.from(arrayBuffer);
+          
+          const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
+          fs.writeFileSync(tempFileName, audioBuffer);
+          tempAudioFiles.push(tempFileName);
+
+        } catch (ttsError) {
+          console.error(`TTS failed for segment ${i}:`, ttsError);
+          // Create meaningful pause based on text length (better UX than tiny silence)
+          const pauseDuration = Math.max(3, Math.ceil(segment.length / 20)); // ~3 seconds minimum, estimate reading time
+          const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
+          await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+          tempAudioFiles.push(tempFileName);
+          console.log(`📝 TTS fallback: Created ${pauseDuration}s pause for "${segment.substring(0, 50)}..."`);
+        }
+      } else if (!isNaN(segment)) {
+        // Pause segment
+        const pauseDuration = parseInt(segment);
+        const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
+        await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+        tempAudioFiles.push(tempFileName);
+      }
+    }
+
+    // Concatenate all audio files
+    const concatListPath = path.join(tempDir, 'concat_list.txt');
+    const concatList = tempAudioFiles.map(file => `file '${file}'`).join('\n');
+    fs.writeFileSync(concatListPath, concatList);
+    
+    const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
+    await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`);
+    
+    // Upload final audio file
+    const finalAudioBuffer = fs.readFileSync(finalAudioPath);
+    const finalAudioFileName = `${meditationId}-complete.wav`;
+    
+    const { data: audioUpload, error: audioError } = await supabase.storage
+      .from('meditations')
+      .upload(`${userId}/${finalAudioFileName}`, finalAudioBuffer, {
+        contentType: 'audio/wav',
+        upsert: false
+      });
+
+    let audioUrl = null;
+    if (!audioError) {
+      const { data: urlData } = await supabase.storage
+        .from('meditations')
+        .createSignedUrl(`${userId}/${finalAudioFileName}`, 3600 * 24 * 30);
+      audioUrl = urlData?.signedUrl || `${userId}/${finalAudioFileName}`;
+    }
+    
+    // Create playlist and calculate duration
+    const playlist = [{
+      type: 'continuous',
+      audioUrl: audioUrl,
+      duration: 0
+    }];
+
+    let totalDuration = 0;
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i].trim();
+      if (segment && isNaN(segment)) {
+        totalDuration += Math.ceil(segment.length / 10);
+      } else if (!isNaN(segment)) {
+        totalDuration += parseInt(segment);
+      }
+    }
+    
+    if (totalDuration <= 0) {
+      totalDuration = duration * 60;
+    }
+
+    // Save meditation to database
+    const { data: meditation, error: saveError } = await supabase
+      .from('meditations')
+      .insert([{
+        id: meditationId,
+        user_id: userId,
+        title: `${reflectionType} Reflection - ${new Date().toLocaleDateString()}`,
+        script,
+        playlist,
+        note_ids: noteIds,
+        duration: totalDuration,
+        summary: `Generated ${reflectionType.toLowerCase()} meditation from personal experiences`,
+        time_of_reflection: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (saveError) {
+      throw new Error(`Failed to save meditation: ${saveError.message}`);
+    }
+
+    // Clean up temp files
+    fs.rmSync(tempDir, { recursive: true, force: true });
+
+    // Mark job as completed
+    await supabase
+      .from('meditation_jobs')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        meditation_id: meditation.id
+      })
+      .eq('id', job.id);
+
+    console.log(`✅ Background job ${job.id} completed successfully`);
+
+  } catch (error) {
+    console.error(`❌ Background job ${job.id} failed:`, error);
+    
+    // Mark job as failed
+    await supabase
+      .from('meditation_jobs')
+      .update({
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        error_message: error.message || 'Unknown error occurred'
+      })
+      .eq('id', job.id);
+  }
+}
+
+async function processJobQueue() {
+  try {
+    // Get pending jobs
+    const { data: jobs, error } = await supabase
+      .from('meditation_jobs')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(1); // Process one job at a time
+
+    if (error) {
+      console.error('Error fetching pending jobs:', error);
+      return;
+    }
+
+    if (jobs && jobs.length > 0) {
+      const job = jobs[0];
+      
+      // Atomic job claiming - only one worker can claim each job
+      const { data: claimedJob, error: claimError } = await supabase
+        .from('meditation_jobs')
+        .update({
+          status: 'processing',
+          started_at: new Date().toISOString()
+        })
+        .eq('id', job.id)
+        .eq('status', 'pending') // Only claim if still pending
+        .select()
+        .single();
+
+      if (claimError || !claimedJob) {
+        // Job was already claimed by another worker
+        console.log(`📋 Job ${job.id} was already claimed by another worker`);
+        return;
+      }
+      
+      console.log(`📋 Claimed job ${claimedJob.id}, starting background processing...`);
+      
+      // Process the claimed job
+      processMeditationJob(claimedJob).catch(error => {
+        console.error(`Background job processing error:`, error);
+      });
+    }
+  } catch (error) {
+    console.error('Job queue processing error:', error);
+  }
+}
 
 // Security middleware
 app.use(helmet());
@@ -192,6 +552,170 @@ app.get('/api/notes/date-range', requireAuth(), async (req, res) => {
     res.json({ notes: transformedNotes });
   } catch (error) {
     console.error('Date range notes fetch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/notes/search - Search notes by text query
+app.get('/api/notes/search', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { q: query, limit = 50 } = req.query;
+    
+    // Validate query parameter
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Query parameter "q" is required' });
+    }
+    
+    if (query.length < 3) {
+      return res.status(400).json({ error: 'Query must be at least 3 characters long' });
+    }
+    
+    if (query.length > 100) {
+      return res.status(400).json({ error: 'Query must be less than 100 characters long' });
+    }
+    
+    // Validate limit parameter
+    const limitNum = parseInt(limit, 10);
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({ error: 'Limit must be between 1 and 100' });
+    }
+
+    // Perform search query with case-insensitive matching
+    // Order by relevance: exact title matches first, then transcript matches, then by date
+    const searchPattern = `%${query}%`;
+    
+    const { data: notes, error } = await supabase
+      .from('notes')
+      .select('id, title, transcript, date, type, category, image_url, audio_url, original_caption')
+      .eq('user_id', userId)
+      .or(`title.ilike.${searchPattern},transcript.ilike.${searchPattern}`)
+      .order('date', { ascending: false })
+      .limit(limitNum);
+
+    if (error) {
+      console.error('Error searching notes:', error);
+      return res.status(500).json({ error: 'Failed to search notes' });
+    }
+
+    // Generate snippets and calculate relevance scores
+    const results = notes.map(note => {
+      const titleMatch = note.title && note.title.toLowerCase().includes(query.toLowerCase());
+      const transcriptMatch = note.transcript && note.transcript.toLowerCase().includes(query.toLowerCase());
+      
+      // Calculate relevance score (title matches get higher score)
+      let relevanceScore = 0.5;
+      if (titleMatch) relevanceScore += 0.4;
+      if (transcriptMatch) relevanceScore += 0.1;
+      
+      // Generate snippet from the matching text
+      let snippet = { text: '', matchCount: 0 };
+      let matchText = '';
+      
+      if (titleMatch && note.title) {
+        matchText = note.title;
+      } else if (transcriptMatch && note.transcript) {
+        matchText = note.transcript;
+      }
+      
+      if (matchText) {
+        const lowerMatchText = matchText.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+        const matchIndex = lowerMatchText.indexOf(lowerQuery);
+        
+        if (matchIndex !== -1) {
+          // Extract 50 characters before and after the match
+          const start = Math.max(0, matchIndex - 50);
+          const end = Math.min(matchText.length, matchIndex + query.length + 50);
+          
+          let snippetText = matchText.substring(start, end);
+          
+          // Add ellipsis if we truncated
+          if (start > 0) snippetText = '...' + snippetText;
+          if (end < matchText.length) snippetText = snippetText + '...';
+          
+          // Count matches in the full text
+          const matches = lowerMatchText.split(lowerQuery).length - 1;
+          
+          snippet = {
+            text: snippetText,
+            matchCount: matches
+          };
+        }
+      }
+      
+      return {
+        id: note.id,
+        title: note.title,
+        date: note.date,
+        type: note.type,
+        category: note.category,
+        snippet,
+        relevanceScore
+      };
+    });
+    
+    // Sort by relevance score (highest first), then by date (newest first)
+    results.sort((a, b) => {
+      if (a.relevanceScore !== b.relevanceScore) {
+        return b.relevanceScore - a.relevanceScore;
+      }
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    res.json({
+      results,
+      totalCount: results.length,
+      query
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/notes/:id - Get single note by ID
+app.get('/api/notes/:id', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Note ID is required' });
+    }
+
+    const { data: note, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Note not found' });
+      }
+      console.error('Error fetching note:', error);
+      return res.status(500).json({ error: 'Failed to fetch note' });
+    }
+
+    // Transform database column names to camelCase for frontend
+    const transformedNote = {
+      ...note,
+      imageUrl: note.image_url,
+      audioUrl: note.audio_url,
+      originalCaption: note.original_caption,
+      aiImageDescription: note.ai_image_description,
+      // Remove the snake_case versions
+      image_url: undefined,
+      audio_url: undefined,
+      original_caption: undefined,
+      ai_image_description: undefined
+    };
+
+    res.json({ note: transformedNote });
+  } catch (error) {
+    console.error('Note fetch error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -613,7 +1137,7 @@ app.get('/api/profile', requireAuth(), async (req, res) => {
 app.post('/api/profile', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
-    const { name, values, mission } = req.body;
+    const { name, values, mission, thinking_about } = req.body;
 
     // Check if profile already exists
     const { data: existingProfile } = await supabase
@@ -632,6 +1156,7 @@ app.post('/api/profile', requireAuth(), async (req, res) => {
           name,
           values,
           mission,
+          thinking_about,
           updated_at: new Date().toISOString()
         })
         .eq('user_id', userId)
@@ -652,7 +1177,8 @@ app.post('/api/profile', requireAuth(), async (req, res) => {
           user_id: userId,
           name,
           values,
-          mission
+          mission,
+          thinking_about
         }])
         .select()
         .single();
@@ -868,7 +1394,7 @@ app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
     // Get user profile for personalized reflection
     const { data: profile } = await supabase
       .from('profiles')
-      .select('name, values, mission')
+      .select('name, values, mission, thinking_about')
       .eq('user_id', userId)
       .single();
 
@@ -893,6 +1419,7 @@ app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
         User's name: ${profile.name || 'User'}
         Personal values: ${profile.values || 'Not specified'}
         Life mission: ${profile.mission || 'Not specified'}
+        Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
       ` : '';
 
       const summaryPrompt = `
@@ -938,7 +1465,7 @@ app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
 app.post('/api/meditate', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
-    const { noteIds, duration = 10, title, summary, reflectionType } = req.body;
+    const { noteIds, duration = 10, title, reflectionType } = req.body;
 
     if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
       return res.status(400).json({ error: 'noteIds array is required' });
@@ -976,7 +1503,7 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
             note_ids: noteIds,
             script: 'Pre-recorded daily meditation',
             duration: 146,
-            summary: summary || 'Daily reflection meditation',
+            summary: 'Daily reflection meditation',
             time_of_reflection: new Date().toISOString()
           })
           .select()
@@ -1016,7 +1543,7 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('name, values, mission')
+      .select('name, values, mission, thinking_about')
       .eq('user_id', userId)
       .single();
 
@@ -1041,6 +1568,7 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
         User's name: ${profile.name || 'User'}
         Personal values: ${profile.values || 'Not specified'}
         Life mission: ${profile.mission || 'Not specified'}
+        Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
       ` : '';
 
       // Create different prompts based on reflection type
@@ -1053,51 +1581,43 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
           Experiences:
           ${experiencesText}
           
-          Reflection summary: ${summary || 'Based on selected experiences'}
-          
           Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for rest and recharge.
           
           IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
         `;
 
         if (type === 'Ideas') {
-          return `You are an experienced facilitator of knowledge - you have tutored the greats and seek to bring out the genius and best in people. You are great at taking raw experiences and converting them into a ${duration}-minute reflection session. Your role is to provide a focused, reflective space for ideas, thoughts and strokes of inspiration. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses whenever appropriate.
+          return `You are an experienced insights synthesizer and facilitator of knowledge. You are great at taking the user's raw experiences and converting them into a ${duration}-minute reflection session. Your role is to provide a focused reflective space for ideas, thoughts and strokes of inspiration. The guided reflection should be thoughtful, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses whenever appropriate. There should be a structure to the session - similar ideas should be grouped and explored first before moving on to ideas which might seem disparate. 
           
           ${profileContext}
           
           Experiences:
           ${experiencesText}
-          
-          Reflection summary: ${summary || 'Based on selected experiences'}
 
-          Create a guided meditation/reflection specifically focused on creativity, innovation, idea development and consolidation/crystallization. This session should:
-          
-          1. Foster creative thinking and idea synthesis
-          2. Help connect similar and disparate concepts and insights
-          3. Encourage visualization of implementing creative ideas
-          4. Guide toward clarity on next steps and creative actions
-          5. Cultivate an innovative mindset and openness to new possibilities
-          6. Connect ideas to values and mission if possible and also link them to other domains or life in general if possible 
-          7. Consolidate and crystallize strands of thoughts, ideas, and inspirations in an open-ended, divergent way and not be overly restrictive or too convergent or too presumptive in tone or direction.
-          
-          The tone should be encouraging, nurturing and a teeny bit playful.
+          Create a guided reflection which can revolve around the thems of creativity, innovation, idea development and consolidation/crystallization. You don't have to focus on all of them - focus on whichever is appropriate. This session should:         
 
-          Make sure that the opening and closing of the reflection/meditation is appropriate and eases them into the session and also at the closing, leaves them energized and ready to go back to the drawing board or a sense of having digested/internalized the raw thoughts, ideas and inspirations..
-          
+          1. Help connect similar and disparate concepts and insights and facilitate idea synthesis whenever possible. You don't have to feel the need to force connections that are not there.
+
+          2. Encourage visualization of certain ideas if there are possible notes or hints of implementation in them.
+
+          3. Connect ideas to values and mission if possible and also link them to the user's what am I thinking about, or other domains or life in general if possible 
+
+          4. Consolidate and crystallize strands of thoughts, ideas, and inspirations in an open-ended, divergent way and not be overly restrictive or too convergent or too presumptive in tone or direction.          
+
+          The tone should be encouraging, nurturing and facilitative.
+
+          Make sure that the opening and closing of the reflection is appropriate and eases them into the session and also at the closing, leaves them energized and ready to go back to their lives with a sense of having digested/internalized the raw thoughts, ideas and inspirations.  
+
           IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
         }
         
         // Default prompt for Night meditations
-        return `${baseInstructions}
-        
-        Create a guided meditation script that integrates their personal profile and experiences. Connect their experiences to their values and mission, highlighting patterns of growth or learning while acknowledging challenges and insights.
+        return `${baseInstructions};
 
-        The meditation should:
-        1. Begin with grounding and breathing
-        2. Incorporate insights from their selected experiences
-        3. Connect meaningfully to their personal values and mission
-        4. Include moments of gratitude and intention-setting
-        5. End with gentle return to awareness`;
+        After incorporating insights from their experiences and connecting to their values and mission, include a metta (loving-kindness) meditation section. Identify specific people, relationships, 
+        places, or challenging situations from their selected experiences and guide them through sending loving-kindness to these subjects. Use traditional metta phrases like "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy" while focusing on the actual people and circumstances from their reflections. Start with sending metta to themselves, then extend
+        to loved ones mentioned in their experiences, then to neutral people or challenging relationships from their notes, and finally to any difficult situations or places that came up. This should 
+        feel personal and connected to their recent experiences rather than generic metta practice.`;
       };
 
       const scriptPrompt = getScriptPrompt(reflectionType);
@@ -1176,10 +1696,21 @@ Script Length: ${script.length} characters
             try {
               console.log(`🔊 Generating TTS for segment ${i}: "${segment.substring(0, 100)}${segment.length > 100 ? '...' : ''}"`);
               
+              // Determine voice settings based on reflection type
+              const getVoiceSettings = (reflectionType) => {
+                if (reflectionType === 'Ideas') {
+                  return { voice: "Heart", speed: 1.0 };
+                }
+                // Default for Night and other reflection types
+                return { voice: "af_nicole", speed: 0.7 };
+              };
+              
+              const voiceSettings = getVoiceSettings(reflectionType);
+              
               const replicateInput = {
                 text: segment,
-                voice: "af_nicole",
-                speed: 0.7
+                voice: voiceSettings.voice,
+                speed: voiceSettings.speed
               };
               
               console.log('📤 Replicate API call:', {
@@ -1350,7 +1881,7 @@ Script Length: ${script.length} characters
           playlist,
           note_ids: noteIds,
           duration: totalDuration,
-          summary: summary || 'Generated meditation from personal experiences',
+          summary: `Generated ${reflectionType.toLowerCase()} meditation from personal experiences`,
           time_of_reflection: new Date().toISOString()
         }])
         .select()
@@ -1694,6 +2225,295 @@ app.get('/api/files/audio/:userId/:filename', requireAuth(), async (req, res) =>
   }
 });
 
+// ============= BACKGROUND MEDITATION JOB API ROUTES =============
+
+// Rate limiting for background job creation
+const jobCreationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each user to 5 job requests per windowMs
+  message: { error: 'Too many meditation requests. Please wait before creating more background jobs.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Use user ID for rate limiting - skip IP-based limiting to avoid IPv6 issues
+  keyGenerator: (req) => req.auth?.userId || 'anonymous',
+  skip: (req) => !req.auth?.userId // Skip rate limiting if no user ID
+});
+
+// POST /api/meditate/jobs - Create background meditation job
+app.post('/api/meditate/jobs', jobCreationLimiter, requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { noteIds, duration, reflectionType, startDate, endDate } = req.body;
+
+    if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
+      return res.status(400).json({ error: 'noteIds array is required' });
+    }
+
+    if (!duration || !reflectionType) {
+      return res.status(400).json({ error: 'duration and reflectionType are required' });
+    }
+
+    // Create job record
+    const { data: job, error: jobError } = await supabase
+      .from('meditation_jobs')
+      .insert([{
+        user_id: userId,
+        status: 'pending',
+        job_type: reflectionType.toLowerCase(),
+        note_ids: noteIds,
+        duration: parseInt(duration),
+        reflection_type: reflectionType,
+        start_date: startDate || null,
+        end_date: endDate || null
+      }])
+      .select()
+      .single();
+
+    if (jobError) {
+      console.error('Error creating meditation job:', jobError);
+      return res.status(500).json({ error: 'Failed to create background job' });
+    }
+
+    // Trigger immediate job processing check
+    console.log(`📋 Created meditation job ${job.id} for user ${userId}`);
+    
+    // Trigger job processing without waiting
+    setTimeout(() => {
+      processJobQueue().catch(error => {
+        console.error('Job processing trigger failed:', error);
+      });
+    }, 1000); // 1 second delay to ensure job is committed
+
+    res.status(201).json({
+      jobId: job.id,
+      status: job.status,
+      estimatedDuration: 120, // 2 minutes estimate
+      message: 'Generation started. You can close this modal and continue using the app.'
+    });
+
+  } catch (error) {
+    console.error('Job creation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/meditate/jobs/:id - Check job status
+app.get('/api/meditate/jobs/:id', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const jobId = req.params.id;
+
+    const { data: job, error } = await supabase
+      .from('meditation_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Build response based on job status
+    const response = {
+      jobId: job.id,
+      status: job.status,
+      reflectionType: job.reflection_type,
+      duration: job.duration,
+      experienceCount: job.note_ids ? job.note_ids.length : 0,
+      createdAt: job.created_at
+    };
+
+    if (job.status === 'processing') {
+      response.startedAt = job.started_at;
+      response.progress = 50; // Basic progress indicator
+    }
+
+    if (job.status === 'completed') {
+      response.completedAt = job.completed_at;
+      response.meditationId = job.meditation_id;
+      
+      // Get meditation details if completed
+      if (job.meditation_id) {
+        const { data: meditation } = await supabase
+          .from('meditations')
+          .select('title, summary, playlist')
+          .eq('id', job.meditation_id)
+          .single();
+
+        if (meditation) {
+          response.result = {
+            title: meditation.title,
+            summary: meditation.summary,
+            playlist: meditation.playlist
+          };
+        }
+      }
+    }
+
+    if (job.status === 'failed') {
+      response.error = job.error_message || 'Unknown error occurred';
+      response.canRetry = job.retry_count < 3;
+      response.failedAt = job.completed_at;
+    }
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Job status check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/meditate/jobs - List user's jobs
+app.get('/api/meditate/jobs', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { status, limit = 20 } = req.query;
+
+    let query = supabase
+      .from('meditation_jobs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (status) {
+      const statusList = status.split(',');
+      query = query.in('status', statusList);
+    }
+
+    const { data: jobs, error } = await query.limit(parseInt(limit));
+
+    if (error) {
+      console.error('Error fetching meditation jobs:', error);
+      return res.status(500).json({ error: 'Failed to fetch jobs' });
+    }
+
+    const transformedJobs = jobs.map(job => ({
+      jobId: job.id,
+      status: job.status,
+      reflectionType: job.reflection_type,
+      duration: job.duration,
+      experienceCount: job.note_ids ? job.note_ids.length : 0,
+      createdAt: job.created_at,
+      completedAt: job.completed_at,
+      meditationId: job.meditation_id,
+      error: job.error_message
+    }));
+
+    res.json({ jobs: transformedJobs });
+
+  } catch (error) {
+    console.error('Jobs fetch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/meditate/jobs/:id/retry - Retry failed job
+app.post('/api/meditate/jobs/:id/retry', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const jobId = req.params.id;
+
+    // Get the failed job
+    const { data: job, error: fetchError } = await supabase
+      .from('meditation_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.status !== 'failed') {
+      return res.status(400).json({ error: 'Only failed jobs can be retried' });
+    }
+
+    if (job.retry_count >= 3) {
+      return res.status(400).json({ error: 'Maximum retry attempts exceeded' });
+    }
+
+    // Reset job for retry
+    const { data: updatedJob, error: updateError } = await supabase
+      .from('meditation_jobs')
+      .update({
+        status: 'pending',
+        error_message: null,
+        retry_count: job.retry_count + 1,
+        started_at: null,
+        completed_at: null
+      })
+      .eq('id', jobId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error retrying job:', updateError);
+      return res.status(500).json({ error: 'Failed to retry job' });
+    }
+
+    console.log(`🔄 Retrying meditation job ${jobId} (attempt ${updatedJob.retry_count})`);
+
+    res.json({
+      jobId: updatedJob.id,
+      status: updatedJob.status,
+      retryCount: updatedJob.retry_count,
+      message: 'Job queued for retry'
+    });
+
+  } catch (error) {
+    console.error('Job retry error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/meditate/jobs/:id - Cancel/delete job
+app.delete('/api/meditate/jobs/:id', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const jobId = req.params.id;
+
+    // Get the job first
+    const { data: job, error: fetchError } = await supabase
+      .from('meditation_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Can't cancel processing jobs (would need worker coordination)
+    if (job.status === 'processing') {
+      return res.status(400).json({ error: 'Cannot cancel job that is currently processing' });
+    }
+
+    // Delete the job
+    const { error: deleteError } = await supabase
+      .from('meditation_jobs')
+      .delete()
+      .eq('id', jobId)
+      .eq('user_id', userId);
+
+    if (deleteError) {
+      console.error('Error deleting job:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete job' });
+    }
+
+    console.log(`🗑️ Deleted meditation job ${jobId}`);
+    res.json({ message: 'Job deleted successfully' });
+
+  } catch (error) {
+    console.error('Job deletion error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -1713,6 +2533,15 @@ app.listen(PORT, () => {
   console.log(`🚀 Replay server running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API base: http://localhost:${PORT}/api`);
+  
+  // Start background job worker
+  console.log(`⚙️ Starting background job worker...`);
+  jobWorkerInterval = setInterval(processJobQueue, 10000); // Check for jobs every 10 seconds
+  
+  // Initial check for pending jobs
+  processJobQueue().catch(error => {
+    console.error('Initial job queue check failed:', error);
+  });
 });
 
 export default app;

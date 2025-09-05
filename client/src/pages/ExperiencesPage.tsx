@@ -2,9 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PlayCircle, Trash2, Share2, Image as ImageIcon, User } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
-import type { Note } from '../types';
+import SearchBar from '../components/SearchBar';
+import SearchResults from '../components/SearchResults';
+import SearchResultModal from '../components/SearchResultModal';
+import type { Note, SearchResult } from '../types';
 import { getCategoryInfo } from '../utils/categoryUtils';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
+import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -14,6 +18,16 @@ const ExperiencesPage: React.FC = () => {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+    
+    // Search state
+    const [searchQuery, setSearchQuery] = useState<string>('');
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+    const [isSearching, setIsSearching] = useState<boolean>(false);
+    const [searchActive, setSearchActive] = useState<boolean>(false);
+    
+    // Modal state
+    const [modalOpen, setModalOpen] = useState<boolean>(false);
+    const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     
     const api = useAuthenticatedApi();
     const { user } = useAuth();
@@ -133,7 +147,43 @@ const ExperiencesPage: React.FC = () => {
         setExpandedNoteId(expandedNoteId === noteId ? null : noteId);
     };
 
-    const sortedNotes = [...notes].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Search functions
+    const handleSearch = async (query: string) => {
+        setSearchQuery(query);
+        setSearchActive(true);
+        setIsSearching(true);
+
+        try {
+            const res = await api.get(`/notes/search?q=${encodeURIComponent(query)}&limit=50`);
+            setSearchResults(res.data.results);
+        } catch (error) {
+            console.error('Search error:', error);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const handleClearSearch = () => {
+        setSearchQuery('');
+        setSearchResults([]);
+        setSearchActive(false);
+        setIsSearching(false);
+    };
+
+    const handleSearchResultClick = (noteId: string) => {
+        setSelectedNoteId(noteId);
+        setModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setModalOpen(false);
+        setSelectedNoteId(null);
+    };
+
+    // Group notes by date categories
+    const groupedNotes = groupNotesByDate(notes);
+    const sortedDateGroups = sortDateGroups(Object.keys(groupedNotes));
 
     return (
         <div style={styles.container}>
@@ -144,124 +194,165 @@ const ExperiencesPage: React.FC = () => {
                 </div>
             )}
 
+            {/* Search Bar */}
+            <SearchBar
+                onSearch={handleSearch}
+                onClear={handleClearSearch}
+                isSearching={isSearching}
+            />
 
-            <div style={styles.timeline}>
-                {sortedNotes.map((note, index) => {
-                    const isExpanded = expandedNoteId === note.id;
-                    const isLast = index === sortedNotes.length - 1;
-                    const category = note.category || 'experience';
-                    const categoryInfo = getCategoryInfo(category) || {
-                        name: 'experience',
-                        color: '#3b82f6',
-                        backgroundColor: '#dbeafe',
-                    };
+            {/* Search Results or Timeline */}
+            {searchActive ? (
+                <SearchResults
+                    results={searchResults}
+                    isLoading={isSearching}
+                    query={searchQuery}
+                    totalCount={searchResults.length}
+                    onResultClick={handleSearchResultClick}
+                />
+            ) : (
+                <div style={styles.timeline}>
+                {sortedDateGroups.map((dateGroup, groupIndex) => {
+                    const groupNotes = groupedNotes[dateGroup].sort((a, b) => 
+                        new Date(b.date).getTime() - new Date(a.date).getTime()
+                    );
                     
                     return (
-                        <div key={note.id} style={styles.timelineItem}>
-                            {/* Timeline line and icon */}
-                            <div style={styles.timelineTrack}>
-                                <div 
-                                    style={{
-                                        ...styles.timelineIcon,
-                                        backgroundColor: categoryInfo.backgroundColor,
-                                        borderColor: categoryInfo.color,
-                                    }}
-                                >
-                                    {note.type === 'photo' ? (
-                                        <ImageIcon size={8} style={{ color: categoryInfo.color }} />
-                                    ) : (
-                                        <User size={8} style={{ color: categoryInfo.color }} />
-                                    )}
-                                </div>
-                                {!isLast && <div style={styles.timelineLine} />}
-                            </div>
-
-                            {/* Note content */}
-                            <div style={styles.noteContent}>
-                                <div 
-                                    style={styles.noteHeader}
-                                    onClick={() => handleToggleExpand(note.id)}
-                                >
-                                    <div>
-                                        <h3 style={styles.noteTitle}>{note.title}</h3>
-                                        <p style={styles.noteDate}>
-                                            {new Date(note.date).toLocaleDateString('en-US', {
-                                                year: 'numeric',
-                                                month: 'short',
-                                                day: 'numeric'
-                                            })}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {isExpanded && (
-                                    <div style={styles.expandedContent}>
-                                        {note.type === 'audio' ? (
-                                            <div>
-                                                <div style={styles.transcript}>
-                                                    <p style={styles.transcriptText}>{note.transcript}</p>
-                                                </div>
-                                                <div style={styles.audioControls}>
-                                                    <button 
-                                                        onClick={() => handlePlayNote(note.audioUrl!)}
-                                                        style={styles.playButton}
-                                                    >
-                                                        <PlayCircle size={16} />
-                                                        Play Audio
-                                                    </button>
-                                                </div>
+                        <div key={dateGroup} style={styles.dateGroup}>
+                            {/* Date category header */}
+                            <h2 style={styles.dateHeader}>{dateGroup}</h2>
+                            
+                            {groupNotes.map((note, noteIndex) => {
+                                const isExpanded = expandedNoteId === note.id;
+                                const isLastInGroup = noteIndex === groupNotes.length - 1;
+                                const isLastGroup = groupIndex === sortedDateGroups.length - 1;
+                                const isLastOverall = isLastInGroup && isLastGroup;
+                                const category = note.category || 'experience';
+                                const categoryInfo = getCategoryInfo(category) || {
+                                    name: 'experience',
+                                    color: '#3b82f6',
+                                    backgroundColor: '#dbeafe',
+                                };
+                                
+                                return (
+                                    <div key={note.id} style={styles.timelineItem}>
+                                        {/* Timeline line and icon */}
+                                        <div style={styles.timelineTrack}>
+                                            <div 
+                                                style={{
+                                                    ...styles.timelineIcon,
+                                                    backgroundColor: categoryInfo.backgroundColor,
+                                                    borderColor: categoryInfo.color,
+                                                }}
+                                            >
+                                                {note.type === 'photo' ? (
+                                                    <ImageIcon size={8} style={{ color: categoryInfo.color }} />
+                                                ) : (
+                                                    <User size={8} style={{ color: categoryInfo.color }} />
+                                                )}
                                             </div>
-                                        ) : (
-                                            <div>
-                                                <div style={styles.photoContainer}>
-                                                    <div style={styles.photoPlaceholder}>
-                                                        {note.imageUrl && (
-                                                            <SupabaseImage
-                                                                src={note.imageUrl}
-                                                                alt={note.title}
-                                                                style={styles.photo}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div style={styles.transcript}>
-                                                    <p style={styles.transcriptText}>
-                                                        {note.type === 'photo' ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                            {!isLastOverall && <div style={styles.timelineLine} />}
+                                        </div>
+
+                                        {/* Note content */}
+                                        <div style={styles.noteContent}>
+                                            <div 
+                                                style={styles.noteHeader}
+                                                onClick={() => handleToggleExpand(note.id)}
+                                            >
+                                                <div>
+                                                    <h3 style={styles.noteTitle}>{note.title}</h3>
+                                                    <p style={styles.noteDate}>
+                                                        {new Date(note.date).toLocaleDateString('en-US', {
+                                                            year: 'numeric',
+                                                            month: 'short',
+                                                            day: 'numeric'
+                                                        })}
                                                     </p>
                                                 </div>
                                             </div>
-                                        )}
-                                        
-                                        <div style={styles.actionButtons}>
-                                            <button 
-                                                onClick={() => handleDeleteNote(note.id)}
-                                                style={styles.deleteButton}
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                            <button style={styles.shareButton}>
-                                                <Share2 size={16} />
-                                            </button>
+
+                                            {isExpanded && (
+                                                <div style={styles.expandedContent}>
+                                                    {note.type === 'audio' ? (
+                                                        <div>
+                                                            <div style={styles.transcript}>
+                                                                <p style={styles.transcriptText}>{note.transcript}</p>
+                                                            </div>
+                                                            <div style={styles.audioControls}>
+                                                                <button 
+                                                                    onClick={() => handlePlayNote(note.audioUrl!)}
+                                                                    style={styles.playButton}
+                                                                >
+                                                                    <PlayCircle size={16} />
+                                                                    Play Audio
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <div style={styles.photoContainer}>
+                                                                <div style={styles.photoPlaceholder}>
+                                                                    {note.imageUrl && (
+                                                                        <SupabaseImage
+                                                                            src={note.imageUrl}
+                                                                            alt={note.title}
+                                                                            style={styles.photo}
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div style={styles.transcript}>
+                                                                <p style={styles.transcriptText}>
+                                                                    {note.type === 'photo' ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div style={styles.actionButtons}>
+                                                        <button 
+                                                            onClick={() => handleDeleteNote(note.id)}
+                                                            style={styles.deleteButton}
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                        <button style={styles.shareButton}>
+                                                            <Share2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                )}
-                            </div>
+                                );
+                            })}
                         </div>
                     );
                 })}
+                
+                {notes.length === 0 && (
+                    <div style={styles.emptyState}>
+                        <p style={styles.emptyText}>No experiences recorded yet.</p>
+                        <p style={styles.emptySubtext}>Tap the Upload button to record your first daily note.</p>
+                    </div>
+                )}
             </div>
-
-            {notes.length === 0 && (
-                <div style={styles.emptyState}>
-                    <p style={styles.emptyText}>No experiences recorded yet.</p>
-                    <p style={styles.emptySubtext}>Tap the Upload button to record your first daily note.</p>
-                </div>
             )}
 
             <FloatingUploadButton 
                 onSaveAudio={handleSaveAudioNote}
                 onSavePhoto={handleSavePhotoNote}
                 isUploadingPhoto={isUploadingPhoto}
+            />
+
+            {/* Search Result Modal */}
+            <SearchResultModal
+                isOpen={modalOpen}
+                onClose={handleCloseModal}
+                noteId={selectedNoteId}
+                searchQuery={searchQuery}
+                onPlay={handlePlayNote}
             />
         </div>
     );
@@ -290,6 +381,18 @@ const styles = {
     },
     timeline: {
         position: 'relative' as const,
+    },
+    dateGroup: {
+        marginBottom: '2rem',
+    },
+    dateHeader: {
+        fontSize: '1.1rem',
+        fontWeight: '600',
+        color: 'var(--text-color)',
+        fontFamily: 'var(--font-family-heading)',
+        marginBottom: '1rem',
+        marginTop: '0',
+        paddingLeft: '10px', // Align with timeline icons (20px width / 2 = 10px center)
     },
     timelineItem: {
         display: 'flex',

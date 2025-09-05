@@ -1,0 +1,1 @@
+Raw thoughts: mood map, calendar, dashboard, spotlight topics, emoitons, trends, appropriate duration (week/month)
