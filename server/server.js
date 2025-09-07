@@ -202,7 +202,7 @@ async function processMeditationJob(job) {
           // Determine voice settings based on reflection type
           const getVoiceSettings = (reflectionType) => {
             if (reflectionType === 'Ideas') {
-              return { voice: "af_bella", speed: 1.0 };
+              return { voice: "af_bella", speed: 0.81 };
             }
             // Default for Night and other reflection types
             return { voice: "af_nicole", speed: 0.7 };
@@ -1710,7 +1710,7 @@ Script Length: ${script.length} characters
               // Determine voice settings based on reflection type
               const getVoiceSettings = (reflectionType) => {
                 if (reflectionType === 'Ideas') {
-                  return { voice: "af_bella", speed: 1.0 };
+                  return { voice: "af_bella", speed: 0.81 };
                 }
                 // Default for Night and other reflection types
                 return { voice: "af_nicole", speed: 0.7 };
@@ -1938,7 +1938,7 @@ app.get('/api/meditations', requireAuth(), async (req, res) => {
 
     const { data: meditations, error } = await supabase
       .from('meditations')
-      .select('*')
+      .select('*, is_viewed')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -2008,6 +2008,36 @@ app.delete('/api/meditations/:id', requireAuth(), async (req, res) => {
     res.json({ message: 'Meditation deleted successfully' });
   } catch (error) {
     console.error('Meditation deletion error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/meditations/:id/mark-viewed - Mark meditation as viewed when clicked
+app.put('/api/meditations/:id/mark-viewed', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const meditationId = req.params.id;
+
+    // Update the is_viewed field
+    const { data, error } = await supabase
+      .from('meditations')
+      .update({ is_viewed: true })
+      .eq('id', meditationId)
+      .eq('user_id', userId)
+      .select('id');
+
+    if (error) {
+      console.error('Error marking meditation as viewed:', error);
+      return res.status(500).json({ error: 'Failed to mark meditation as viewed' });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: 'Meditation not found' });
+    }
+
+    res.json({ message: 'Meditation marked as viewed successfully' });
+  } catch (error) {
+    console.error('Mark viewed error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,23 +1,10 @@
 import React, { useState } from 'react';
 import { useJobs } from '../contexts/JobContext';
-import { useJobNotifications } from '../contexts/NotificationContext';
 
-// Background job status indicator
+// Background job status indicator - hidden per notification removal requirements
 export function BackgroundJobIndicator() {
-  const { activeJobs, retryJob, deleteJob, isPolling } = useJobs();
-  const { showJobCompletion, showJobError } = useJobNotifications();
-  const [showDetails, setShowDetails] = useState(false);
-
-  // Filter jobs by status
-  const pendingJobs = activeJobs.filter(job => job.status === 'pending');
-  const processingJobs = activeJobs.filter(job => job.status === 'processing');
-  const completedJobs = activeJobs.filter(job => job.status === 'completed');
-  const failedJobs = activeJobs.filter(job => job.status === 'failed');
-
-  // Don't show indicator if no active jobs
-  if (activeJobs.length === 0) {
-    return null;
-  }
+  // Always return null - no background job notifications per requirements
+  return null;
 
   const getStatusIcon = () => {
     if (failedJobs.length > 0) return '⚠️';

@@ -14,7 +14,6 @@ import CalendarModal from '../components/CalendarModal';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthenticatedApi } from '../utils/api';
 import { useJobs } from '../contexts/JobContext';
-import { useNotifications } from '../contexts/NotificationContext';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -28,6 +27,7 @@ interface SavedMeditation {
     created_at: string;
     playlist: PlaylistItem[];
     summary?: string;
+    is_viewed: boolean;
 }
 
 const ReflectionsPage: React.FC = () => {
@@ -38,7 +38,6 @@ const ReflectionsPage: React.FC = () => {
     
     const api = useAuthenticatedApi();
     const { createJob } = useJobs();
-    const { showNotification } = useNotifications();
     
     // Stats state
     const [dayStreak, setDayStreak] = useState(0);
@@ -74,6 +73,20 @@ const ReflectionsPage: React.FC = () => {
             setSavedMeditations(res.data.meditations || []);
         } catch (err) {
             console.error("Error fetching meditations:", err);
+        }
+    };
+
+    const markMeditationAsViewed = async (meditationId: string) => {
+        try {
+            await api.put(`/meditations/${meditationId}/mark-viewed`);
+            // Update the local state to reflect the change
+            setSavedMeditations(prev => 
+                prev.map(m => 
+                    m.id === meditationId ? { ...m, is_viewed: true } : m
+                )
+            );
+        } catch (err) {
+            console.error("Error marking meditation as viewed:", err);
         }
     };
 
@@ -245,15 +258,6 @@ const ReflectionsPage: React.FC = () => {
 
             console.log('✅ Background job created:', jobResponse);
 
-            // Show success notification
-            showNotification({
-                type: 'success',
-                title: '🔄 Meditation Generating in Background',
-                message: `Your ${selectedReflectionType.toLowerCase()} meditation is being created. Continue using the app and you'll be notified when it's ready.`,
-                autoHide: true,
-                duration: 5000
-            });
-
             // Reset state after starting background job
             setSelectedReflectionType('Day');
             setSelectedStartDate('');
@@ -265,13 +269,6 @@ const ReflectionsPage: React.FC = () => {
 
         } catch (error: any) {
             console.error('❌ Failed to start background job:', error);
-            
-            showNotification({
-                type: 'error',
-                title: 'Failed to Start Background Generation',
-                message: error.message || 'Unable to start background meditation generation',
-                autoHide: false
-            });
         }
     };
 
@@ -408,7 +405,12 @@ const ReflectionsPage: React.FC = () => {
                         const isExpanded = expandedSummaries.has(meditation.id);
                         return (
                             <div key={meditation.id} style={styles.meditationCard}>
-                                <div style={styles.cardHeader} onClick={() => toggleSummaryExpansion(meditation.id)}>
+                                <div style={styles.cardHeader} onClick={() => {
+                                    toggleSummaryExpansion(meditation.id);
+                                    if (!meditation.is_viewed) {
+                                        markMeditationAsViewed(meditation.id);
+                                    }
+                                }}>
                                     <div style={styles.avatarContainer}>
                                         <span style={styles.avatar}>🧘‍♀️</span>
                                     </div>
@@ -421,6 +423,9 @@ const ReflectionsPage: React.FC = () => {
                                     <div style={styles.expandIcon}>
                                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                     </div>
+                                    {!meditation.is_viewed && (
+                                        <div style={styles.redDotIndicator} />
+                                    )}
                                 </div>
                                 
                                 {isExpanded && meditation.summary && (
@@ -587,6 +592,7 @@ const styles = {
         alignItems: 'center',
         padding: '16px',
         gap: '12px',
+        position: 'relative',
     },
     avatarContainer: {
         width: '40px',
@@ -619,6 +625,16 @@ const styles = {
     },
     expandIcon: {
         color: '#94a3b8',
+        flexShrink: 0,
+    },
+    redDotIndicator: {
+        position: 'absolute',
+        top: '12px',
+        right: '12px',
+        width: '8px',
+        height: '8px',
+        backgroundColor: '#ef4444',
+        borderRadius: '50%',
         flexShrink: 0,
     },
     expandedContent: {

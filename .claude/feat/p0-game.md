@@ -6,3 +6,11 @@ How to gamify this system?
 -- When 1st session complete (banner + sounds)
 -- Streak... 
 -- Ranks/Tiering
+
+3. What if it's a generation of report/profile similar to principlesyou/enneasgram only if they meet certain criteria.. and once they fail no more.. or a shorter report.. 
+coaching assessments (like PLQ)...
+
+4. Earn points and with a way to spend those points? - meditation pillow? Can throw in some super sexy/expensive item.. but hard to earn. Other possible rewards: Points, exp, $, skill points.
+
+5. sound effects
+6. 10k hours (gladwell)

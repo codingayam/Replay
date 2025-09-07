@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import api from '../utils/api';
 import { useAuth } from './AuthContext';
-import { useJobNotifications } from './NotificationContext';
 
 // Types for meditation jobs
 export interface MeditationJob {
@@ -54,7 +53,6 @@ export function JobProvider({ children }: { children: ReactNode }) {
   const [isPolling, setIsPolling] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const { getToken, user, loading } = useAuth();
-  const { showJobCompletion, showJobError } = useJobNotifications();
   
   // Track previous job statuses to detect changes
   const previousJobStatuses = useRef<Record<string, string>>({});
@@ -185,19 +183,17 @@ export function JobProvider({ children }: { children: ReactNode }) {
       const response = await makeAuthenticatedRequest('GET', '/meditate/jobs?status=pending,processing,completed,failed');
       const { jobs } = response;
 
-      // Check for status changes and trigger notifications
+      // Check for status changes and log them
       if (jobs) {
         jobs.forEach((job: MeditationJob) => {
           const previousStatus = previousJobStatuses.current[job.jobId];
           
-          // If status changed to completed or failed, show notification
+          // If status changed to completed or failed, log the change
           if (previousStatus && previousStatus !== job.status) {
             if (job.status === 'completed' && previousStatus === 'processing') {
-              console.log('🎉 Job completed, showing notification:', job.jobId);
-              showJobCompletion(job);
+              console.log('🎉 Job completed:', job.jobId);
             } else if (job.status === 'failed' && previousStatus !== 'failed') {
-              console.log('❌ Job failed, showing notification:', job.jobId);
-              showJobError(job);
+              console.log('❌ Job failed:', job.jobId);
             }
           }
           
@@ -219,7 +215,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
       console.error('❌ Failed to refresh jobs:', error);
       // Don't throw here to avoid breaking polling
     }
-  }, [makeAuthenticatedRequest, showJobCompletion, showJobError]);
+  }, [makeAuthenticatedRequest]);
 
   // Start polling for job status updates
   const startPolling = useCallback(() => {

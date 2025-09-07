@@ -1,0 +1,63 @@
+MEDITATION SCRIPT LOG
+====================
+Generated: 2025-09-07T09:44:00.947Z
+User ID: 3c6b4e2c-b5a7-4e5b-80a6-811db4b576d2
+Duration: 5 minutes
+Profile: XJ
+Selected Experiences: 3
+
+FULL GENERATED SCRIPT:
+----------------------
+Welcome, XJ. Take a comfortable seat, allowing your body to settle. Feel the ground beneath you, supporting you. Gently close your eyes, or soften your gaze.
+[PAUSE=5s]
+Bring your awareness to your breath. Not trying to change it, just noticing the gentle rhythm of inhale and exhale.
+[PAUSE=15s]
+
+As you breathe, bring to mind the feeling of home. Perhaps that beloved noodle stall, where familiar flavors and rhythms bring a deep sense of belonging. Feel that ease, that quiet comfort.
+[PAUSE=15s]
+Now, let a soft smile emerge as you recall Calbee, nestled happily in the car, soaking in the sun. This simple image reminds us of the profound joy in companionship, in the quiet, shared moments. This kindness resonates with your values.
+[PAUSE=15s]
+Consider the diverse entrepreneurs you’ve met – farmers, artists, game producers. Each on a unique journey, embodying authenticity and impact beyond traditional paths. This exploration fuels your quest for growth and excellence, as you build your app and seek your life's aligned work.
+[PAUSE=20s]
+
+Hold these feelings gently. The sense of home, the joy of connection, the inspiration of diverse purpose. Now, let’s extend loving-kindness, starting with yourself.
+
+May you, XJ, be happy. May you be healthy. May you be free from suffering. May you find peace and joy.
+[PAUSE=10s]
+Bring Calbee to mind, your loving companion.
+May you, Calbee, be happy. May you be healthy. May you be free from suffering. May you find peace and joy.
+[PAUSE=10s]
+Now, think of the kind woman at the noodle stall, and the many diverse entrepreneurs shaping their unique paths.
+May you all be happy. May you all be healthy. May you all be free from suffering. May you all find peace and joy.
+[PAUSE=10s]
+Finally, bring to mind your aspirations: building your meditation app, finding your life’s work which aligns with your mission to do good.
+May this work bring you happiness. May it bring you health. May it be free from suffering. May it bring you peace and joy.
+[PAUSE=10s]
+
+Let these feelings of kindness and purpose gently settle within you. Know that growth, kindness, authenticity, excellence, and impact are woven into every aspect of your life. As you slowly begin to bring your awareness back to your surroundings, carry this sense of peace and intention with you. When you’re ready, gently open your eyes, feeling refreshed and ready to continue your day.
+
+PARSED SEGMENTS:
+---------------
+Speech Segment 0: "Welcome, XJ. Take a comfortable seat, allowing your body to settle. Feel the ground beneath you, sup..."
+Pause Segment: 5 seconds
+Speech Segment 1: "Bring your awareness to your breath. Not trying to change it, just noticing the gentle rhythm of inh..."
+Pause Segment: 15 seconds
+Speech Segment 2: "As you breathe, bring to mind the feeling of home. Perhaps that beloved noodle stall, where familiar..."
+Pause Segment: 15 seconds
+Speech Segment 3: "Now, let a soft smile emerge as you recall Calbee, nestled happily in the car, soaking in the sun. T..."
+Pause Segment: 15 seconds
+Speech Segment 4: "Consider the diverse entrepreneurs you’ve met – farmers, artists, game producers. Each on a unique j..."
+Pause Segment: 20 seconds
+Speech Segment 5: "Hold these feelings gently. The sense of home, the joy of connection, the inspiration of diverse pur..."
+Pause Segment: 10 seconds
+Speech Segment 6: "Bring Calbee to mind, your loving companion.
+May you, Calbee, be happy. May you be healthy. May you ..."
+Pause Segment: 10 seconds
+Speech Segment 7: "Now, think of the kind woman at the noodle stall, and the many diverse entrepreneurs shaping their u..."
+Pause Segment: 10 seconds
+Speech Segment 8: "Finally, bring to mind your aspirations: building your meditation app, finding your life’s work whic..."
+Pause Segment: 10 seconds
+Speech Segment 9: "Let these feelings of kindness and purpose gently settle within you. Know that growth, kindness, aut..."
+
+Total Segments: 19
+Script Length: 2396 characters
