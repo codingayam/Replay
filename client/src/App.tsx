@@ -7,7 +7,6 @@ import ProfilePage from './pages/ProfilePage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
 import OnboardingPage from './pages/OnboardingPage';
-import Header from './components/Header';
 import BottomTabNavigation from './components/BottomTabNavigation';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
 
@@ -126,7 +125,6 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <BackgroundJobIndicator />
-      <Header />
       <main style={styles.main}>
         {children}
       </main>
@@ -137,12 +135,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 const styles = {
   main: {
-    padding: '1rem',
-    maxWidth: '800px',
-    margin: '0 auto',
+    padding: '0',
+    margin: '0',
     minHeight: '100vh',
-    paddingTop: '0',
-    paddingBottom: '100px', // Space for bottom navigation
   }
 };
 

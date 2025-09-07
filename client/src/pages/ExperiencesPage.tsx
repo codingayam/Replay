@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlayCircle, Trash2, Share2, Image as ImageIcon, User, X, Play, Pause } from 'lucide-react';
+import { PlayCircle, Trash2, Share2, Image as ImageIcon, User, X, Play, Pause, Mic } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
-import SearchBar from '../components/SearchBar';
+import Header from '../components/Header';
 import SearchResults from '../components/SearchResults';
 import SearchResultModal from '../components/SearchResultModal';
 import type { Note, SearchResult } from '../types';
@@ -182,9 +182,10 @@ const ExperiencesPage: React.FC = () => {
 
         try {
             const res = await api.get(`/notes/search?q=${encodeURIComponent(query)}&limit=50`);
-            setSearchResults(res.data.results);
+            setSearchResults(res.data.results || []);
         } catch (error) {
             console.error('Search error:', error);
+            // Don't show error to user, just clear results
             setSearchResults([]);
         } finally {
             setIsSearching(false);
@@ -214,150 +215,143 @@ const ExperiencesPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            {/* Search Bar */}
-            <SearchBar
+            {/* Header with integrated search */}
+            <Header 
+                showSearch={true}
+                searchPlaceholder="Search your experiences..."
                 onSearch={handleSearch}
-                onClear={handleClearSearch}
+                onClearSearch={handleClearSearch}
+                searchQuery={searchQuery}
                 isSearching={isSearching}
             />
 
             {/* Search Results or Timeline */}
             {searchActive ? (
-                <SearchResults
-                    results={searchResults}
-                    isLoading={isSearching}
-                    query={searchQuery}
-                    totalCount={searchResults.length}
-                    onResultClick={handleSearchResultClick}
-                />
+                <div style={styles.contentContainer}>
+                    <SearchResults
+                        results={searchResults}
+                        isLoading={isSearching}
+                        query={searchQuery}
+                        totalCount={searchResults.length}
+                        onResultClick={handleSearchResultClick}
+                    />
+                </div>
             ) : (
-                <div style={styles.timeline}>
-                {sortedDateGroups.map((dateGroup, groupIndex) => {
-                    const groupNotes = groupedNotes[dateGroup].sort((a, b) => 
-                        new Date(b.date).getTime() - new Date(a.date).getTime()
-                    );
-                    
-                    return (
-                        <div key={dateGroup} style={styles.dateGroup}>
-                            {/* Date category header */}
-                            <h2 style={styles.dateHeader}>{dateGroup}</h2>
-                            
-                            {groupNotes.map((note, noteIndex) => {
-                                const isExpanded = expandedNoteId === note.id;
-                                const isLastInGroup = noteIndex === groupNotes.length - 1;
-                                const isLastGroup = groupIndex === sortedDateGroups.length - 1;
-                                const isLastOverall = isLastInGroup && isLastGroup;
-                                const category = note.category || 'experience';
-                                const categoryInfo = getCategoryInfo(category) || {
-                                    name: 'experience',
-                                    color: '#3b82f6',
-                                    backgroundColor: '#dbeafe',
-                                };
+                <div style={styles.contentContainer}>
+                    <div style={styles.timeline}>
+                    {sortedDateGroups.map((dateGroup, groupIndex) => {
+                        const groupNotes = groupedNotes[dateGroup].sort((a, b) => 
+                            new Date(b.date).getTime() - new Date(a.date).getTime()
+                        );
+                        
+                        return (
+                            <div key={dateGroup} style={styles.dateGroup}>
+                                {/* Date category header */}
+                                <h2 style={styles.dateHeader}>{dateGroup}</h2>
                                 
-                                return (
-                                    <div key={note.id} style={styles.timelineItem}>
-                                        {/* Timeline line and icon */}
-                                        <div style={styles.timelineTrack}>
-                                            <div 
-                                                style={{
-                                                    ...styles.timelineIcon,
-                                                    backgroundColor: categoryInfo.backgroundColor,
-                                                    borderColor: categoryInfo.color,
-                                                }}
-                                            >
+                                {groupNotes.map((note, noteIndex) => {
+                                    const isExpanded = expandedNoteId === note.id;
+                                    const category = note.category || 'experience';
+                                    const categoryInfo = getCategoryInfo(category) || {
+                                        name: 'experience',
+                                        color: '#3b82f6',
+                                        backgroundColor: '#dbeafe',
+                                    };
+                                    
+                                    return (
+                                        <div key={note.id} style={styles.noteCard}>
+                                            {/* Note icon */}
+                                            <div style={styles.noteIcon}>
                                                 {note.type === 'photo' ? (
-                                                    <ImageIcon size={8} style={{ color: categoryInfo.color }} />
+                                                    <ImageIcon size={16} style={{ color: '#6366f1' }} />
                                                 ) : (
-                                                    <User size={8} style={{ color: categoryInfo.color }} />
+                                                    <Mic size={16} style={{ color: '#6366f1' }} />
                                                 )}
                                             </div>
-                                            {!isLastOverall && <div style={styles.timelineLine} />}
-                                        </div>
 
-                                        {/* Note content */}
-                                        <div style={styles.noteContent}>
-                                            <div 
-                                                style={styles.noteHeader}
-                                                onClick={() => handleToggleExpand(note.id)}
-                                            >
-                                                <div>
-                                                    <h3 style={styles.noteTitle}>{note.title}</h3>
-                                                    <p style={styles.noteDate}>
+                                            {/* Note content */}
+                                            <div style={styles.noteContentNew}>
+                                                <div 
+                                                    style={styles.noteHeaderNew}
+                                                    onClick={() => handleToggleExpand(note.id)}
+                                                >
+                                                    <h3 style={styles.noteTitleNew}>{note.title}</h3>
+                                                    <p style={styles.noteDateNew}>
                                                         {new Date(note.date).toLocaleDateString('en-US', {
-                                                            year: 'numeric',
                                                             month: 'short',
-                                                            day: 'numeric'
+                                                            day: 'numeric',
+                                                            year: 'numeric'
                                                         })}
                                                     </p>
                                                 </div>
-                                            </div>
 
-                                            {isExpanded && (
-                                                <div style={styles.expandedContent}>
-                                                    {note.type === 'audio' ? (
-                                                        <div>
-                                                            <div style={styles.transcript}>
-                                                                <p style={styles.transcriptText}>{note.transcript}</p>
-                                                            </div>
-                                                            <div style={styles.audioControls}>
-                                                                <button 
-                                                                    onClick={() => handlePlayNote(note.audioUrl!)}
-                                                                    style={styles.playButton}
-                                                                >
-                                                                    <PlayCircle size={16} />
-                                                                    Play Audio
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div>
-                                                            <div style={styles.photoContainer}>
-                                                                <div style={styles.photoPlaceholder}>
-                                                                    {note.imageUrl && (
-                                                                        <SupabaseImage
-                                                                            src={note.imageUrl}
-                                                                            alt={note.title}
-                                                                            style={styles.photo}
-                                                                        />
-                                                                    )}
+                                                {isExpanded && (
+                                                    <div style={styles.expandedContentNew}>
+                                                        {note.type === 'audio' ? (
+                                                            <div>
+                                                                <div style={styles.transcript}>
+                                                                    <p style={styles.transcriptText}>{note.transcript}</p>
+                                                                </div>
+                                                                <div style={styles.audioControls}>
+                                                                    <button 
+                                                                        onClick={() => handlePlayNote(note.audioUrl!)}
+                                                                        style={styles.playButton}
+                                                                    >
+                                                                        <PlayCircle size={16} />
+                                                                        Play Audio
+                                                                    </button>
                                                                 </div>
                                                             </div>
-                                                            <div style={styles.transcript}>
-                                                                <p style={styles.transcriptText}>
-                                                                    {note.type === 'photo' ? (note.originalCaption || 'No caption provided') : note.transcript}
-                                                                </p>
+                                                        ) : (
+                                                            <div>
+                                                                <div style={styles.photoContainer}>
+                                                                    <div style={styles.photoPlaceholder}>
+                                                                        {note.imageUrl && (
+                                                                            <SupabaseImage
+                                                                                src={note.imageUrl}
+                                                                                alt={note.title}
+                                                                                style={styles.photo}
+                                                                            />
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={styles.transcript}>
+                                                                    <p style={styles.transcriptText}>
+                                                                        {note.type === 'photo' ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                                                    </p>
+                                                                </div>
                                                             </div>
+                                                        )}
+                                                        
+                                                        <div style={styles.actionButtons}>
+                                                            <button 
+                                                                onClick={() => handleDeleteNote(note.id)}
+                                                                style={styles.deleteButton}
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                            <button style={styles.shareButton}>
+                                                                <Share2 size={16} />
+                                                            </button>
                                                         </div>
-                                                    )}
-                                                    
-                                                    <div style={styles.actionButtons}>
-                                                        <button 
-                                                            onClick={() => handleDeleteNote(note.id)}
-                                                            style={styles.deleteButton}
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                        <button style={styles.shareButton}>
-                                                            <Share2 size={16} />
-                                                        </button>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
+                    
+                    {notes.length === 0 && (
+                        <div style={styles.emptyState}>
+                            <p style={styles.emptyText}>No experiences recorded yet.</p>
+                            <p style={styles.emptySubtext}>Tap the Upload button to record your first daily note.</p>
                         </div>
-                    );
-                })}
-                
-                {notes.length === 0 && (
-                    <div style={styles.emptyState}>
-                        <p style={styles.emptyText}>No experiences recorded yet.</p>
-                        <p style={styles.emptySubtext}>Tap the Upload button to record your first daily note.</p>
+                    )}
                     </div>
-                )}
-            </div>
+                </div>
             )}
 
             <FloatingUploadButton 
@@ -417,10 +411,22 @@ const ExperiencesPage: React.FC = () => {
 
 const styles = {
     container: {
-        paddingBottom: '180px', // Space for FAB, bottom nav, and audio player
-        paddingTop: '0.75rem',
-        paddingLeft: '1rem',
-        paddingRight: '1rem',
+        paddingBottom: '160px', // Space for FAB, bottom nav, and audio player  
+        backgroundColor: '#f8f9ff',
+        minHeight: '100vh',
+        width: '100%',
+        position: 'relative',
+    },
+    contentContainer: {
+        padding: '1.5rem 1rem',
+        backgroundColor: '#ffffff',
+        marginTop: '-1rem',
+        borderTopLeftRadius: '20px',
+        borderTopRightRadius: '20px',
+        minHeight: 'calc(100vh - 120px)',
+        maxWidth: '100%',
+        margin: '-1rem auto 0 auto',
+        boxSizing: 'border-box',
     },
     bottomPlayerContainer: {
         position: 'fixed' as const,
@@ -474,13 +480,72 @@ const styles = {
         marginBottom: '2rem',
     },
     dateHeader: {
-        fontSize: '1.1rem',
+        fontSize: '1.25rem',
         fontWeight: '600',
-        color: 'var(--text-color)',
-        fontFamily: 'var(--font-family-heading)',
+        color: '#1f2937',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
         marginBottom: '1rem',
         marginTop: '0',
-        paddingLeft: '10px', // Align with timeline icons (20px width / 2 = 10px center)
+        borderBottom: '2px solid #6366f1',
+        paddingBottom: '0.5rem',
+        display: 'inline-block',
+    },
+    noteCard: {
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '1rem',
+        padding: '1rem',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        marginBottom: '1rem',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        border: '1px solid #f3f4f6',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        '&:hover': {
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+        },
+    },
+    noteIcon: {
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: '#ede9fe',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        marginTop: '4px',
+    },
+    noteContentNew: {
+        flex: 1,
+        minWidth: 0,
+    },
+    noteHeaderNew: {
+        marginBottom: '0.5rem',
+    },
+    noteTitleNew: {
+        margin: 0,
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: '#1f2937',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        lineHeight: '1.4',
+        marginBottom: '0.25rem',
+    },
+    noteDateNew: {
+        margin: 0,
+        fontSize: '0.875rem',
+        color: '#6b7280',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontWeight: '400',
+    },
+    expandedContentNew: {
+        marginTop: '1rem',
+        padding: '1rem',
+        backgroundColor: '#f9fafb',
+        borderRadius: '8px',
+        border: '1px solid #e5e7eb',
     },
     timelineItem: {
         display: 'flex',

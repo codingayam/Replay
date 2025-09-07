@@ -1,209 +1,186 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { LogOut } from 'lucide-react';
+import { Search } from 'lucide-react';
 
-const Header: React.FC = () => {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [userProfile, setUserProfile] = useState<any>(null);
+interface HeaderProps {
+  showSearch?: boolean;
+  searchPlaceholder?: string;
+  onSearch?: (query: string) => void;
+  onClearSearch?: () => void;
+  searchQuery?: string;
+  isSearching?: boolean;
+}
 
-  // For now, we'll use basic user info from Supabase auth
-  // Later we can fetch user profile from our database
+const Header: React.FC<HeaderProps> = ({ 
+  showSearch = false, 
+  searchPlaceholder = "Search your experiences...",
+  onSearch,
+  onClearSearch,
+  searchQuery = '',
+  isSearching = false
+}) => {
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    if (user) {
-      setUserProfile({
-        email: user.email,
-        firstName: user.user_metadata?.firstName || user.email?.split('@')[0],
-        fullName: user.user_metadata?.fullName || user.email,
-        avatarUrl: user.user_metadata?.avatarUrl
-      });
-    }
-  }, [user]);
+    setLocalSearchQuery(searchQuery);
+  }, [searchQuery]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    setShowUserMenu(false);
-    navigate('/', { replace: true });
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTimeout]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLocalSearchQuery(value);
+    
+    // Clear existing timeout
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+    
+    // Set new timeout for debounced search
+    const newTimeout = setTimeout(() => {
+      if (value.trim() && onSearch) {
+        onSearch(value);
+      } else if (!value.trim() && onClearSearch) {
+        onClearSearch();
+      }
+    }, 400); // 400ms debounce delay
+    
+    setSearchTimeout(newTimeout);
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (localSearchQuery.trim() && onSearch) {
+      onSearch(localSearchQuery);
+    }
   };
 
   return (
-    <header style={styles.header}>
-      <div style={styles.leftSection}>
-        <div>
-          <h1 style={styles.appName}>Replay</h1>
-          <p style={styles.subtitle}>
-            {userProfile?.firstName ? `Welcome back, ${userProfile.firstName}` : 'Your daily reflections'}
-          </p>
-        </div>
-      </div>
-      
-      {user && (
-        <div style={styles.rightSection}>
-          <div style={styles.userSection}>
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              style={styles.userButton}
-            >
-              {userProfile?.avatarUrl ? (
-                <img 
-                  src={userProfile.avatarUrl} 
-                  alt="Profile" 
-                  style={styles.userAvatar}
-                />
-              ) : (
-                <div style={styles.userInitials}>
-                  {userProfile?.firstName?.[0] || userProfile?.email?.[0] || 'U'}
-                </div>
-              )}
-            </button>
-            
-            {showUserMenu && (
-              <div style={styles.userMenu}>
-                <div style={styles.userInfo}>
-                  <div style={styles.userName}>
-                    {userProfile?.fullName || userProfile?.email}
-                  </div>
-                  <div style={styles.userEmail}>
-                    {userProfile?.email}
-                  </div>
-                </div>
-                <hr style={styles.menuDivider} />
-                <button onClick={handleSignOut} style={styles.menuItem}>
-                  <LogOut size={16} />
-                  Sign Out
-                </button>
-              </div>
-            )}
+    <>
+      <style>
+        {`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      <header style={styles.header}>
+        <div style={styles.headerContent}>
+          <div style={styles.titleSection}>
+            <h1 style={styles.appName}>Replay</h1>
           </div>
+          
+          {showSearch && (
+            <form onSubmit={handleSearchSubmit} style={styles.searchSection}>
+              <div style={styles.searchContainer}>
+                <Search size={20} style={styles.searchIcon} />
+                <input
+                  type="text"
+                  placeholder={searchPlaceholder}
+                  value={localSearchQuery}
+                  onChange={handleSearchChange}
+                  style={styles.searchInput}
+                  disabled={isSearching}
+                />
+                {isSearching && (
+                  <div style={styles.searchSpinner}>
+                    <div style={styles.spinner} />
+                  </div>
+                )}
+              </div>
+            </form>
+          )}
         </div>
-      )}
-    </header>
+      </header>
+    </>
   );
 };
 
 const styles = {
   header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '1.25rem',
-    backgroundColor: 'var(--card-background)',
-    borderBottom: '1px solid var(--card-border)',
+    backgroundColor: '#f8f9ff',
+    padding: '1.5rem 1rem 1rem 1rem',
     position: 'sticky' as const,
     top: 0,
     left: 0,
     right: 0,
     width: '100%',
     zIndex: 100,
-    minHeight: '72px',
     boxSizing: 'border-box' as const,
-    backdropFilter: 'blur(10px)',
   },
-  leftSection: {
+  headerContent: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1rem',
+    maxWidth: '100%',
+    margin: '0 auto',
+    boxSizing: 'border-box',
+  },
+  titleSection: {
     display: 'flex',
     alignItems: 'center',
-  },
-  rightSection: {
-    display: 'flex',
-    alignItems: 'center',
+    justifyContent: 'center',
   },
   appName: {
-    fontSize: '1.75rem',
+    fontSize: '2rem',
     fontWeight: '700',
-    color: 'var(--text-color)',
+    color: '#6366f1',
     margin: 0,
-    fontFamily: 'var(--font-family-heading)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
     letterSpacing: '-0.025em',
   },
-  subtitle: {
-    fontSize: '0.9rem',
-    fontWeight: '400',
-    color: 'var(--text-secondary)',
-    margin: '0.25rem 0 0 0',
-    fontFamily: 'var(--font-family)',
-  },
-  userSection: {
-    position: 'relative' as const,
-  },
-  userButton: {
-    background: 'none',
-    border: 'none',
-    padding: 0,
-    cursor: 'pointer',
-    borderRadius: '50%',
-    width: '40px',
-    height: '40px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userAvatar: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    objectFit: 'cover' as const,
-  },
-  userInitials: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    backgroundColor: '#4F46E5',
-    color: 'white',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '16px',
-    fontWeight: '600',
-    textTransform: 'uppercase' as const,
-  },
-  userMenu: {
-    position: 'absolute' as const,
-    top: '50px',
-    right: 0,
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
-    border: '1px solid var(--card-border)',
-    padding: '12px',
-    minWidth: '200px',
-    zIndex: 1000,
-  },
-  userInfo: {
-    padding: '8px 0',
-  },
-  userName: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: 'var(--text-color)',
-    marginBottom: '4px',
-  },
-  userEmail: {
-    fontSize: '12px',
-    color: 'var(--text-secondary)',
-  },
-  menuDivider: {
-    border: 'none',
-    borderTop: '1px solid var(--card-border)',
-    margin: '8px 0',
-  },
-  menuItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
+  searchSection: {
     width: '100%',
-    padding: '8px 12px',
-    background: 'none',
+  },
+  searchContainer: {
+    position: 'relative' as const,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  searchIcon: {
+    position: 'absolute' as const,
+    left: '12px',
+    color: '#9ca3af',
+    zIndex: 1,
+  },
+  searchInput: {
+    width: '100%',
+    padding: '12px 12px 12px 44px',
+    borderRadius: '12px',
     border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    color: 'var(--text-color)',
-    transition: 'background-color 0.2s',
-    '&:hover': {
-      backgroundColor: 'var(--hover-background)',
+    backgroundColor: '#ffffff',
+    fontSize: '16px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    color: '#374151',
+    outline: 'none',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    boxSizing: 'border-box',
+    '::placeholder': {
+      color: '#9ca3af',
     },
+  },
+  searchSpinner: {
+    position: 'absolute' as const,
+    right: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spinner: {
+    width: '16px',
+    height: '16px',
+    border: '2px solid #e5e7eb',
+    borderTop: '2px solid #6366f1',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
   },
 };
 

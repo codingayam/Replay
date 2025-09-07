@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera } from 'lucide-react';
+import Header from '../components/Header';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 import SupabaseImage from '../components/SupabaseImage';
 
@@ -259,7 +260,9 @@ const ProfilePage: React.FC = () => {
 
     return (
         <div style={styles.container}>
+            <Header />
             
+            <div style={styles.contentContainer}>
             <div style={styles.formWrapper}>
                 <p style={styles.description}>
                     This information helps create personalized meditations just for you.
@@ -401,6 +404,7 @@ const ProfilePage: React.FC = () => {
             </form>
             {status && <p style={styles.status}>{status}</p>}
             </div>
+            </div>
         </div>
     );
 };
@@ -408,9 +412,21 @@ const ProfilePage: React.FC = () => {
 const styles = {
     container: { 
         paddingBottom: '100px', // Space for bottom navigation
-        paddingTop: '0.75rem',
-        paddingLeft: '1rem',
-        paddingRight: '1rem',
+        backgroundColor: '#f8f9ff',
+        minHeight: '100vh',
+        width: '100%',
+        position: 'relative',
+    },
+    contentContainer: {
+        padding: '1.5rem 1rem',
+        backgroundColor: '#ffffff',
+        marginTop: '-1rem',
+        borderTopLeftRadius: '20px',
+        borderTopRightRadius: '20px',
+        minHeight: 'calc(100vh - 120px)',
+        maxWidth: '100%',
+        margin: '-1rem auto 0 auto',
+        boxSizing: 'border-box',
     },
     formWrapper: {
         maxWidth: '600px', 

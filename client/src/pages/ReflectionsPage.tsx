@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Header from '../components/Header';
 import MeditationPlayer from '../components/MeditationPlayer';
 import ReflectionTypeModal from '../components/ReflectionTypeModal';
 import MeditationSubTypeModal from '../components/MeditationSubTypeModal';
@@ -375,9 +376,11 @@ const ReflectionsPage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-
-            {/* Stats Cards */}
-            <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
+            <Header />
+            
+            <div style={styles.contentContainer}>
+                {/* Stats Cards */}
+                <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
             
             {/* Recent Activity Calendar */}
             <RecentActivityCalendar 
@@ -535,6 +538,7 @@ const ReflectionsPage: React.FC = () => {
                 onClose={() => setShowCalendarModal(false)}
                 reflectionDates={reflectionDates || []}
             />
+            </div>
         </div>
     );
 };
@@ -542,9 +546,21 @@ const ReflectionsPage: React.FC = () => {
 const styles = {
     container: {
         paddingBottom: '100px', // Space for bottom nav
-        paddingTop: '0.75rem',
-        paddingLeft: '1rem',
-        paddingRight: '1rem',
+        backgroundColor: '#f8f9ff',
+        minHeight: '100vh',
+        width: '100%',
+        position: 'relative',
+    },
+    contentContainer: {
+        padding: '1.5rem 1rem',
+        backgroundColor: '#ffffff',
+        marginTop: '-1rem',
+        borderTopLeftRadius: '20px',
+        borderTopRightRadius: '20px',
+        minHeight: 'calc(100vh - 120px)',
+        maxWidth: '100%',
+        margin: '-1rem auto 0 auto',
+        boxSizing: 'border-box',
     },
     generateButton: {
         width: '100%',
