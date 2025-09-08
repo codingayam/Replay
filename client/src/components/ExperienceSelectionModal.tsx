@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, CheckCircle, Circle } from 'lucide-react';
 import type { Note } from '../types';
 import { useAuthenticatedApi } from '../utils/api';
-import { noteHasCategory } from '../utils/categoryUtils';
 
 interface ExperienceSelectionModalProps {
     isOpen: boolean;
@@ -70,9 +69,9 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                 const noteDateString = getLocalDateString(noteDate);
                 const dateInRange = noteDateString >= startDate && noteDateString <= endDate;
                 
-                // For Ideas reflection, only show notes categorized as 'ideas'
+                // For Ideas reflection, show all notes (category filtering removed)
                 if (reflectionType === 'Ideas') {
-                    return dateInRange && noteHasCategory(note, 'ideas');
+                    return dateInRange;
                 }
                 
                 return dateInRange;

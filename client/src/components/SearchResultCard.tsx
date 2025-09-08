@@ -28,14 +28,6 @@ const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onResultCli
     }
   };
 
-  // Get category badge color
-  const getCategoryColor = () => {
-    if (result.category === 'ideas') {
-      return 'text-purple-700 bg-purple-100';
-    } else {
-      return 'text-green-700 bg-green-100';
-    }
-  };
 
   // Highlight matched text in the snippet
   const highlightSnippet = (text: string, query: string) => {
@@ -103,9 +95,6 @@ const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onResultCli
         </span>
         <span className="text-gray-300">•</span>
         {getTypeIcon()}
-        <span className={`text-xs px-2 py-1 rounded-full ${getCategoryColor()}`}>
-          {result.category}
-        </span>
       </div>
       
       {/* Highlighted snippet */}

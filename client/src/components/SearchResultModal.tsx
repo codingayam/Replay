@@ -107,14 +107,6 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
     });
   };
 
-  // Get category color
-  const getCategoryColor = (category: string) => {
-    if (category === 'ideas') {
-      return { color: '#7c3aed', backgroundColor: '#ede9fe' };
-    } else {
-      return { color: '#059669', backgroundColor: '#d1fae5' };
-    }
-  };
 
   // Handle play audio
   const handlePlayAudio = () => {
@@ -166,14 +158,6 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
                       <Camera size={16} color="#059669" />
                     )}
                   </div>
-                  <span 
-                    style={{
-                      ...styles.categoryBadge,
-                      ...getCategoryColor(Array.isArray(note.category) ? note.category[0] : 'experience')
-                    }}
-                  >
-                    {Array.isArray(note.category) ? note.category[0] : 'experience'}
-                  </span>
                 </div>
               </div>
 

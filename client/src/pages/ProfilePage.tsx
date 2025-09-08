@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera } from 'lucide-react';
+import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X } from 'lucide-react';
 import Header from '../components/Header';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 import SupabaseImage from '../components/SupabaseImage';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Profile {
     name: string;
@@ -22,8 +23,10 @@ const ProfilePage: React.FC = () => {
     const [isShowingCamera, setIsShowingCamera] = useState(false);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [tagInput, setTagInput] = useState('');
+    const [focusedField, setFocusedField] = useState<string | null>(null);
     
     const api = useAuthenticatedApi();
+    const { signOut } = useAuth();
 
     useEffect(() => {
         console.log('ProfilePage: Fetching profile...');
@@ -244,6 +247,28 @@ const ProfilePage: React.FC = () => {
     };
 
 
+    const handleLogout = async () => {
+        try {
+            await signOut();
+            setStatus('Logged out successfully!');
+        } catch (error) {
+            console.error('Error logging out:', error);
+            setStatus('Error logging out.');
+        }
+    };
+
+    const getInputStyle = (fieldName: string) => ({
+        ...styles.input,
+        borderColor: focusedField === fieldName ? '#7c3aed' : '#e5e7eb',
+        backgroundColor: focusedField === fieldName ? '#ffffff' : '#f9fafb',
+    });
+
+    const getTextareaStyle = (fieldName: string) => ({
+        ...styles.textarea,
+        borderColor: focusedField === fieldName ? '#7c3aed' : '#e5e7eb',
+        backgroundColor: focusedField === fieldName ? '#ffffff' : '#f9fafb',
+    });
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
@@ -260,38 +285,44 @@ const ProfilePage: React.FC = () => {
 
     return (
         <div style={styles.container}>
-            <Header />
+            <Header title="Profile" />
             
             <div style={styles.contentContainer}>
-            <div style={styles.formWrapper}>
-                <p style={styles.description}>
-                    This information helps create personalized meditations just for you.
-                </p>
-                
-                {/* Profile Picture Section */}
-                <div style={styles.profilePictureSection}>
-                    <div style={styles.profilePictureContainer} onClick={handleProfilePictureClick}>
+                {/* Profile Card */}
+                <div style={styles.profileCard}>
+                    <div style={styles.profileImageContainer} onClick={handleProfilePictureClick}>
                         {profile.profileImageUrl ? (
                             <SupabaseImage
                                 src={profile.profileImageUrl}
                                 alt="Profile"
                                 style={styles.profileImage}
                                 fallback={
-                                    <div style={styles.profilePlaceholder}>
-                                        <Camera size={48} color="#666" />
-                                        <span style={styles.profilePlaceholderText}>Add Photo</span>
+                                    <div style={styles.profileImagePlaceholder}>
+                                        <span style={styles.profileImageInitial}>
+                                            {profile.name ? profile.name.charAt(0).toUpperCase() : 'X'}
+                                        </span>
                                     </div>
                                 }
                             />
                         ) : (
-                            <div style={styles.profilePlaceholder}>
-                                <Camera size={48} color="#666" />
-                                <span style={styles.profilePlaceholderText}>Add Photo</span>
+                            <div style={styles.profileImagePlaceholder}>
+                                <span style={styles.profileImageInitial}>
+                                    {profile.name ? profile.name.charAt(0).toUpperCase() : 'X'}
+                                </span>
                             </div>
                         )}
+                        <div style={styles.cameraIconOverlay}>
+                            <Camera size={20} color="white" />
+                        </div>
                     </div>
+                    
+                    <h2 style={styles.profileName}>{profile.name || 'XJ'}</h2>
+                    <p style={styles.profileDescription}>
+                        This information helps create personalized meditations just for you.
+                    </p>
                 </div>
 
+                {/* Hidden file input and camera modal */}
                 <input
                     ref={fileInputRef}
                     type="file"
@@ -330,80 +361,137 @@ const ProfilePage: React.FC = () => {
                     </div>
                 )}
 
-            <form onSubmit={handleSubmit} style={styles.form}>
-                <div style={styles.field}>
-                    <label htmlFor="name" style={styles.label}>Name</label>
-                    <input 
-                        type="text" 
-                        id="name" 
-                        name="name" 
-                        value={profile.name} 
-                        onChange={handleChange} 
-                        style={styles.input} 
-                        placeholder="Enter your name"
-                    />
-                </div>
-                <div style={styles.field}>
-                    <label htmlFor="values" style={styles.label}>Core Values</label>
-                    <div style={styles.tagCloud}>
-                        {(profile.values || []).map((tag, index) => (
-                            <div 
-                                key={index} 
-                                style={styles.tag}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#ff4757';
-                                    e.currentTarget.style.color = 'white';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'var(--primary-color)';
-                                    e.currentTarget.style.color = 'white';
-                                }}
-                                onClick={() => removeTag(tag)}
-                                title="Click to remove"
-                            >
-                                {tag} ×
+                {/* Form sections */}
+                <form onSubmit={handleSubmit} style={styles.form}>
+                    {/* Name Section */}
+                    <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
+                            <div style={styles.iconContainer}>
+                                <UserIcon size={20} color="#6b7280" />
                             </div>
-                        ))}
+                            <h3 style={styles.sectionTitle}>Name</h3>
+                        </div>
+                        <div style={styles.sectionContent}>
+                            <input 
+                                type="text" 
+                                name="name" 
+                                value={profile.name} 
+                                onChange={handleChange} 
+                                onFocus={() => setFocusedField('name')}
+                                onBlur={() => setFocusedField(null)}
+                                style={getInputStyle('name')} 
+                                placeholder="Enter your name"
+                            />
+                        </div>
                     </div>
-                    <input 
-                        type="text" 
-                        id="values" 
-                        value={tagInput} 
-                        onChange={handleTagInputChange}
-                        onKeyDown={handleTagInputKeyDown}
-                        style={styles.tagInput} 
-                        placeholder="Type a value and press Enter to add"
-                    />
-                    <small style={styles.hint}>You can add multiple values at once by typing A, B, C and then pressing Enter. Click on tags to remove them.</small>
-                </div>
-                <div style={styles.field}>
-                    <label htmlFor="mission" style={styles.label}>Life Mission</label>
-                    <textarea 
-                        id="mission" 
-                        name="mission" 
-                        value={profile.mission} 
-                        onChange={handleChange} 
-                        style={styles.textarea}
-                        placeholder="What drives you? What do you want to achieve in life?"
-                    ></textarea>
-                </div>
-                <div style={styles.field}>
-                    <label htmlFor="thinking_about" style={styles.label}>Thinking about/Working on</label>
-                    <textarea 
-                        id="thinking_about" 
-                        name="thinking_about" 
-                        value={profile.thinking_about || ''} 
-                        onChange={handleChange} 
-                        style={styles.textarea}
-                        placeholder="What are you currently thinking about or working on?"
-                    ></textarea>
-                </div>
-                <button type="submit" className="btn-primary" style={styles.button}>
-                    Save Profile
-                </button>
-            </form>
-            {status && <p style={styles.status}>{status}</p>}
-            </div>
+
+                    {/* Core Values Section */}
+                    <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
+                            <div style={{...styles.iconContainer, backgroundColor: '#fef2f2'}}>
+                                <Heart size={20} color="#ef4444" />
+                            </div>
+                            <h3 style={styles.sectionTitle}>Core Values</h3>
+                        </div>
+                        <div style={styles.sectionContent}>
+                            <div style={styles.valuesContainer}>
+                                {(profile.values || []).map((value, index) => (
+                                    <div key={index} style={styles.valueTag}>
+                                        <span>{value}</span>
+                                        <X 
+                                            size={16} 
+                                            color="#666"
+                                            style={styles.removeIcon}
+                                            onClick={() => removeTag(value)}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={styles.addValueContainer}>
+                                <input 
+                                    type="text" 
+                                    value={tagInput} 
+                                    onChange={handleTagInputChange}
+                                    onKeyDown={handleTagInputKeyDown}
+                                    onFocus={() => setFocusedField('values')}
+                                    onBlur={() => setFocusedField(null)}
+                                    style={{
+                                        ...styles.valueInput,
+                                        borderColor: focusedField === 'values' ? '#7c3aed' : '#e5e7eb',
+                                        backgroundColor: focusedField === 'values' ? '#ffffff' : '#f9fafb',
+                                    }} 
+                                    placeholder="Type a value and press Enter to add"
+                                />
+                                <Plus 
+                                    size={20} 
+                                    color="#7c3aed"
+                                    style={styles.addIcon}
+                                    onClick={() => addMultipleTags(tagInput)}
+                                />
+                            </div>
+                            <p style={styles.hint}>
+                                You can add multiple values at once by typing A, B, C and then pressing Enter. Click on tags to remove them.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Life Mission Section */}
+                    <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
+                            <div style={{...styles.iconContainer, backgroundColor: '#dcfce7'}}>
+                                <Target size={20} color="#16a34a" />
+                            </div>
+                            <h3 style={styles.sectionTitle}>Life Mission</h3>
+                        </div>
+                        <div style={styles.sectionContent}>
+                            <textarea 
+                                name="mission" 
+                                value={profile.mission} 
+                                onChange={handleChange} 
+                                onFocus={() => setFocusedField('mission')}
+                                onBlur={() => setFocusedField(null)}
+                                style={getTextareaStyle('mission')}
+                                placeholder="What drives you? What do you want to achieve in life?"
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Thinking About Section */}
+                    <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
+                            <div style={{...styles.iconContainer, backgroundColor: '#fef3c7'}}>
+                                <div style={styles.lightbulbIcon}>💡</div>
+                            </div>
+                            <h3 style={styles.sectionTitle}>Thinking about/Working on</h3>
+                        </div>
+                        <div style={styles.sectionContent}>
+                            <textarea 
+                                name="thinking_about" 
+                                value={profile.thinking_about || ''} 
+                                onChange={handleChange} 
+                                onFocus={() => setFocusedField('thinking_about')}
+                                onBlur={() => setFocusedField(null)}
+                                style={getTextareaStyle('thinking_about')}
+                                placeholder="What are you currently thinking about or working on?"
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Save Profile Button */}
+                    <button type="submit" style={styles.saveButton}>
+                        ✏️ Save Profile
+                    </button>
+
+                    {/* Log Out Button */}
+                    <button type="button" onClick={handleLogout} style={styles.logoutButton}>
+                        <LogOut size={20} color="#ef4444" />
+                        Log Out
+                    </button>
+                </form>
+
+                {status && <p style={styles.status}>{status}</p>}
             </div>
         </div>
     );
@@ -411,53 +499,42 @@ const ProfilePage: React.FC = () => {
 
 const styles = {
     container: { 
-        paddingBottom: '100px', // Space for bottom navigation
+        paddingBottom: '100px',
         backgroundColor: '#f8f9ff',
         minHeight: '100vh',
         width: '100%',
-        position: 'relative',
     },
     contentContainer: {
-        padding: '1.5rem 1rem',
-        backgroundColor: '#ffffff',
+        padding: '1rem',
+        maxWidth: '500px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '1rem',
+        backgroundColor: '#f3f4f6',
         marginTop: '-1rem',
         borderTopLeftRadius: '20px',
         borderTopRightRadius: '20px',
         minHeight: 'calc(100vh - 120px)',
-        maxWidth: '100%',
-        margin: '-1rem auto 0 auto',
-        boxSizing: 'border-box',
     },
-    formWrapper: {
-        maxWidth: '600px', 
-        margin: '0 auto',
-    },
-    description: {
-        color: 'var(--text-secondary)',
-        fontSize: '1rem',
-        margin: '0 0 2rem 0',
-        lineHeight: 1.5,
-        textAlign: 'center' as const,
-    },
-    profilePictureSection: {
+    profileCard: {
+        background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+        borderRadius: '24px',
+        padding: '2rem',
         display: 'flex',
         flexDirection: 'column' as const,
         alignItems: 'center',
-        marginBottom: '2rem',
-        gap: '0.5rem',
+        color: 'white',
+        textAlign: 'center' as const,
     },
-    profilePictureContainer: {
-        width: '120px',
-        height: '120px',
+    profileImageContainer: {
+        position: 'relative' as const,
+        width: '80px',
+        height: '80px',
         borderRadius: '50%',
         cursor: 'pointer',
-        border: '3px solid var(--primary-color)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--card-background)',
-        transition: 'all 0.2s ease',
-        overflow: 'hidden',
+        marginBottom: '1rem',
+        border: '3px solid white',
     },
     profileImage: {
         width: '100%',
@@ -465,22 +542,199 @@ const styles = {
         objectFit: 'cover' as const,
         borderRadius: '50%',
     },
-    profilePlaceholder: {
+    profileImagePlaceholder: {
+        width: '100%',
+        height: '100%',
+        borderRadius: '50%',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    profileImageInitial: {
+        fontSize: '1.8rem',
+        fontWeight: '700',
+        color: 'white',
+    },
+    cameraIconOverlay: {
+        position: 'absolute' as const,
+        bottom: '0px',
+        right: '0px',
+        width: '28px',
+        height: '28px',
+        borderRadius: '50%',
+        backgroundColor: '#6b7280',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: '2px solid white',
+    },
+    profileName: {
+        fontSize: '1.25rem',
+        fontWeight: '700',
+        margin: '0 0 0.5rem 0',
+        color: 'white',
+    },
+    profileDescription: {
+        fontSize: '0.9rem',
+        color: 'rgba(255, 255, 255, 0.9)',
+        margin: 0,
+        lineHeight: 1.4,
+    },
+    form: {
         display: 'flex',
         flexDirection: 'column' as const,
+        gap: '1rem',
+    },
+    section: {
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        padding: '1rem 1.25rem 0.5rem',
+    },
+    sectionTitle: {
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: '#1f2937',
+        margin: 0,
+    },
+    iconContainer: {
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        backgroundColor: '#f3f4f6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    lightbulbIcon: {
+        fontSize: '1.25rem',
+        width: '20px',
+        height: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    sectionContent: {
+        padding: '0 1.25rem 1.25rem',
+    },
+    input: {
+        width: '100%',
+        padding: '0.75rem 1rem',
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        color: '#1f2937',
+        backgroundColor: '#f9fafb',
+        outline: 'none',
+        fontFamily: 'inherit',
+        transition: 'border-color 0.2s, background-color 0.2s',
+    },
+    textarea: {
+        width: '100%',
+        padding: '0.75rem 1rem',
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        color: '#1f2937',
+        backgroundColor: '#f9fafb',
+        outline: 'none',
+        fontFamily: 'inherit',
+        resize: 'none' as const,
+        minHeight: '80px',
+        transition: 'border-color 0.2s, background-color 0.2s',
+    },
+    valuesContainer: {
+        display: 'flex',
+        flexWrap: 'wrap' as const,
+        gap: '0.5rem',
+        marginBottom: '1rem',
+    },
+    valueTag: {
+        display: 'inline-flex',
         alignItems: 'center',
         gap: '0.5rem',
-        color: 'var(--text-secondary)',
-    },
-    profilePlaceholderText: {
-        fontSize: '0.8rem',
+        padding: '0.5rem 0.75rem',
+        backgroundColor: '#ede9fe',
+        color: '#7c3aed',
+        borderRadius: '20px',
+        fontSize: '0.875rem',
         fontWeight: '500',
     },
-    profilePictureLabel: {
-        fontSize: '0.9rem',
+    removeIcon: {
+        cursor: 'pointer',
+        padding: '2px',
+        borderRadius: '50%',
+        transition: 'background-color 0.2s',
+    },
+    addValueContainer: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        marginBottom: '0.5rem',
+    },
+    valueInput: {
+        flex: 1,
+        padding: '0.75rem 1rem',
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        color: '#1f2937',
+        backgroundColor: '#f9fafb',
+        outline: 'none',
+        fontFamily: 'inherit',
+        transition: 'border-color 0.2s, background-color 0.2s',
+    },
+    addIcon: {
+        cursor: 'pointer',
+        padding: '0.25rem',
+        borderRadius: '50%',
+        transition: 'background-color 0.2s',
+    },
+    hint: {
+        fontSize: '0.75rem',
+        color: '#6b7280',
+        lineHeight: 1.4,
+    },
+    saveButton: {
+        width: '100%',
+        padding: '1rem',
+        backgroundColor: '#7c3aed',
+        color: 'white',
+        border: 'none',
+        borderRadius: '16px',
+        fontSize: '1rem',
         fontWeight: '600',
-        color: 'var(--text-color)',
-        margin: 0,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        transition: 'background-color 0.2s',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    },
+    logoutButton: {
+        width: '100%',
+        padding: '1rem',
+        backgroundColor: 'white',
+        color: '#ef4444',
+        border: '1px solid #fecaca',
+        borderRadius: '16px',
+        fontSize: '1rem',
+        fontWeight: '600',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        transition: 'background-color 0.2s',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
     },
     cameraModal: {
         position: 'fixed' as const,
@@ -508,7 +762,7 @@ const styles = {
         maxHeight: '50vh',
         objectFit: 'cover' as const,
         borderRadius: '1rem',
-        border: '2px solid var(--primary-color)',
+        border: '2px solid #7c3aed',
     },
     cameraControls: {
         display: 'flex',
@@ -516,10 +770,10 @@ const styles = {
     },
     captureButton: {
         padding: '1rem 2rem',
-        backgroundColor: 'var(--primary-color)',
+        backgroundColor: '#7c3aed',
         color: 'white',
         border: 'none',
-        borderRadius: 'var(--border-radius)',
+        borderRadius: '12px',
         fontSize: '1rem',
         fontWeight: '600',
         cursor: 'pointer',
@@ -530,104 +784,22 @@ const styles = {
         backgroundColor: 'transparent',
         color: 'white',
         border: '2px solid white',
-        borderRadius: 'var(--border-radius)',
+        borderRadius: '12px',
         fontSize: '1rem',
         fontWeight: '600',
         cursor: 'pointer',
         transition: 'all 0.2s ease',
-    },
-    form: { 
-        display: 'flex', 
-        flexDirection: 'column' as const, 
-        gap: '1.5rem',
-    },
-    field: { 
-        display: 'flex', 
-        flexDirection: 'column' as const,
-        gap: '0.5rem',
-    },
-    label: {
-        fontSize: '0.9rem',
-        fontWeight: '600',
-        color: 'var(--text-color)',
-        marginBottom: '0.25rem',
-    },
-    input: { 
-        padding: '1rem', 
-        border: '2px solid var(--card-border)', 
-        borderRadius: 'var(--border-radius)',
-        fontSize: '1rem',
-        backgroundColor: 'var(--card-background)',
-        transition: 'all 0.2s ease',
-        color: 'var(--text-color)',
-    },
-    textarea: { 
-        padding: '1rem', 
-        border: '2px solid var(--card-border)', 
-        borderRadius: 'var(--border-radius)', 
-        minHeight: '140px',
-        fontSize: '1rem',
-        backgroundColor: 'var(--card-background)',
-        resize: 'vertical' as const,
-        transition: 'all 0.2s ease',
-        fontFamily: 'inherit',
-        color: 'var(--text-color)',
-        lineHeight: 1.6,
-    },
-    hint: {
-        fontSize: '0.8rem',
-        color: '#666',
-        marginTop: '0.25rem',
-    },
-    tagCloud: {
-        display: 'flex',
-        flexWrap: 'wrap' as const,
-        gap: '0.5rem',
-        marginBottom: '0.75rem',
-        minHeight: '2rem',
-        padding: '0.5rem',
-        backgroundColor: 'var(--card-background)',
-        border: '2px solid var(--card-border)',
-        borderRadius: 'var(--border-radius)',
-    },
-    tag: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '0.4rem 0.8rem',
-        backgroundColor: 'var(--primary-color)',
-        color: 'white',
-        borderRadius: '20px',
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        cursor: 'pointer',
-        transition: 'all 0.2s ease',
-        userSelect: 'none' as const,
-        gap: '0.3rem',
-    },
-    tagInput: {
-        padding: '1rem',
-        border: '2px solid var(--card-border)',
-        borderRadius: 'var(--border-radius)',
-        fontSize: '1rem',
-        backgroundColor: 'var(--card-background)',
-        transition: 'all 0.2s ease',
-        color: 'var(--text-color)',
-        width: '100%',
-    },
-    button: { 
-        padding: '1rem', 
-        fontSize: '1rem',
-        fontWeight: '600',
-        marginTop: '0.5rem',
-        cursor: 'pointer',
-        width: '100%',
     },
     status: { 
         marginTop: '1rem', 
-        color: 'var(--primary-color)',
+        color: '#7c3aed',
         textAlign: 'center' as const,
         fontSize: '0.9rem',
         fontWeight: '500',
+        backgroundColor: 'white',
+        padding: '1rem',
+        borderRadius: '12px',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
     },
 };
 

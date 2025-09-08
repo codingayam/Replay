@@ -5,7 +5,6 @@ export interface Note {
     date: string;
     transcript: string; // For audio: transcription, for photo: AI-enhanced caption (combined user + AI)
     type: 'audio' | 'photo';
-    category?: ('ideas' | 'feelings')[]; // AI-generated categories array
     audioUrl?: string; // Only for audio notes
     imageUrl?: string; // Only for photo notes  
     originalCaption?: string; // Only for photo notes - user's original caption
@@ -25,7 +24,6 @@ export interface SearchResult {
     title: string;
     date: string;
     type: 'audio' | 'photo';
-    category: 'ideas' | 'experience';
     snippet: {
         text: string;
         matchCount: number;

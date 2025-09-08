@@ -8,6 +8,7 @@ interface HeaderProps {
   onClearSearch?: () => void;
   searchQuery?: string;
   isSearching?: boolean;
+  title?: string;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -16,7 +17,8 @@ const Header: React.FC<HeaderProps> = ({
   onSearch,
   onClearSearch,
   searchQuery = '',
-  isSearching = false
+  isSearching = false,
+  title = "Replay"
 }) => {
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -75,7 +77,7 @@ const Header: React.FC<HeaderProps> = ({
       <header style={styles.header}>
         <div style={styles.headerContent}>
           <div style={styles.titleSection}>
-            <h1 style={styles.appName}>Replay</h1>
+            <h1 style={styles.appName}>{title}</h1>
           </div>
           
           {showSearch && (

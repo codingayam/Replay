@@ -10,6 +10,9 @@ import { dirname, join } from 'path';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
+import mime from 'mime';
+import { writeFile } from 'fs';
 import Replicate from 'replicate';
 import { promisify } from 'util';
 import { exec } from 'child_process';
@@ -31,6 +34,78 @@ const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
+
+// Helper functions for Gemini TTS WAV conversion
+function saveBinaryFile(fileName, content) {
+  writeFile(fileName, content, 'utf8', (err) => {
+    if (err) {
+      console.error(`Error writing file ${fileName}:`, err);
+      return;
+    }
+    console.log(`File ${fileName} saved to file system.`);
+  });
+}
+
+function parseMimeType(mimeType) {
+  const [fileType, ...params] = mimeType.split(';').map(s => s.trim());
+  const [_, format] = fileType.split('/');
+
+  const options = {
+    numChannels: 1,
+  };
+
+  if (format && format.startsWith('L')) {
+    const bits = parseInt(format.slice(1), 10);
+    if (!isNaN(bits)) {
+      options.bitsPerSample = bits;
+    }
+  }
+
+  for (const param of params) {
+    const [key, value] = param.split('=').map(s => s.trim());
+    if (key === 'rate') {
+      options.sampleRate = parseInt(value, 10);
+    }
+  }
+
+  return options;
+}
+
+function createWavHeader(dataLength, options) {
+  const {
+    numChannels,
+    sampleRate,
+    bitsPerSample,
+  } = options;
+
+  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const buffer = Buffer.alloc(44);
+
+  buffer.write('RIFF', 0);                      // ChunkID
+  buffer.writeUInt32LE(36 + dataLength, 4);     // ChunkSize
+  buffer.write('WAVE', 8);                      // Format
+  buffer.write('fmt ', 12);                     // Subchunk1ID
+  buffer.writeUInt32LE(16, 16);                 // Subchunk1Size (PCM)
+  buffer.writeUInt16LE(1, 20);                  // AudioFormat (1 = PCM)
+  buffer.writeUInt16LE(numChannels, 22);        // NumChannels
+  buffer.writeUInt32LE(sampleRate, 24);         // SampleRate
+  buffer.writeUInt32LE(byteRate, 28);           // ByteRate
+  buffer.writeUInt16LE(blockAlign, 32);         // BlockAlign
+  buffer.writeUInt16LE(bitsPerSample, 34);      // BitsPerSample
+  buffer.write('data', 36);                     // Subchunk2ID
+  buffer.writeUInt32LE(dataLength, 40);         // Subchunk2Size
+
+  return buffer;
+}
+
+function convertToWav(rawData, mimeType) {
+  const options = parseMimeType(mimeType)
+  const wavHeader = createWavHeader(rawData.length, options);
+  const buffer = Buffer.from(rawData, 'base64');
+
+  return Buffer.concat([wavHeader, buffer]);
+}
 
 // Initialize Express app
 const app = express();
@@ -598,7 +673,7 @@ app.get('/api/notes/search', requireAuth(), async (req, res) => {
     
     const { data: notes, error } = await supabase
       .from('notes')
-      .select('id, title, transcript, date, type, category, image_url, audio_url, original_caption')
+      .select('id, title, transcript, date, type, image_url, audio_url, original_caption')
       .eq('user_id', userId)
       .or(`title.ilike.${searchPattern},transcript.ilike.${searchPattern}`)
       .order('date', { ascending: false })
@@ -660,7 +735,6 @@ app.get('/api/notes/search', requireAuth(), async (req, res) => {
         title: note.title,
         date: note.date,
         type: note.type,
-        category: note.category,
         snippet,
         relevanceScore
       };
@@ -767,7 +841,6 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
     // Transcribe audio using Gemini 2.0 Flash Lite
     let transcript = '';
     let title = '';
-    let categories = [];
     
     try {
       const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
@@ -799,45 +872,6 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
         title = 'Audio Note';
       }
 
-      // Generate categories from transcript
-      if (transcript && transcript !== 'Transcription failed') {
-        try {
-          const categoryResult = await model.generateContent(
-            `Analyze this transcribed note and determine which categories apply: "${transcript}".
-            
-            Categories:
-            - "ideas": Content that represents thoughts, concepts, plans, solutions, creative insights, or intellectual reflections
-            - "feelings": Content that represents emotions, emotional experiences, mood, personal reactions, or emotional processing
-            
-            A note can have both categories if it contains both ideas and emotional content.
-            
-            Respond with ONLY a JSON array containing the applicable categories. Examples:
-            ["ideas"] - if only ideas/thoughts
-            ["feelings"] - if only emotions/feelings  
-            ["ideas", "feelings"] - if both are present
-            
-            Return only the JSON array, no other text.`
-          );
-          
-          const categoryText = categoryResult.response.text().trim();
-          try {
-            const parsedCategories = JSON.parse(categoryText);
-            if (Array.isArray(parsedCategories)) {
-              // Validate that all categories are valid
-              const validCategories = parsedCategories.filter(cat => 
-                cat === 'ideas' || cat === 'feelings'
-              );
-              if (validCategories.length > 0) {
-                categories = validCategories;
-              }
-            }
-          } catch (parseError) {
-            console.error('Category parsing error:', parseError);
-          }
-        } catch (categoryError) {
-          console.error('Category generation error:', categoryError);
-        }
-      }
       
     } catch (aiError) {
       console.error('AI processing error:', aiError);
@@ -853,7 +887,6 @@ app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) =
         user_id: userId,
         title,
         transcript,
-        category: categories.length > 0 ? categories : null,
         type: 'audio',
         date: date || new Date().toISOString(),
         audio_url: urlData?.signedUrl || `${userId}/${fileName}`,
@@ -911,7 +944,6 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
     let aiImageDescription = '';
     let enhancedTranscript = caption || 'No caption provided';
     let title = 'Photo Note';
-    let categories = [];
 
     try {
       const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -986,43 +1018,6 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
         title = 'Photo Note';
       }
 
-      // Stage 4: Categorization - Generate categories from combined caption
-      try {
-        const categoryResult = await model.generateContent(
-          `Analyze this photo note and determine which categories apply: "${enhancedTranscript}".
-          
-          Categories:
-          - "ideas": Content that represents thoughts, concepts, plans, solutions, creative insights, or intellectual reflections
-          - "feelings": Content that represents emotions, emotional experiences, mood, personal reactions, or emotional processing
-          
-          A note can have both categories if it contains both ideas and emotional content.
-          
-          Respond with ONLY a JSON array containing the applicable categories. Examples:
-          ["ideas"] - if only ideas/thoughts
-          ["feelings"] - if only emotions/feelings  
-          ["ideas", "feelings"] - if both are present
-          
-          Return only the JSON array, no other text.`
-        );
-        
-        const categoryText = categoryResult.response.text().trim();
-        try {
-          const parsedCategories = JSON.parse(categoryText);
-          if (Array.isArray(parsedCategories)) {
-            // Validate that all categories are valid
-            const validCategories = parsedCategories.filter(cat => 
-              cat === 'ideas' || cat === 'feelings'
-            );
-            if (validCategories.length > 0) {
-              categories = validCategories;
-            }
-          }
-        } catch (parseError) {
-          console.error('Category parsing error:', parseError);
-        }
-      } catch (categoryError) {
-        console.error('Category generation error:', categoryError);
-      }
 
     } catch (aiError) {
       console.error('AI processing error:', aiError);
@@ -1039,7 +1034,6 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
         user_id: userId,
         title,
         transcript: enhancedTranscript,
-        category: categories.length > 0 ? categories : null,
         type: 'photo',
         date: date || new Date().toISOString(),
         image_url: urlData?.signedUrl || `${userId}/${fileName}`,
@@ -2555,6 +2549,403 @@ app.delete('/api/meditate/jobs/:id', requireAuth(), async (req, res) => {
 
   } catch (error) {
     console.error('Job deletion error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/replay/radio - Generate radio talk show from experiences
+app.post('/api/replay/radio', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { noteIds, duration = 10, title } = req.body;
+
+    if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
+      return res.status(400).json({ error: 'noteIds array is required' });
+    }
+
+    const radioId = uuidv4();
+
+    // Get selected notes and user profile
+    const { data: notes, error: notesError } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', noteIds);
+
+    if (notesError) {
+      console.error('Error fetching notes for radio show:', notesError);
+      return res.status(500).json({ error: 'Failed to fetch selected experiences' });
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name, values, mission, thinking_about')
+      .eq('user_id', userId)
+      .single();
+
+    try {
+      const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      
+      const experiencesText = notes.map(note => {
+        // Handle different note types for radio content
+        let noteContent = note.transcript;
+        if (note.type === 'photo' && note.original_caption && note.ai_image_description) {
+          noteContent = `${note.original_caption} [AI_ANALYSIS: ${note.ai_image_description}]`;
+        } else if (note.type === 'photo' && note.original_caption && !note.ai_image_description) {
+          noteContent = note.original_caption;
+        } else if (note.type === 'photo' && !note.original_caption && note.ai_image_description) {
+          noteContent = `[AI_ANALYSIS: ${note.ai_image_description}]`;
+        }
+        return `${note.date}: ${note.title}\n${noteContent}`;
+      }).join('\n\n---\n\n');
+
+      const profileContext = profile ? `
+        Host Information - You are hosting a radio show for: ${profile.name || 'the listener'}
+        Their personal values: ${profile.values || 'Not specified'}
+        Their life mission: ${profile.mission || 'Not specified'}
+        What they're currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
+      ` : '';
+
+      const radioScriptPrompt = `
+        Create a personalized ${duration}-minute radio show revolving around the user's ideas and experiences. Both user information, ideas/experiences will be provided below. There will be two hosts (Speaker 1 and Speaker 2) who will host the show in a casual and light manner. Speaker 1's name will be Jessica, and Speaker 2's name will be Alex. The hosts should interact with each other naturally and have a good chemistry.
+
+        ${profileContext}
+
+        Experiences to cover:
+        ${experiencesText}
+
+        CRITICAL FORMATTING REQUIREMENTS:
+        - You MUST format the script exactly like this:
+        Speaker 1: [Jessica's dialogue here]
+        Speaker 2: [Alex's dialogue here] 
+        Speaker 1: [Jessica's next dialogue]
+        Speaker 2: [Alex's next dialogue]
+        
+        - Each line must start with exactly "Speaker 1:" or "Speaker 2:" followed by their dialogue
+        - Do not use names like "Jessica:" or "Alex:" - only use "Speaker 1:" and "Speaker 2:"
+        - Write natural spoken radio content with good back-and-forth conversation
+        - No markdown, no section headers, no asterisks
+        
+        Example format:
+        Speaker 1: Good morning everyone and welcome back to The Thought Bubble! I'm Jessica.
+        Speaker 2: And I'm Alex! Today we're diving into some fascinating personal reflections.
+        Speaker 1: That's right Alex, we have some really interesting experiences to explore today.
+      `;
+
+      console.log('🎙️ Generating radio show script...');
+      const result = await model.generateContent(radioScriptPrompt);
+      const script = result.response.text();
+
+      console.log('📄 Generated script preview:');
+      console.log('=' .repeat(80));
+      console.log(script.substring(0, 500) + (script.length > 500 ? '...' : ''));
+      console.log('=' .repeat(80));
+
+      console.log('🎧 Converting script to audio using Replicate TTS...');
+
+      // Parse script to extract speaker segments
+      function parseRadioScript(script) {
+        console.log('📝 Parsing radio script for speaker segments...');
+        console.log('🔍 Script content to parse:');
+        console.log(script.substring(0, 200) + '...');
+        
+        const segments = [];
+        const lines = script.split('\n');
+        
+        for (let i = 0; i < lines.length; i++) {
+          const trimmedLine = lines[i].trim();
+          if (!trimmedLine) continue;
+          
+          console.log(`🔎 Line ${i + 1}: "${trimmedLine}"`);
+          
+          // Try multiple patterns to match speaker format
+          let speakerMatch = null;
+          let speaker = null;
+          let text = null;
+          
+          // Pattern 1: "Speaker 1:" or "Speaker 2:"
+          speakerMatch = trimmedLine.match(/^(Speaker [12]):\s*(.+)$/);
+          if (speakerMatch) {
+            speaker = speakerMatch[1];
+            text = speakerMatch[2].trim();
+          } else {
+            // Pattern 2: Names like "Jessica:" or "Alex:"
+            const nameMatch = trimmedLine.match(/^(Jessica|Alex):\s*(.+)$/i);
+            if (nameMatch) {
+              speaker = nameMatch[1].toLowerCase() === 'jessica' ? 'Speaker 1' : 'Speaker 2';
+              text = nameMatch[2].trim();
+            } else {
+              // Pattern 3: Just text without speaker prefix (assign alternating)
+              if (trimmedLine.length > 10) { // Only consider substantial text
+                speaker = segments.length % 2 === 0 ? 'Speaker 1' : 'Speaker 2';
+                text = trimmedLine;
+                console.log(`🔄 No speaker prefix found, assigning to ${speaker}`);
+              }
+            }
+          }
+          
+          if (speaker && text && text.length > 0) {
+            segments.push({
+              speaker,
+              text,
+              voice: speaker === 'Speaker 1' ? 'af_jessica' : 'am_puck'
+            });
+            console.log(`✅ Found ${speaker}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+          } else {
+            console.log(`❌ Line ${i + 1}: No valid speaker segment found`);
+          }
+        }
+        
+        console.log(`📊 Parsed ${segments.length} speaker segments`);
+        return segments;
+      }
+
+      // Generate TTS for individual segments using Replicate (same as meditation TTS)
+      async function generateTTSSegment(text, voice, segmentIndex, totalSegments) {
+        console.log(`🎙️ [${segmentIndex + 1}/${totalSegments}] Starting Replicate TTS for voice ${voice}`);
+        console.log(`📝 Text (${text.length} chars): "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+        
+        const startTime = Date.now();
+        console.log(`⏱️ API call started at: ${new Date().toISOString()}`);
+        
+        try {
+          // Use the same Replicate model and approach as the meditation TTS
+          const output = await replicate.run(
+            "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+            {
+              input: {
+                text: text,
+                voice: voice,
+                speed: 1.0
+              }
+            }
+          );
+
+          // Get the audio URL from the response
+          const audioUrl = output.url().toString();
+          console.log(`📥 [${segmentIndex + 1}/${totalSegments}] Replicate response: ${audioUrl}`);
+          
+          // Download the audio file
+          const audioResponse = await fetch(audioUrl);
+          if (!audioResponse.ok) {
+            throw new Error(`Failed to download audio: ${audioResponse.status}`);
+          }
+          
+          const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+          
+          const totalTime = Date.now() - startTime;
+          console.log(`✅ [${segmentIndex + 1}/${totalSegments}] Replicate TTS completed for ${voice}`);
+          console.log(`📊 Buffer size: ${audioBuffer.length} bytes`);
+          console.log(`⏱️ Total processing time: ${totalTime}ms`);
+          console.log(`🎯 Progress: ${segmentIndex + 1}/${totalSegments} segments completed (${Math.round((segmentIndex + 1) / totalSegments * 100)}%)`);
+          
+          return audioBuffer;
+          
+        } catch (error) {
+          const totalTime = Date.now() - startTime;
+          console.error(`❌ [${segmentIndex + 1}/${totalSegments}] Replicate TTS generation failed after ${totalTime}ms`);
+          console.error(`❌ Error details:`, error.message);
+          throw error;
+        }
+      }
+
+      // Generate 0.35 second silence buffer (44.1kHz, 16-bit, mono WAV)
+      function generateSilenceBuffer(durationSeconds = 0.35) {
+        const sampleRate = 44100;
+        const samples = Math.floor(sampleRate * durationSeconds);
+        const bufferSize = 44 + (samples * 2); // WAV header (44 bytes) + audio data
+        
+        const buffer = Buffer.alloc(bufferSize);
+        
+        // WAV header
+        buffer.write('RIFF', 0);
+        buffer.writeUInt32LE(bufferSize - 8, 4);
+        buffer.write('WAVE', 8);
+        buffer.write('fmt ', 12);
+        buffer.writeUInt32LE(16, 16); // PCM format size
+        buffer.writeUInt16LE(1, 20); // Audio format (PCM)
+        buffer.writeUInt16LE(1, 22); // Number of channels (mono)
+        buffer.writeUInt32LE(sampleRate, 24); // Sample rate
+        buffer.writeUInt32LE(sampleRate * 2, 28); // Byte rate
+        buffer.writeUInt16LE(2, 32); // Block align
+        buffer.writeUInt16LE(16, 34); // Bits per sample
+        buffer.write('data', 36);
+        buffer.writeUInt32LE(samples * 2, 40); // Data size
+        
+        // Audio data is already zeros (silence)
+        console.log(`🔇 Generated ${durationSeconds}s silence buffer: ${buffer.length} bytes`);
+        return buffer;
+      }
+
+      // Concatenate audio buffers
+      function concatenateAudioBuffers(buffers) {
+        console.log(`🔗 Starting concatenation of ${buffers.length} audio buffers...`);
+        
+        if (buffers.length === 0) {
+          console.log(`⚠️ No buffers to concatenate`);
+          return Buffer.alloc(0);
+        }
+        
+        if (buffers.length === 1) {
+          console.log(`ℹ️ Only one buffer, returning as-is: ${buffers[0].length} bytes`);
+          return buffers[0];
+        }
+        
+        // Log buffer sizes
+        buffers.forEach((buffer, index) => {
+          const isWav = buffer.length > 44 && buffer.toString('ascii', 0, 4) === 'RIFF';
+          console.log(`📦 Buffer ${index + 1}: ${buffer.length} bytes ${isWav ? '(WAV)' : '(unknown format)'}`);
+        });
+        
+        // Calculate total size (skip WAV headers except for the first one)
+        let totalSize = buffers[0].length;
+        for (let i = 1; i < buffers.length; i++) {
+          totalSize += buffers[i].length - 44; // Skip 44-byte WAV header
+        }
+        
+        console.log(`📏 Total concatenated size will be: ${totalSize} bytes`);
+        
+        const result = Buffer.alloc(totalSize);
+        let offset = 0;
+        
+        // Copy first buffer completely (including header)
+        console.log(`📋 Copying first buffer (with header): ${buffers[0].length} bytes at offset ${offset}`);
+        buffers[0].copy(result, 0);
+        offset = buffers[0].length;
+        
+        // Update data size in header
+        const totalDataSize = totalSize - 44;
+        result.writeUInt32LE(totalSize - 8, 4); // File size
+        result.writeUInt32LE(totalDataSize, 40); // Data size
+        console.log(`📝 Updated WAV header: file size = ${totalSize - 8}, data size = ${totalDataSize}`);
+        
+        // Copy remaining buffers (skip headers)
+        for (let i = 1; i < buffers.length; i++) {
+          const copySize = buffers[i].length - 44;
+          console.log(`📋 Copying buffer ${i + 1} (without header): ${copySize} bytes at offset ${offset}`);
+          buffers[i].copy(result, offset, 44); // Skip 44-byte header
+          offset += copySize;
+        }
+        
+        console.log(`✅ Concatenation complete: ${result.length} bytes total`);
+        return result;
+      }
+
+      let playlist = [];
+
+      try {
+        // Step 1: Parse script into segments
+        const segments = parseRadioScript(script);
+        
+        if (segments.length === 0) {
+          throw new Error('No speaker segments found in script');
+        }
+
+        // Step 2: Generate TTS for each segment
+        console.log('🎙️ Generating TTS for all segments...');
+        const audioBuffers = [];
+        const silenceBuffer = generateSilenceBuffer(0.35);
+        
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+          
+          // Generate TTS for this segment
+          const segmentBuffer = await generateTTSSegment(segment.text, segment.voice, i, segments.length);
+          audioBuffers.push(segmentBuffer);
+          
+          // Add pause after each segment except the last one
+          if (i < segments.length - 1) {
+            audioBuffers.push(silenceBuffer);
+            console.log(`🔇 Added 0.35s silence buffer after segment ${i + 1}`);
+          }
+        }
+
+        // Step 3: Concatenate all audio buffers
+        console.log('🔧 Concatenating all audio segments...');
+        const finalAudioBuffer = concatenateAudioBuffers(audioBuffers);
+
+        console.log('🔧 [TTS] Uploading final audio to Supabase...');
+        // Upload the concatenated audio file to Supabase
+        const fileName = `radio_${radioId}.wav`;
+        const filePath = `${userId}/${fileName}`;
+        console.log('📁 [TTS] Upload path:', filePath);
+
+        const { error: uploadError } = await supabase.storage
+          .from('meditations')
+          .upload(filePath, finalAudioBuffer, {
+            contentType: 'audio/wav'
+          });
+
+        if (uploadError) {
+          console.error('❌ [TTS] Error uploading radio audio:', uploadError);
+          throw uploadError;
+        }
+        console.log('✅ [TTS] Audio uploaded successfully to Supabase storage');
+
+        // Generate signed URL for the uploaded file
+        const { data: urlData, error: urlError } = await supabase.storage
+          .from('meditations')
+          .createSignedUrl(filePath, 3600 * 24); // 24 hours expiry
+
+        if (urlError) {
+          console.error('❌ [TTS] Error generating signed URL:', urlError);
+          throw urlError;
+        }
+        console.log('✅ [TTS] Signed URL generated:', urlData.signedUrl);
+
+        // Create playlist with the concatenated audio file
+        playlist = [
+          {
+            type: 'speech',
+            audioUrl: urlData.signedUrl,
+            duration: duration * 60 * 1000 // Convert minutes to milliseconds
+          }
+        ];
+        console.log('✅ [TTS] Playlist created with duration:', duration * 60 * 1000, 'ms');
+        console.log('🎉 [TTS] Deep Infra TTS process completed successfully!');
+
+      } catch (ttsError) {
+        console.error('❌ [TTS] CRITICAL ERROR in TTS process:', ttsError);
+        console.error('❌ [TTS] Error stack:', ttsError.stack);
+        throw new Error(`Failed to generate radio show audio: ${ttsError.message}`);
+      }
+
+      // Save radio show to database
+      const { data: savedRadioShow, error: saveError } = await supabase
+        .from('meditations') // Reuse meditations table for radio shows
+        .insert({
+          id: radioId, // Add the missing radioId
+          user_id: userId,
+          title: title || 'Radio Show Replay',
+          playlist: playlist,
+          note_ids: noteIds,
+          script: script,
+          duration: duration,
+          summary: 'Personalized radio talk show replay',
+          time_of_reflection: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (saveError) {
+        console.error('Error saving radio show:', saveError);
+        return res.status(500).json({ error: 'Failed to save radio show' });
+      }
+
+      console.log(`🎙️ Radio show generated successfully: ${savedRadioShow.id}`);
+
+      res.json({
+        radioShow: savedRadioShow,
+        playlist: playlist
+      });
+
+    } catch (aiError) {
+      console.error('AI processing error:', aiError);
+      res.status(500).json({ error: 'Failed to generate radio show content' });
+    }
+
+  } catch (error) {
+    console.error('Radio show generation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

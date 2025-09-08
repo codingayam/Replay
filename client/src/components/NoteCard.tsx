@@ -18,7 +18,6 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
 
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
-    const category = Array.isArray(note.category) && note.category.length > 0 ? note.category[0] : 'experience';
 
     // Debug logging for photo notes
     if (isPhotoNote) {
@@ -32,11 +31,12 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
         });
     }
 
-    // Get emoji based on category
-    const getCategoryEmoji = (category: string) => {
-        switch (category) {
-            case 'experience': return '🍽️';
-            case 'ideas': return '💡';
+    // Get emoji based on note type
+    const getNoteTypeEmoji = (noteType: 'audio' | 'photo') => {
+        switch (noteType) {
+            case 'audio': return '🎤';
+            case 'photo': return '📸';
+            default: return '📝';
         }
     };
 
@@ -66,7 +66,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
         <div style={styles.listItem} onClick={() => setShowDetails(!showDetails)}>
             <div style={styles.listItemContent}>
                 <div style={styles.emojiIcon}>
-                    {getCategoryEmoji(category)}
+                    {getNoteTypeEmoji(note.type)}
                 </div>
                 <div style={styles.textContent}>
                     <h3 style={styles.title}>{note.title}</h3>
