@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import MeditationPlayer from '../components/MeditationPlayer';
-import ReflectionTypeModal from '../components/ReflectionTypeModal';
+import ReplayModeSelectionModal from '../components/ReplayModeSelectionModal';
 import MeditationSubTypeModal from '../components/MeditationSubTypeModal';
 import TimePeriodModal from '../components/TimePeriodModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
@@ -47,7 +47,7 @@ const ReflectionsPage: React.FC = () => {
     const [showCalendarModal, setShowCalendarModal] = useState(false);
     
     // New reflection flow state
-    const [showReflectionTypeModal, setShowReflectionTypeModal] = useState(false);
+    const [showReplayModeModal, setShowReplayModeModal] = useState(false);
     const [showMeditationSubTypeModal, setShowMeditationSubTypeModal] = useState(false);
     const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
     const [showExperienceModal, setShowExperienceModal] = useState(false);
@@ -151,18 +151,18 @@ const ReflectionsPage: React.FC = () => {
 
     // New reflection flow handlers
     const handleStartReflection = () => {
-        setShowReflectionTypeModal(true);
+        setShowReplayModeModal(true);
     };
 
-    const handleReflectionTypeSelection = (type: 'Meditation' | 'Ideas') => {
-        setShowReflectionTypeModal(false);
+    const handleReplayModeSelection = (mode: 'Casual' | 'Meditative') => {
+        setShowReplayModeModal(false);
         
-        if (type === 'Meditation') {
-            // Show meditation sub-type modal
+        if (mode === 'Meditative') {
+            // Show meditation sub-type modal for meditative mode
             setShowMeditationSubTypeModal(true);
         } else {
-            // For Ideas reflection, set type and continue with time period selection
-            setSelectedReflectionType('Ideas');
+            // For Casual mode, set type and continue with time period selection
+            setSelectedReflectionType('Casual');
             setShowTimePeriodModal(true);
         }
     };
@@ -223,23 +223,40 @@ const ReflectionsPage: React.FC = () => {
         setIsMeditationApiComplete(false);
 
         try {
-            // Generate meditation with selected experiences and chosen duration
-            const response = await api.post('/meditate', {
-                noteIds: selectedNoteIds,
-                duration: selectedDuration,
-                timeOfReflection: selectedReflectionType,
-                reflectionType: selectedReflectionType
-            });
+            let response;
             
-            setGeneratedPlaylist(response.data.playlist);
-            setGeneratedSummary(response.data.summary || '');
+            if (selectedReflectionType === 'Casual') {
+                // Generate radio show for casual mode
+                console.log('🎙️ Generating radio show...');
+                response = await api.post('/replay/radio', {
+                    noteIds: selectedNoteIds,
+                    duration: selectedDuration,
+                    title: `Radio Show - ${new Date().toLocaleDateString()}`
+                });
+                
+                setGeneratedPlaylist(response.data.playlist);
+                setGeneratedSummary(response.data.radioShow?.summary || 'Radio talk show replay');
+            } else {
+                // Generate meditation for meditative mode
+                console.log('🧘 Generating meditation...');
+                response = await api.post('/meditate', {
+                    noteIds: selectedNoteIds,
+                    duration: selectedDuration,
+                    timeOfReflection: selectedReflectionType,
+                    reflectionType: selectedReflectionType
+                });
+                
+                setGeneratedPlaylist(response.data.playlist);
+                setGeneratedSummary(response.data.summary || '');
+            }
             
             // Mark API as complete - loading modal will handle the transition
             console.log('✅ API Success - setting isMeditationApiComplete to true');
             setIsMeditationApiComplete(true);
         } catch (err) {
-            console.error("Error generating meditation:", err);
-            alert('Failed to generate meditation. Please try again.');
+            const errorType = selectedReflectionType === 'Casual' ? 'radio show' : 'meditation';
+            console.error(`Error generating ${errorType}:`, err);
+            alert(`Failed to generate ${errorType}. Please try again.`);
             setIsGeneratingMeditation(false);
             setIsMeditationApiComplete(false);
         }
@@ -388,13 +405,14 @@ const ReflectionsPage: React.FC = () => {
                 onExpandClick={() => setShowCalendarModal(true)}
             />
             
-            {/* Generate Reflection Button */}
+            {/* Replay Button */}
             <button 
                 onClick={handleStartReflection}
-                style={styles.generateButton}
+                style={styles.replayButton}
+                className="subtle-glow-button"
             >
                 <Plus size={20} />
-                <span>Generate Reflection</span>
+                <span>Replay</span>
             </button>
 
             {/* Recent Reflections Section */}
@@ -466,10 +484,10 @@ const ReflectionsPage: React.FC = () => {
             </div>
 
             {/* Modals */}
-            <ReflectionTypeModal
-                isOpen={showReflectionTypeModal}
-                onClose={() => setShowReflectionTypeModal(false)}
-                onSelectType={handleReflectionTypeSelection}
+            <ReplayModeSelectionModal
+                isOpen={showReplayModeModal}
+                onClose={() => setShowReplayModeModal(false)}
+                onSelectMode={handleReplayModeSelection}
             />
             
             <MeditationSubTypeModal
@@ -562,9 +580,9 @@ const styles = {
         margin: '-1rem auto 0 auto',
         boxSizing: 'border-box',
     },
-    generateButton: {
+    replayButton: {
         width: '100%',
-        backgroundColor: '#3b82f6',
+        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
         color: 'white',
         border: 'none',
         borderRadius: '12px',
@@ -573,11 +591,11 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'center',
         gap: '8px',
-        fontSize: '16px',
-        fontWeight: '500',
+        fontSize: '15px',
+        fontWeight: '600',
         cursor: 'pointer',
-        transition: 'background-color 0.2s ease',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+        transition: 'all 0.3s ease',
+        position: 'relative',
     } as React.CSSProperties,
     reflectionsSection: {
         backgroundColor: 'white',

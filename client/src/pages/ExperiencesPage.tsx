@@ -5,8 +5,18 @@ import SupabaseImage from '../components/SupabaseImage';
 import Header from '../components/Header';
 import SearchResults from '../components/SearchResults';
 import SearchResultModal from '../components/SearchResultModal';
+import ReplayModeSelectionModal from '../components/ReplayModeSelectionModal';
+import DurationSelectorModal from '../components/DurationSelectorModal';
+import ReadyToBeginModal from '../components/ReadyToBeginModal';
+import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
+import MeditationPlayer from '../components/MeditationPlayer';
 import type { Note, SearchResult } from '../types';
-import { getCategoryInfo } from '../utils/categoryUtils';
+
+interface PlaylistItem {
+    type: 'speech' | 'pause';
+    audioUrl?: string;
+    duration?: number;
+}
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 import { supabase } from '../lib/supabase';
@@ -30,8 +40,32 @@ const ExperiencesPage: React.FC = () => {
     const [modalOpen, setModalOpen] = useState<boolean>(false);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     
+    // Multi-select state
+    const [selectionMode, setSelectionMode] = useState<boolean>(false);
+    const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+    const [showReplayModal, setShowReplayModal] = useState<boolean>(false);
+    
+    // Meditative replay state
+    const [showDurationModal, setShowDurationModal] = useState(false);
+    const [showReadyToBeginModal, setShowReadyToBeginModal] = useState(false);
+    const [showMeditationGeneratingModal, setShowMeditationGeneratingModal] = useState(false);
+    const [meditationPlaylist, setMeditationPlaylist] = useState<PlaylistItem[] | null>(null);
+    const [selectedDuration, setSelectedDuration] = useState(5);
+    const [recommendedDuration, setRecommendedDuration] = useState(5);
+    const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
+    const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
+    const [generatedSummary, setGeneratedSummary] = useState('');
+    
     const api = useAuthenticatedApi();
     const { user } = useAuth();
+    
+    // Calculate recommended duration based on number of experiences
+    const calculateRecommendedDuration = (experienceCount: number): number => {
+        if (experienceCount <= 3) return 5;
+        if (experienceCount <= 6) return 10;
+        if (experienceCount <= 9) return 15;
+        return 20;
+    };
 
     const fetchNotes = async () => {
         try {
@@ -209,9 +243,143 @@ const ExperiencesPage: React.FC = () => {
         setSelectedNoteId(null);
     };
 
+    // Multi-select handlers
+    const handleLongPress = (noteId: string) => {
+        if (!selectionMode) {
+            setSelectionMode(true);
+            setSelectedNoteIds(new Set([noteId]));
+        }
+    };
+
+    const handleNoteSelect = (noteId: string) => {
+        if (selectionMode) {
+            const newSelection = new Set(selectedNoteIds);
+            if (newSelection.has(noteId)) {
+                newSelection.delete(noteId);
+            } else {
+                newSelection.add(noteId);
+            }
+            setSelectedNoteIds(newSelection);
+            
+            // Exit selection mode if no notes are selected
+            if (newSelection.size === 0) {
+                setSelectionMode(false);
+            }
+        }
+    };
+
+    const handleSelectAll = () => {
+        setSelectedNoteIds(new Set(notes.map(note => note.id)));
+    };
+
+    const handleClearSelection = () => {
+        setSelectedNoteIds(new Set());
+        setSelectionMode(false);
+    };
+
+    const handleGenerateFromSelection = () => {
+        if (selectedNoteIds.size > 0) {
+            setShowReplayModal(true);
+        }
+    };
+
+    const handleReplayModeSelection = (mode: 'Casual' | 'Meditative') => {
+        setShowReplayModal(false);
+        
+        if (mode === 'Meditative') {
+            // Calculate recommended duration for selected experiences
+            const calculatedDuration = calculateRecommendedDuration(selectedNoteIds.size);
+            setRecommendedDuration(calculatedDuration);
+            setSelectedDuration(calculatedDuration);
+            setShowDurationModal(true);
+        } else {
+            // Future: Casual mode implementation
+            console.log(`Casual mode selected for notes: ${Array.from(selectedNoteIds)}`);
+            handleClearSelection();
+        }
+    };
+
+    // Meditative replay modal handlers
+    const handleDurationSelection = (duration: number) => {
+        setSelectedDuration(duration);
+        setShowDurationModal(false);
+        setShowReadyToBeginModal(true);
+    };
+
+    const handleReadyToBeginBack = () => {
+        setShowReadyToBeginModal(false);
+        setShowDurationModal(true);
+    };
+
+    const handleReadyToBeginStart = async () => {
+        setShowReadyToBeginModal(false);
+        setIsGeneratingMeditation(true);
+        setIsMeditationApiComplete(false);
+        setShowMeditationGeneratingModal(true);
+
+        try {
+            console.log('🧘 Generating meditation from selected experiences...');
+            const response = await api.post('/meditate', {
+                noteIds: Array.from(selectedNoteIds),
+                duration: selectedDuration,
+                reflectionType: 'Night',
+                title: `Night Meditation - ${new Date().toLocaleDateString()}`
+            });
+
+            setMeditationPlaylist(response.data.playlist);
+            setGeneratedSummary(response.data.summary || '');
+            
+            // Mark API as complete - loading modal will handle the transition
+            console.log('✅ Meditation API Success - setting isMeditationApiComplete to true');
+            setIsMeditationApiComplete(true);
+        } catch (err) {
+            console.error('Error generating meditation:', err);
+            alert('Failed to generate meditation. Please try again.');
+            setIsGeneratingMeditation(false);
+            setIsMeditationApiComplete(false);
+            setShowMeditationGeneratingModal(false);
+        }
+    };
+
+    const handleMeditationReady = () => {
+        console.log('🎯 handleMeditationReady called');
+        console.log('📊 meditationPlaylist:', meditationPlaylist);
+        
+        // Called when the loading animation completes
+        setIsGeneratingMeditation(false);
+        setIsMeditationApiComplete(false);
+        setShowMeditationGeneratingModal(false);
+        
+        // Only proceed if we actually have a playlist
+        if (meditationPlaylist && meditationPlaylist.length > 0) {
+            console.log('✅ Valid playlist found, starting meditation');
+            // Playlist will be used by MeditationPlayer component
+        } else {
+            console.log('❌ No valid playlist found');
+            alert('Meditation generation failed. Please try again when the server is running.');
+            // Reset state
+            setMeditationPlaylist(null);
+            setGeneratedSummary('');
+        }
+    };
+
+    const handleMeditationFinish = (completed: boolean) => {
+        console.log(`🎯 Meditation finished - completed: ${completed}`);
+        setMeditationPlaylist(null);
+        setGeneratedSummary('');
+        
+        // Clear selection and exit selection mode
+        handleClearSelection();
+    };
+
     // Group notes by date categories
     const groupedNotes = groupNotesByDate(notes);
     const sortedDateGroups = sortDateGroups(Object.keys(groupedNotes));
+
+    // Show meditation player if we have a playlist
+    if (meditationPlaylist) {
+        return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} />;
+    }
 
     return (
         <div style={styles.container}>
@@ -251,15 +419,52 @@ const ExperiencesPage: React.FC = () => {
                                 
                                 {groupNotes.map((note, noteIndex) => {
                                     const isExpanded = expandedNoteId === note.id;
-                                    const category = note.category || 'experience';
-                                    const categoryInfo = getCategoryInfo(category) || {
-                                        name: 'experience',
-                                        color: '#3b82f6',
-                                        backgroundColor: '#dbeafe',
-                                    };
+                                    const isSelected = selectedNoteIds.has(note.id);
                                     
                                     return (
-                                        <div key={note.id} style={styles.noteCard}>
+                                        <div 
+                                            key={note.id} 
+                                            style={{
+                                                ...styles.noteCard,
+                                                ...(isSelected ? styles.selectedNoteCard : {}),
+                                                ...(selectionMode ? styles.selectableNoteCard : {})
+                                            }}
+                                            onTouchStart={(e) => {
+                                                if (!selectionMode) {
+                                                    // Start long press timer
+                                                    const timer = setTimeout(() => {
+                                                        handleLongPress(note.id);
+                                                    }, 500); // 500ms long press
+                                                    
+                                                    const cleanup = () => {
+                                                        clearTimeout(timer);
+                                                        e.target.removeEventListener('touchend', cleanup);
+                                                        e.target.removeEventListener('touchmove', cleanup);
+                                                    };
+                                                    
+                                                    e.target.addEventListener('touchend', cleanup);
+                                                    e.target.addEventListener('touchmove', cleanup);
+                                                }
+                                            }}
+                                            onClick={(e) => {
+                                                if (selectionMode) {
+                                                    e.stopPropagation();
+                                                    handleNoteSelect(note.id);
+                                                } else {
+                                                    // Only expand on tap when not in selection mode
+                                                    handleToggleExpand(note.id);
+                                                }
+                                            }}
+                                        >
+                                            {/* Selection checkbox (only visible in selection mode) */}
+                                            {selectionMode && (
+                                                <div style={styles.selectionCheckbox}>
+                                                    <div style={isSelected ? styles.selectedCheckbox : styles.unselectedCheckbox}>
+                                                        {isSelected && '✓'}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
                                             {/* Note icon */}
                                             <div style={styles.noteIcon}>
                                                 {note.type === 'photo' ? (
@@ -273,7 +478,6 @@ const ExperiencesPage: React.FC = () => {
                                             <div style={styles.noteContentNew}>
                                                 <div 
                                                     style={styles.noteHeaderNew}
-                                                    onClick={() => handleToggleExpand(note.id)}
                                                 >
                                                     <h3 style={styles.noteTitleNew}>{note.title}</h3>
                                                     <p style={styles.noteDateNew}>
@@ -405,6 +609,78 @@ const ExperiencesPage: React.FC = () => {
                     />
                 </div>
             )}
+
+            {/* Selection Bar */}
+            {selectionMode && !showReplayModal && !showDurationModal && !showReadyToBeginModal && !showMeditationGeneratingModal && (
+                <div style={styles.selectionBar}>
+                    <div style={styles.selectionBarContent}>
+                        <span style={styles.selectionCount}>{selectedNoteIds.size} selected</span>
+                        <div style={styles.selectionBarActions}>
+                            <button onClick={handleSelectAll} style={styles.selectAllButton}>
+                                <span style={styles.selectAllIcon}>☑</span>
+                                <span>Select All</span>
+                            </button>
+                            <button onClick={handleClearSelection} style={styles.clearSelectionButton}>
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Replay Button */}
+            {selectedNoteIds.size > 0 && (
+                <div style={styles.replayButtonContainer}>
+                    <button 
+                        onClick={handleGenerateFromSelection}
+                        style={styles.replayButton}
+                    >
+                        <span style={styles.replayButtonIcon}>⚙</span>
+                        <span style={styles.replayButtonText}>Replay ({selectedNoteIds.size} experiences)</span>
+                    </button>
+                </div>
+            )}
+
+            {/* Replay Mode Selection Modal */}
+            <ReplayModeSelectionModal
+                isOpen={showReplayModal}
+                onClose={() => setShowReplayModal(false)}
+                onSelectMode={handleReplayModeSelection}
+            />
+
+            {/* Duration Selection Modal */}
+            <DurationSelectorModal
+                isOpen={showDurationModal}
+                onClose={() => setShowDurationModal(false)}
+                onSelectDuration={handleDurationSelection}
+                recommendedDuration={recommendedDuration}
+            />
+
+            {/* Ready to Begin Modal */}
+            <ReadyToBeginModal
+                isOpen={showReadyToBeginModal}
+                onClose={() => setShowReadyToBeginModal(false)}
+                onBack={handleReadyToBeginBack}
+                onStart={handleReadyToBeginStart}
+                reflectionType="Night Meditation"
+                period="Selected Experiences"
+                experienceCount={selectedNoteIds.size}
+                duration={selectedDuration}
+            />
+
+            {/* Meditation Generating Modal */}
+            <MeditationGeneratingModal
+                isOpen={showMeditationGeneratingModal}
+                onClose={() => setShowMeditationGeneratingModal(false)}
+                isGenerating={isGeneratingMeditation}
+                isApiComplete={isMeditationApiComplete}
+                onMeditationReady={handleMeditationReady}
+                onRunInBackground={() => {
+                    setShowMeditationGeneratingModal(false);
+                    setIsGeneratingMeditation(false);
+                    handleClearSelection();
+                }}
+            />
         </div>
     );
 };
@@ -491,6 +767,7 @@ const styles = {
         display: 'inline-block',
     },
     noteCard: {
+        position: 'relative', // Add this for absolute positioned checkbox
         display: 'flex',
         alignItems: 'flex-start',
         gap: '1rem',
@@ -532,6 +809,14 @@ const styles = {
         fontFamily: 'system-ui, -apple-system, sans-serif',
         lineHeight: '1.4',
         marginBottom: '0.25rem',
+        paddingRight: '32px', // Add space for checkbox when in selection mode
+        wordWrap: 'break-word',
+        overflowWrap: 'break-word',
+        hyphens: 'auto',
+        display: '-webkit-box',
+        WebkitLineClamp: 2, // Limit to 2 lines
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
     },
     noteDateNew: {
         margin: 0,
@@ -698,6 +983,139 @@ const styles = {
     emptySubtext: {
         fontSize: '0.9rem',
         color: '#999',
+    },
+    
+    // Multi-select styles
+    selectableNoteCard: {
+        cursor: 'pointer',
+        userSelect: 'none',
+    },
+    selectedNoteCard: {
+        backgroundColor: '#f0f9ff',
+        borderColor: '#3b82f6',
+        borderWidth: '2px',
+        transform: 'scale(0.98)',
+    },
+    selectionCheckbox: {
+        position: 'absolute',
+        top: '8px',
+        right: '8px',
+        zIndex: 10,
+    },
+    selectedCheckbox: {
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        backgroundColor: '#3b82f6',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '14px',
+        fontWeight: 'bold',
+    },
+    unselectedCheckbox: {
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        border: '2px solid #d1d5db',
+        backgroundColor: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    selectionBar: {
+        position: 'fixed',
+        top: '20px',
+        left: '20px',
+        right: '20px',
+        backgroundColor: '#f8fafc',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        zIndex: 1001,
+        border: '1px solid #e2e8f0',
+    },
+    selectionBarContent: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '12px 16px',
+    },
+    selectionCount: {
+        fontSize: '16px',
+        fontWeight: '600',
+        color: '#1e293b',
+    },
+    selectionBarActions: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+    },
+    selectAllButton: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        backgroundColor: 'transparent',
+        border: 'none',
+        color: '#6366f1',
+        fontSize: '14px',
+        fontWeight: '500',
+        cursor: 'pointer',
+        padding: '4px 8px',
+        borderRadius: '6px',
+        transition: 'background-color 0.2s ease',
+    },
+    selectAllIcon: {
+        fontSize: '16px',
+        color: '#6366f1',
+    },
+    clearSelectionButton: {
+        backgroundColor: 'transparent',
+        border: 'none',
+        color: '#64748b',
+        fontSize: '16px',
+        cursor: 'pointer',
+        padding: '4px',
+        borderRadius: '4px',
+        transition: 'color 0.2s ease',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '24px',
+        height: '24px',
+    },
+    replayButtonContainer: {
+        position: 'fixed',
+        bottom: '100px', // Above bottom navigation
+        left: '20px',
+        right: '20px',
+        zIndex: 1000,
+    },
+    replayButton: {
+        width: '100%',
+        backgroundColor: '#6366f1',
+        color: 'white',
+        border: 'none',
+        borderRadius: '50px',
+        padding: '16px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '12px',
+        fontSize: '16px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        boxShadow: '0 4px 16px rgba(99, 102, 241, 0.4)',
+        transition: 'all 0.2s ease',
+    },
+    replayButtonIcon: {
+        fontSize: '18px',
+        color: 'white',
+    },
+    replayButtonText: {
+        fontSize: '16px',
+        fontWeight: '600',
+        color: 'white',
     },
 };
 
