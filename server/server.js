@@ -15,9 +15,59 @@ import mime from 'mime';
 import { writeFile } from 'fs';
 import Replicate from 'replicate';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 
 const execAsync = promisify(exec);
+
+// FFmpeg path resolution utility for Railway deployment
+function getFFmpegPath() {
+  try {
+    // On Railway/production, ffmpeg may be installed but not in PATH
+    // Use 'which' to find the full path dynamically
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+    
+    if (isProduction || isRailway) {
+      const ffmpegPath = execSync('which ffmpeg', { 
+        encoding: 'utf8',
+        timeout: 5000 // 5 second timeout
+      }).trim();
+      
+      if (ffmpegPath && ffmpegPath !== '') {
+        console.log(`🔧 Found ffmpeg at: ${ffmpegPath}`);
+        return ffmpegPath;
+      } else {
+        console.warn('⚠️ which command returned empty path for ffmpeg');
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ Could not resolve ffmpeg path via which command:', error.message);
+    console.warn('🔍 Current PATH:', process.env.PATH);
+    
+    // Try alternative approaches for Railway
+    if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID) {
+      try {
+        // Try common Railway paths
+        const commonPaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/bin/ffmpeg'];
+        for (const testPath of commonPaths) {
+          try {
+            execSync(`test -f ${testPath}`, { timeout: 1000 });
+            console.log(`🔧 Found ffmpeg at alternative path: ${testPath}`);
+            return testPath;
+          } catch (testError) {
+            // Path doesn't exist, continue
+          }
+        }
+      } catch (altError) {
+        console.warn('⚠️ Alternative ffmpeg path search failed:', altError.message);
+      }
+    }
+  }
+  
+  // Fallback to default 'ffmpeg' for local development
+  console.log('🏠 Using default ffmpeg command for local development');
+  return 'ffmpeg';
+}
 
 // Load environment variables
 dotenv.config();
@@ -310,7 +360,7 @@ async function processMeditationJob(job) {
           // Create meaningful pause based on text length (better UX than tiny silence)
           const pauseDuration = Math.max(3, Math.ceil(segment.length / 20)); // ~3 seconds minimum, estimate reading time
           const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
-          await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+          await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
           tempAudioFiles.push(tempFileName);
           console.log(`📝 TTS fallback: Created ${pauseDuration}s pause for "${segment.substring(0, 50)}..."`);
         }
@@ -322,7 +372,7 @@ async function processMeditationJob(job) {
           pauseDuration = 3;
         }
         const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
-        await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+        await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
         tempAudioFiles.push(tempFileName);
       }
     }
@@ -333,7 +383,7 @@ async function processMeditationJob(job) {
     fs.writeFileSync(concatListPath, concatList);
     
     const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
-    await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`);
+    await execAsync(`${getFFmpegPath()} -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`);
     
     // Upload final audio file
     const finalAudioBuffer = fs.readFileSync(finalAudioPath);
@@ -552,6 +602,32 @@ app.get('/api/auth/test', requireAuth(), (req, res) => {
     user: req.auth.user.email,
     userId: req.auth.userId 
   });
+});
+
+// FFmpeg debug endpoint (for troubleshooting Railway deployment)
+app.get('/api/debug/ffmpeg', requireAuth(), (req, res) => {
+  try {
+    const ffmpegPath = getFFmpegPath();
+    const envInfo = {
+      NODE_ENV: process.env.NODE_ENV,
+      RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
+      RAILWAY_PROJECT_ID: process.env.RAILWAY_PROJECT_ID,
+      PATH: process.env.PATH
+    };
+    
+    res.json({
+      message: 'FFmpeg path resolution debug info',
+      ffmpegPath,
+      environment: envInfo,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to resolve ffmpeg path',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // ============= NOTES API ROUTES =============
@@ -1748,7 +1824,7 @@ Script Length: ${script.length} characters
               console.error('Segment text:', segment.substring(0, 200));
               // Create a very short silence file as fallback
               const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
-              await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t 0.1 -c:a pcm_s16le "${tempFileName}"`);
+              await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t 0.1 -c:a pcm_s16le "${tempFileName}"`);
               tempAudioFiles.push(tempFileName);
             }
           } else if (!isNaN(segment)) {
@@ -1761,7 +1837,7 @@ Script Length: ${script.length} characters
             console.log(`⏸️ Creating silence: ${pauseDuration} seconds`);
             
             const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
-            await execAsync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+            await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
             tempAudioFiles.push(tempFileName);
             
             console.log(`✅ Silence segment created: ${tempFileName}`);
@@ -1777,7 +1853,7 @@ Script Length: ${script.length} characters
         const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
         console.log('🎵 Concatenating audio segments...');
         
-        await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`, {
+        await execAsync(`${getFFmpegPath()} -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`, {
           maxBuffer: 10 * 1024 * 1024 // 10MB buffer to handle FFmpeg warnings
         });
         
