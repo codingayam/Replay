@@ -277,6 +277,76 @@ async function processMeditationJob(job) {
       Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
     ` : '';
 
+    // Helper functions for audio processing without ffmpeg (adapted from radio generation)
+    function generateSilenceBuffer(durationSeconds = 0.35) {
+      const sampleRate = 44100;
+      const samples = Math.floor(sampleRate * durationSeconds);
+      const bufferSize = 44 + (samples * 2); // WAV header (44 bytes) + audio data
+      
+      const buffer = Buffer.alloc(bufferSize);
+      
+      // WAV header
+      buffer.write('RIFF', 0);
+      buffer.writeUInt32LE(bufferSize - 8, 4);
+      buffer.write('WAVE', 8);
+      buffer.write('fmt ', 12);
+      buffer.writeUInt32LE(16, 16); // PCM format size
+      buffer.writeUInt16LE(1, 20); // Audio format (PCM)
+      buffer.writeUInt16LE(1, 22); // Number of channels (mono)
+      buffer.writeUInt32LE(sampleRate, 24); // Sample rate
+      buffer.writeUInt32LE(sampleRate * 2, 28); // Byte rate
+      buffer.writeUInt16LE(2, 32); // Block align
+      buffer.writeUInt16LE(16, 34); // Bits per sample
+      buffer.write('data', 36);
+      buffer.writeUInt32LE(samples * 2, 40); // Data size
+      
+      // Audio data is already zeros (silence)
+      console.log(`🔇 Generated ${durationSeconds}s silence buffer: ${buffer.length} bytes`);
+      return buffer;
+    }
+
+    function concatenateAudioBuffers(buffers) {
+      console.log(`🔗 Starting concatenation of ${buffers.length} audio buffers...`);
+      
+      if (buffers.length === 0) {
+        console.log(`⚠️ No buffers to concatenate`);
+        return Buffer.alloc(0);
+      }
+      
+      if (buffers.length === 1) {
+        console.log(`ℹ️ Only one buffer, returning as-is: ${buffers[0].length} bytes`);
+        return buffers[0];
+      }
+      
+      // Calculate total size (skip WAV headers except for the first one)
+      let totalSize = buffers[0].length;
+      for (let i = 1; i < buffers.length; i++) {
+        totalSize += buffers[i].length - 44; // Skip 44-byte WAV header
+      }
+      
+      console.log(`📏 Total concatenated size will be: ${totalSize} bytes`);
+      
+      const result = Buffer.alloc(totalSize);
+      let offset = 0;
+      
+      // Copy first buffer with header
+      buffers[0].copy(result, 0);
+      offset += buffers[0].length;
+      
+      // Copy remaining buffers without headers
+      for (let i = 1; i < buffers.length; i++) {
+        buffers[i].copy(result, offset, 44); // Skip 44-byte header
+        offset += buffers[i].length - 44;
+      }
+      
+      // Update the data size in the WAV header
+      result.writeUInt32LE(totalSize - 8, 4); // File size - 8
+      result.writeUInt32LE(totalSize - 44, 40); // Data size
+      
+      console.log(`✅ Audio concatenation complete: ${result.length} bytes`);
+      return result;
+    }
+
     // Create meditation script based on reflection type
     const getScriptPrompt = (type) => {
       if (type === 'Ideas') {
@@ -357,36 +427,31 @@ async function processMeditationJob(job) {
 
         } catch (ttsError) {
           console.error(`TTS failed for segment ${i}:`, ttsError);
-          // Create meaningful pause based on text length (better UX than tiny silence)
+          // Create meaningful pause based on text length (better UX than tiny silence) - using buffer approach
           const pauseDuration = Math.max(3, Math.ceil(segment.length / 20)); // ~3 seconds minimum, estimate reading time
+          const silenceBuffer = generateSilenceBuffer(pauseDuration);
           const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
-          await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+          fs.writeFileSync(tempFileName, silenceBuffer);
           tempAudioFiles.push(tempFileName);
           console.log(`📝 TTS fallback: Created ${pauseDuration}s pause for "${segment.substring(0, 50)}..."`);
         }
       } else if (!isNaN(segment)) {
-        // Pause segment
+        // Pause segment - using buffer approach instead of ffmpeg
         let pauseDuration = parseInt(segment);
         if (isNaN(pauseDuration) || pauseDuration <= 0) {
           console.log(`⚠️ Invalid pause duration: ${segment}, using 3 seconds default`);
           pauseDuration = 3;
         }
+        const silenceBuffer = generateSilenceBuffer(pauseDuration);
         const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
-        await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+        fs.writeFileSync(tempFileName, silenceBuffer);
         tempAudioFiles.push(tempFileName);
       }
     }
 
-    // Concatenate all audio files
-    const concatListPath = path.join(tempDir, 'concat_list.txt');
-    const concatList = tempAudioFiles.map(file => `file '${file}'`).join('\n');
-    fs.writeFileSync(concatListPath, concatList);
-    
-    const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
-    await execAsync(`${getFFmpegPath()} -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`);
-    
-    // Upload final audio file
-    const finalAudioBuffer = fs.readFileSync(finalAudioPath);
+    // Concatenate all audio files using buffer approach (no ffmpeg needed)
+    const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
+    const finalAudioBuffer = concatenateAudioBuffers(audioBuffers);
     const finalAudioFileName = `${meditationId}-complete.wav`;
     
     const { data: audioUpload, error: audioError } = await supabase.storage
@@ -1552,6 +1617,76 @@ app.post('/api/meditate', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'noteIds array is required' });
     }
 
+    // Helper functions for audio processing without ffmpeg (adapted from radio generation)
+    function generateSilenceBuffer(durationSeconds = 0.35) {
+      const sampleRate = 44100;
+      const samples = Math.floor(sampleRate * durationSeconds);
+      const bufferSize = 44 + (samples * 2); // WAV header (44 bytes) + audio data
+      
+      const buffer = Buffer.alloc(bufferSize);
+      
+      // WAV header
+      buffer.write('RIFF', 0);
+      buffer.writeUInt32LE(bufferSize - 8, 4);
+      buffer.write('WAVE', 8);
+      buffer.write('fmt ', 12);
+      buffer.writeUInt32LE(16, 16); // PCM format size
+      buffer.writeUInt16LE(1, 20); // Audio format (PCM)
+      buffer.writeUInt16LE(1, 22); // Number of channels (mono)
+      buffer.writeUInt32LE(sampleRate, 24); // Sample rate
+      buffer.writeUInt32LE(sampleRate * 2, 28); // Byte rate
+      buffer.writeUInt16LE(2, 32); // Block align
+      buffer.writeUInt16LE(16, 34); // Bits per sample
+      buffer.write('data', 36);
+      buffer.writeUInt32LE(samples * 2, 40); // Data size
+      
+      // Audio data is already zeros (silence)
+      console.log(`🔇 Generated ${durationSeconds}s silence buffer: ${buffer.length} bytes`);
+      return buffer;
+    }
+
+    function concatenateAudioBuffers(buffers) {
+      console.log(`🔗 Starting concatenation of ${buffers.length} audio buffers...`);
+      
+      if (buffers.length === 0) {
+        console.log(`⚠️ No buffers to concatenate`);
+        return Buffer.alloc(0);
+      }
+      
+      if (buffers.length === 1) {
+        console.log(`ℹ️ Only one buffer, returning as-is: ${buffers[0].length} bytes`);
+        return buffers[0];
+      }
+      
+      // Calculate total size (skip WAV headers except for the first one)
+      let totalSize = buffers[0].length;
+      for (let i = 1; i < buffers.length; i++) {
+        totalSize += buffers[i].length - 44; // Skip 44-byte WAV header
+      }
+      
+      console.log(`📏 Total concatenated size will be: ${totalSize} bytes`);
+      
+      const result = Buffer.alloc(totalSize);
+      let offset = 0;
+      
+      // Copy first buffer with header
+      buffers[0].copy(result, 0);
+      offset += buffers[0].length;
+      
+      // Copy remaining buffers without headers
+      for (let i = 1; i < buffers.length; i++) {
+        buffers[i].copy(result, offset, 44); // Skip 44-byte header
+        offset += buffers[i].length - 44;
+      }
+      
+      // Update the data size in the WAV header
+      result.writeUInt32LE(totalSize - 8, 4); // File size - 8
+      result.writeUInt32LE(totalSize - 44, 40); // Data size
+      
+      console.log(`✅ Audio concatenation complete: ${result.length} bytes`);
+      return result;
+    }
+
     // Handle Day meditation - use pre-recorded audio file
     if (reflectionType === 'Day') {
       try {
@@ -1822,13 +1957,14 @@ Script Length: ${script.length} characters
             } catch (ttsError) {
               console.error('❌ TTS generation failed for segment:', ttsError);
               console.error('Segment text:', segment.substring(0, 200));
-              // Create a very short silence file as fallback
+              // Create a very short silence file as fallback - using buffer approach
+              const silenceBuffer = generateSilenceBuffer(0.1);
               const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
-              await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t 0.1 -c:a pcm_s16le "${tempFileName}"`);
+              fs.writeFileSync(tempFileName, silenceBuffer);
               tempAudioFiles.push(tempFileName);
             }
           } else if (!isNaN(segment)) {
-            // This is a pause duration, create silent audio
+            // This is a pause duration, create silent audio - using buffer approach
             let pauseDuration = parseInt(segment);
             if (isNaN(pauseDuration) || pauseDuration <= 0) {
               console.log(`⚠️ Invalid pause duration: ${segment}, using 3 seconds default`);
@@ -1836,31 +1972,22 @@ Script Length: ${script.length} characters
             }
             console.log(`⏸️ Creating silence: ${pauseDuration} seconds`);
             
+            const silenceBuffer = generateSilenceBuffer(pauseDuration);
             const tempFileName = path.join(tempDir, `segment-${i}-pause.wav`);
-            await execAsync(`${getFFmpegPath()} -f lavfi -i anullsrc=r=44100:cl=mono -t ${pauseDuration} -c:a pcm_s16le "${tempFileName}"`);
+            fs.writeFileSync(tempFileName, silenceBuffer);
             tempAudioFiles.push(tempFileName);
             
             console.log(`✅ Silence segment created: ${tempFileName}`);
           }
         }
 
-        // Create FFmpeg concat file list
-        const concatListPath = path.join(tempDir, 'concat_list.txt');
-        const concatList = tempAudioFiles.map(file => `file '${file}'`).join('\n');
-        fs.writeFileSync(concatListPath, concatList);
-        
-        // Concatenate all audio files into one continuous file
-        const finalAudioPath = path.join(tempDir, `${meditationId}-complete.wav`);
+        // Concatenate all audio files using buffer approach (no ffmpeg needed)
         console.log('🎵 Concatenating audio segments...');
-        
-        await execAsync(`${getFFmpegPath()} -f concat -safe 0 -i "${concatListPath}" -c copy "${finalAudioPath}"`, {
-          maxBuffer: 10 * 1024 * 1024 // 10MB buffer to handle FFmpeg warnings
-        });
-        
+        const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
+        const finalAudioBuffer = concatenateAudioBuffers(audioBuffers);
         console.log('✅ Audio concatenation complete');
         
         // Upload the final continuous audio file to Supabase
-        const finalAudioBuffer = fs.readFileSync(finalAudioPath);
         const finalAudioFileName = `${meditationId}-complete.wav`;
         
         const { data: audioUpload, error: audioError } = await supabase.storage
