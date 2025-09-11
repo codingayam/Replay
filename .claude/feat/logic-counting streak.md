@@ -1,0 +1,1 @@
+The logic for adding to Day Streak, No. of reflections this month, and recent activity is currently based on whether a meditation or radio is generated that day. However, it should instead depend on whether or not the user actually played the entire audio generated.. 

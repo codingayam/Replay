@@ -2093,31 +2093,180 @@ app.get('/api/meditations/day/default', requireAuth(), async (req, res) => {
   }
 });
 
+// POST /api/meditations/:id/complete - Mark meditation as completed
+app.post('/api/meditations/:id/complete', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const meditationId = req.params.id;
+    const { completionPercentage, completedAt } = req.body;
+
+    // Validate input
+    if (typeof completionPercentage !== 'number' || completionPercentage < 0 || completionPercentage > 100) {
+      return res.status(400).json({ error: 'Invalid completion percentage' });
+    }
+
+    // First verify the meditation exists and belongs to the user
+    const { data: meditation, error: fetchError } = await supabase
+      .from('meditations')
+      .select('id, completed_at')
+      .eq('id', meditationId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !meditation) {
+      return res.status(404).json({ error: 'Meditation not found' });
+    }
+
+    // Prevent duplicate completions
+    if (meditation.completed_at) {
+      return res.json({ 
+        message: 'Meditation already completed',
+        streakUpdated: false,
+        alreadyCompleted: true
+      });
+    }
+
+    // Only count as completed if >= 95% was listened to
+    const isCompleted = completionPercentage >= 95;
+    
+    // Update the meditation with completion data
+    const updateData = {
+      completion_percentage: completionPercentage
+    };
+
+    if (isCompleted) {
+      updateData.completed_at = completedAt || new Date().toISOString();
+    }
+
+    const { error: updateError } = await supabase
+      .from('meditations')
+      .update(updateData)
+      .eq('id', meditationId)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.error('Error updating meditation completion:', updateError);
+      return res.status(500).json({ error: 'Failed to update meditation completion' });
+    }
+
+    // Calculate new streak if meditation was completed
+    let newStreak = 0;
+    let previousStreak = 0;
+    let streakUpdated = false;
+
+    if (isCompleted) {
+      // Get current streak before this completion
+      const { data: completedMeditations, error: streakError } = await supabase
+        .from('meditations')
+        .select('completed_at')
+        .eq('user_id', userId)
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false });
+
+      if (!streakError && completedMeditations) {
+        // Get previous streak (before this completion) by filtering out current meditation
+        const previousCompletions = completedMeditations.slice(1); // Skip the first one (current meditation)
+        previousStreak = calculateStreak(previousCompletions);
+        newStreak = calculateStreak(completedMeditations);
+        streakUpdated = newStreak !== previousStreak;
+      }
+    }
+
+    res.json({
+      message: isCompleted ? 'Meditation completed successfully' : 'Meditation progress saved',
+      streakUpdated,
+      newStreak,
+      previousStreak,
+      completed: isCompleted
+    });
+
+  } catch (error) {
+    console.error('Meditation completion error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Helper function to calculate streak from completed meditations
+function calculateStreak(completedMeditations) {
+  if (!completedMeditations || completedMeditations.length === 0) {
+    return 0;
+  }
+
+  // Group completions by date (user's timezone - simplified to UTC for now)
+  const completionDates = completedMeditations
+    .map(m => new Date(m.completed_at).toDateString())
+    .filter((date, index, arr) => arr.indexOf(date) === index) // Remove duplicates
+    .sort((a, b) => new Date(b) - new Date(a)); // Sort by date descending
+
+  if (completionDates.length === 0) {
+    return 0;
+  }
+
+  // Check if user completed something today or yesterday to start streak
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString();
+  
+  if (completionDates[0] !== today && completionDates[0] !== yesterday) {
+    return 0; // Streak is broken if most recent completion is not today or yesterday
+  }
+
+  // Count consecutive days
+  let streak = 1;
+  let currentDate = new Date(completionDates[0]);
+  
+  for (let i = 1; i < completionDates.length; i++) {
+    const prevDate = new Date(currentDate);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateString = prevDate.toDateString();
+    
+    if (completionDates[i] === prevDateString) {
+      streak++;
+      currentDate = new Date(completionDates[i]);
+    } else {
+      break; // Gap in consecutive days
+    }
+  }
+
+  return streak;
+}
+
 // GET stats endpoints
 app.get('/api/stats/streak', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
     
-    // Calculate current streak based on meditation dates
-    const { data: meditations, error } = await supabase
+    // Get completed meditations only
+    const { data: completedMeditations, error } = await supabase
       .from('meditations')
-      .select('created_at')
+      .select('completed_at')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching meditations for streak:', error);
+      console.error('Error fetching completed meditations for streak:', error);
       return res.status(500).json({ error: 'Failed to calculate streak' });
     }
 
-    // Simple streak calculation - count consecutive days with meditations
-    let streak = 0;
-    if (meditations && meditations.length > 0) {
-      // For now, return a simple calculation based on total meditations
-      streak = Math.min(meditations.length, 30); // Cap at 30 for demo
-    }
+    // Calculate streak using the helper function
+    const currentStreak = calculateStreak(completedMeditations || []);
+    
+    // Additional streak info
+    const lastCompletionDate = completedMeditations && completedMeditations.length > 0 
+      ? completedMeditations[0].completed_at 
+      : null;
+    
+    const today = new Date().toDateString();
+    const completedToday = lastCompletionDate 
+      ? new Date(lastCompletionDate).toDateString() === today
+      : false;
 
-    res.json({ streak });
+    res.json({ 
+      streak: currentStreak,
+      currentStreak,
+      lastCompletionDate,
+      completedToday
+    });
   } catch (error) {
     console.error('Streak calculation error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2128,24 +2277,25 @@ app.get('/api/stats/monthly', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
     
-    // Get this month's meditation count
+    // Get this month's completed meditation count
     const currentMonth = new Date();
     const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
 
-    const { data: meditations, error } = await supabase
+    const { data: completedMeditations, error } = await supabase
       .from('meditations')
       .select('id')
       .eq('user_id', userId)
-      .gte('created_at', startOfMonth.toISOString())
-      .lte('created_at', endOfMonth.toISOString());
+      .not('completed_at', 'is', null)
+      .gte('completed_at', startOfMonth.toISOString())
+      .lte('completed_at', endOfMonth.toISOString());
 
     if (error) {
       console.error('Error fetching monthly stats:', error);
       return res.status(500).json({ error: 'Failed to get monthly count' });
     }
 
-    const count = meditations ? meditations.length : 0;
+    const count = completedMeditations ? completedMeditations.length : 0;
     res.json({ count });
   } catch (error) {
     console.error('Monthly stats error:', error);
@@ -2157,12 +2307,13 @@ app.get('/api/stats/calendar', requireAuth(), async (req, res) => {
   try {
     const userId = req.auth.userId;
     
-    // Get all meditation dates for calendar
-    const { data: meditations, error } = await supabase
+    // Get all completed meditation dates for calendar
+    const { data: completedMeditations, error } = await supabase
       .from('meditations')
-      .select('created_at')
+      .select('completed_at')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching calendar data:', error);
@@ -2170,8 +2321,8 @@ app.get('/api/stats/calendar', requireAuth(), async (req, res) => {
     }
 
     // Extract unique dates
-    const dates = meditations 
-      ? meditations.map(m => new Date(m.created_at).toISOString().split('T')[0])
+    const dates = completedMeditations 
+      ? completedMeditations.map(m => new Date(m.completed_at).toISOString().split('T')[0])
       : [];
     
     const uniqueDates = [...new Set(dates)];

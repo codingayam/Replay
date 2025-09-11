@@ -16,13 +16,15 @@ interface MeditationPlayerProps {
     onFinish: (completed: boolean) => void;
     title?: string;
     author?: string;
+    meditationId?: string;
 }
 
 const MeditationPlayer: React.FC<MeditationPlayerProps> = ({ 
     playlist, 
     onFinish, 
     title = "Your Personalized Meditation", 
-    author = "Replay" 
+    author = "Replay",
+    meditationId
 }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [status, setStatus] = useState('Starting...');
@@ -32,6 +34,14 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     const audioRef = useRef<HTMLAudioElement>(null);
     const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pauseStartTimeRef = useRef<number>(0);
+    
+    // Progress tracking for completion
+    const [totalPlayedTime, setTotalPlayedTime] = useState(0);
+    const [totalDuration, setTotalDuration] = useState(0);
+    const progressTrackingRef = useRef<{
+        lastTimeUpdate: number;
+        sessionStartTime: number;
+    }>({ lastTimeUpdate: 0, sessionStartTime: Date.now() });
     
     const { user } = useAuth();
     const api = useAuthenticatedApi();
@@ -70,13 +80,97 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
         }
     };
 
+    // Calculate total duration when playlist changes
+    useEffect(() => {
+        const calculateTotalDuration = async () => {
+            let total = 0;
+            
+            for (const item of playlist) {
+                if (item.type === 'speech') {
+                    // For speech items, try to get actual audio duration
+                    if (item.duration) {
+                        // Duration is already provided in milliseconds
+                        total += item.duration;
+                    } else if (item.audioUrl) {
+                        // Try to load audio to get real duration (fallback)
+                        try {
+                            const audio = new Audio();
+                            audio.preload = 'metadata';
+                            const signedUrl = await getSignedAudioUrl(item.audioUrl);
+                            audio.src = signedUrl;
+                            
+                            await new Promise((resolve, reject) => {
+                                audio.onloadedmetadata = () => {
+                                    total += audio.duration * 1000; // Convert to milliseconds
+                                    resolve(null);
+                                };
+                                audio.onerror = () => {
+                                    // Fallback to reasonable estimate for speech
+                                    total += 180000; // 3 minutes default for speech
+                                    resolve(null);
+                                };
+                                // Timeout after 5 seconds
+                                setTimeout(() => {
+                                    total += 180000; // 3 minutes default
+                                    resolve(null);
+                                }, 5000);
+                            });
+                        } catch {
+                            // Fallback to reasonable estimate
+                            total += 180000; // 3 minutes default for speech
+                        }
+                    } else {
+                        // Fallback to reasonable estimate
+                        total += 180000; // 3 minutes default for speech
+                    }
+                } else if (item.type === 'pause') {
+                    total += (item.duration || 0) * 1000; // Convert seconds to milliseconds
+                }
+            }
+            
+            setTotalDuration(total);
+            console.log(`📊 Calculated total meditation duration: ${Math.round(total/1000)}s`);
+        };
+        
+        calculateTotalDuration();
+    }, [playlist]);
+
+    // Call completion API when meditation finishes
+    const handleMeditationCompletion = async (completed: boolean) => {
+        if (!meditationId) {
+            onFinish(completed);
+            return;
+        }
+
+        // If the meditation completed naturally (reached end of playlist), treat as 100%
+        // If user manually stopped early, calculate based on progress
+        const completionPercentage = completed 
+            ? 100  // Completed naturally = 100%
+            : (totalDuration > 0 ? Math.round((totalPlayedTime / totalDuration) * 100) : 0);
+
+        try {
+            const response = await api.post(`/meditations/${meditationId}/complete`, {
+                completionPercentage,
+                completedAt: new Date().toISOString()
+            });
+            
+            console.log('Meditation completion tracked:', response.data);
+            
+            // Call the original onFinish with completion data
+            onFinish(completed);
+        } catch (error) {
+            console.error('Error tracking meditation completion:', error);
+            // Still call onFinish even if API fails
+            onFinish(completed);
+        }
+    };
 
     useEffect(() => {
         const handleCurrentItem = async () => {
             if (currentIndex >= playlist.length) {
                 setStatus('Meditation complete.');
                 setIsPlaying(false);
-                onFinish(true);
+                handleMeditationCompletion(true);
                 return;
             }
 
@@ -172,6 +266,9 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
                 setStatus(`Pausing for ${currentItem.duration} seconds...`);
                 pauseStartTimeRef.current = Date.now();
                 const timer = setTimeout(() => {
+                    // Add pause time to total played time
+                    const pauseDurationMs = (currentItem.duration || 0) * 1000;
+                    setTotalPlayedTime(prev => prev + pauseDurationMs);
                     setCurrentIndex(i => i + 1);
                 }, (currentItem.duration || 0) * 1000);
                 pauseTimerRef.current = timer;
@@ -192,7 +289,19 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
         const audio = audioRef.current;
         if (!audio) return;
 
-        const updateTime = () => setCurrentTime(audio.currentTime);
+        const updateTime = () => {
+            setCurrentTime(audio.currentTime);
+            
+            // Track progress for completion percentage
+            const currentAudioTime = audio.currentTime * 1000; // Convert to milliseconds
+            const timeSinceLastUpdate = currentAudioTime - progressTrackingRef.current.lastTimeUpdate;
+            
+            if (timeSinceLastUpdate > 0 && timeSinceLastUpdate < 2000) { // Reasonable time jump (< 2 seconds)
+                setTotalPlayedTime(prev => prev + timeSinceLastUpdate);
+            }
+            
+            progressTrackingRef.current.lastTimeUpdate = currentAudioTime;
+        };
         const handlePause = () => setIsPlaying(false);
         const handlePlay = () => setIsPlaying(true);
         
@@ -230,6 +339,8 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
                 const remainingTime = (currentItem.duration || 0) * 1000 - (Date.now() - pauseStartTimeRef.current);
                 if (remainingTime > 0) {
                     const timer = setTimeout(() => {
+                        // Add remaining pause time to total played time
+                        setTotalPlayedTime(prev => prev + remainingTime);
                         setCurrentIndex(i => i + 1);
                     }, remainingTime);
                     pauseTimerRef.current = timer;

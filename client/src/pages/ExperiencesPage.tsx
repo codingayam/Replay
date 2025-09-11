@@ -50,11 +50,17 @@ const ExperiencesPage: React.FC = () => {
     const [showReadyToBeginModal, setShowReadyToBeginModal] = useState(false);
     const [showMeditationGeneratingModal, setShowMeditationGeneratingModal] = useState(false);
     const [meditationPlaylist, setMeditationPlaylist] = useState<PlaylistItem[] | null>(null);
+    const [currentMeditationId, setCurrentMeditationId] = useState<string | null>(null);
     const [selectedDuration, setSelectedDuration] = useState(5);
     const [recommendedDuration, setRecommendedDuration] = useState(5);
     const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
     const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     const [generatedSummary, setGeneratedSummary] = useState('');
+    
+    // Radio state
+    const [radioPlaylist, setRadioPlaylist] = useState<PlaylistItem[] | null>(null);
+    const [isGeneratingRadio, setIsGeneratingRadio] = useState(false);
+    const [isRadioApiComplete, setIsRadioApiComplete] = useState(false);
     
     const api = useAuthenticatedApi();
     const { user } = useAuth();
@@ -293,10 +299,68 @@ const ExperiencesPage: React.FC = () => {
             setSelectedDuration(calculatedDuration);
             setShowDurationModal(true);
         } else {
-            // Future: Casual mode implementation
-            console.log(`Casual mode selected for notes: ${Array.from(selectedNoteIds)}`);
+            // Radio mode (Casual) - skip duration selection and generate directly
+            handleRadioGeneration();
+        }
+    };
+
+    // Radio generation handler
+    const handleRadioGeneration = async () => {
+        setIsGeneratingRadio(true);
+        setIsRadioApiComplete(false);
+        setShowMeditationGeneratingModal(true); // Reuse the same loading modal
+
+        try {
+            console.log('📻 Generating radio show from selected experiences...');
+            const response = await api.post('/replay/radio', {
+                noteIds: Array.from(selectedNoteIds),
+                duration: 5, // Fixed 5 minutes for radio
+                title: `Radio Show - ${new Date().toLocaleDateString()}`
+            });
+
+            setRadioPlaylist(response.data.radioShow.playlist);
+            
+            // Mark API as complete - loading modal will handle the transition
+            console.log('✅ Radio API Success - setting isRadioApiComplete to true');
+            setIsRadioApiComplete(true);
+        } catch (err) {
+            console.error('Error generating radio show:', err);
+            alert('Failed to generate radio show. Please try again.');
+            setIsGeneratingRadio(false);
+            setIsRadioApiComplete(false);
+            setShowMeditationGeneratingModal(false);
             handleClearSelection();
         }
+    };
+
+    const handleRadioReady = () => {
+        console.log('🎯 handleRadioReady called');
+        console.log('📊 radioPlaylist:', radioPlaylist);
+        
+        // Called when the loading animation completes
+        setIsGeneratingRadio(false);
+        setIsRadioApiComplete(false);
+        setShowMeditationGeneratingModal(false);
+        
+        // Only proceed if we actually have a playlist
+        if (radioPlaylist && radioPlaylist.length > 0) {
+            console.log('✅ Valid radio playlist found, starting playback');
+            // Playlist will be used by MeditationPlayer component
+        } else {
+            console.log('❌ No valid radio playlist found');
+            alert('Radio generation failed. Please try again when the server is running.');
+            // Reset state
+            setRadioPlaylist(null);
+            handleClearSelection();
+        }
+    };
+
+    const handleRadioFinish = (completed: boolean) => {
+        console.log(`🎯 Radio finished - completed: ${completed}`);
+        setRadioPlaylist(null);
+        
+        // Clear selection and exit selection mode
+        handleClearSelection();
     };
 
     // Meditative replay modal handlers
@@ -327,6 +391,7 @@ const ExperiencesPage: React.FC = () => {
             });
 
             setMeditationPlaylist(response.data.playlist);
+            setCurrentMeditationId(response.data.meditationId || response.data.id);
             setGeneratedSummary(response.data.summary || '');
             
             // Mark API as complete - loading modal will handle the transition
@@ -366,6 +431,7 @@ const ExperiencesPage: React.FC = () => {
     const handleMeditationFinish = (completed: boolean) => {
         console.log(`🎯 Meditation finished - completed: ${completed}`);
         setMeditationPlaylist(null);
+        setCurrentMeditationId(null);
         setGeneratedSummary('');
         
         // Clear selection and exit selection mode
@@ -376,9 +442,14 @@ const ExperiencesPage: React.FC = () => {
     const groupedNotes = groupNotesByDate(notes);
     const sortedDateGroups = sortDateGroups(Object.keys(groupedNotes));
 
-    // Show meditation player if we have a playlist
+    // Show meditation player if we have a playlist (meditation or radio)
     if (meditationPlaylist) {
-        return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} />;
+        return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} meditationId={currentMeditationId || undefined} />;
+    }
+    
+    // Show radio player if we have a radio playlist
+    if (radioPlaylist) {
+        return <MeditationPlayer playlist={radioPlaylist} onFinish={handleRadioFinish} />;
     }
 
     return (
@@ -668,16 +739,17 @@ const ExperiencesPage: React.FC = () => {
                 duration={selectedDuration}
             />
 
-            {/* Meditation Generating Modal */}
+            {/* Meditation/Radio Generating Modal */}
             <MeditationGeneratingModal
                 isOpen={showMeditationGeneratingModal}
                 onClose={() => setShowMeditationGeneratingModal(false)}
-                isGenerating={isGeneratingMeditation}
-                isApiComplete={isMeditationApiComplete}
-                onMeditationReady={handleMeditationReady}
+                isGenerating={isGeneratingMeditation || isGeneratingRadio}
+                isApiComplete={isMeditationApiComplete || isRadioApiComplete}
+                onMeditationReady={isGeneratingRadio ? handleRadioReady : handleMeditationReady}
                 onRunInBackground={() => {
                     setShowMeditationGeneratingModal(false);
                     setIsGeneratingMeditation(false);
+                    setIsGeneratingRadio(false);
                     handleClearSelection();
                 }}
             />

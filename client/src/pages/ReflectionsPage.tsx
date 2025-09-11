@@ -35,6 +35,7 @@ const ReflectionsPage: React.FC = () => {
     const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>([]);
     const [isLoadingMeditation, setIsLoadingMeditation] = useState(false);
     const [meditationPlaylist, setMeditationPlaylist] = useState<PlaylistItem[] | null>(null);
+    const [currentMeditationId, setCurrentMeditationId] = useState<string | null>(null);
     const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
     
     const api = useAuthenticatedApi();
@@ -117,6 +118,7 @@ const ReflectionsPage: React.FC = () => {
         try {
             const res = await api.get(`/meditations/${meditationId}`);
             setMeditationPlaylist(res.data.playlist);
+            setCurrentMeditationId(meditationId);
         } catch (err) {
             console.error("Error loading meditation:", err);
             alert('Failed to load meditation. Please try again.');
@@ -340,6 +342,7 @@ const ReflectionsPage: React.FC = () => {
     const handleMeditationFinish = (_completed: boolean) => {
         // Ignore completed parameter since we no longer show completion modal
         setMeditationPlaylist(null);
+        setCurrentMeditationId(null);
         // Reset all state when meditation finishes
         setSelectedReflectionType('Day');
         setSelectedStartDate('');
@@ -388,7 +391,7 @@ const ReflectionsPage: React.FC = () => {
     }
 
     if (meditationPlaylist) {
-        return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} />;
+        return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} meditationId={currentMeditationId || undefined} />;
     }
 
     return (
