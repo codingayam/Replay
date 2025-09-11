@@ -2,4 +2,4 @@
 # This file tells Railway's Nixpacks to include ffmpeg system dependency
 
 [phases.setup]
-nixPkgs = ["nodejs_22", "ffmpeg"]
+nixPkgs = ["...", "ffmpeg"]
