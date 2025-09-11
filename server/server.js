@@ -1196,6 +1196,126 @@ app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, 
   }
 });
 
+// POST /api/notes/text - Create text note with optional image upload
+app.post('/api/notes/text', requireAuth(), upload.single('image'), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const { title: userTitle, content, date } = req.body;
+
+    // Validation
+    if (!userTitle || !content) {
+      return res.status(400).json({ error: 'Title and content are required' });
+    }
+
+    if (userTitle.length > 100) {
+      return res.status(400).json({ error: 'Title must be 100 characters or less' });
+    }
+
+    if (content.length > 5000) {
+      return res.status(400).json({ error: 'Content must be 5000 characters or less' });
+    }
+
+    if (content.length < 10) {
+      return res.status(400).json({ error: 'Content must be at least 10 characters' });
+    }
+
+    // Generate unique note ID
+    const noteId = uuidv4();
+    
+    // Handle optional image upload
+    let imageUrl = null;
+    let aiImageDescription = null;
+    
+    if (req.file) {
+      // Generate unique filename for image
+      const fileExtension = req.file.originalname.split('.').pop();
+      const fileName = `${noteId}.${fileExtension}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(`${userId}/${fileName}`, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image file' });
+      }
+
+      // Get signed URL for the uploaded file
+      const { data: urlData } = await supabase.storage
+        .from('images')
+        .createSignedUrl(`${userId}/${fileName}`, 3600 * 24 * 365); // 1 year
+
+      imageUrl = urlData?.signedUrl || `${userId}/${fileName}`;
+
+      // Optional: AI image analysis for attached photos
+      try {
+        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        
+        console.log('🔍 Starting Gemini Vision analysis for text note image...');
+        
+        // Convert image buffer to base64 for Gemini Vision
+        const imageBase64 = req.file.buffer.toString('base64');
+        
+        // Vision analysis prompt
+        const visionPrompt = `Analyze this image that accompanies a text journal entry. Describe what you see including: objects, people, setting, colors, lighting, mood, and any notable details. Provide a comprehensive but concise description in 1-2 sentences.`;
+        
+        const visionResult = await Promise.race([
+          model.generateContent([
+            visionPrompt,
+            {
+              inlineData: {
+                data: imageBase64,
+                mimeType: req.file.mimetype
+              }
+            }
+          ]),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Vision analysis timeout')), 30000)
+          )
+        ]);
+        
+        aiImageDescription = visionResult.response.text().trim();
+        console.log('✅ Vision analysis completed for text note image');
+        
+      } catch (visionError) {
+        console.error('❌ Vision analysis failed for text note:', visionError.message);
+        // Continue without vision analysis
+      }
+    }
+
+    // Create note record
+    const { data: noteData, error: noteError } = await supabase
+      .from('notes')
+      .insert([{
+        id: noteId,
+        user_id: userId,
+        title: userTitle, // AI-generated title field (legacy)
+        user_title: userTitle, // User-provided title (new field)
+        transcript: content, // Using transcript field to store user content
+        type: 'text',
+        date: date || new Date().toISOString(),
+        image_url: imageUrl,
+        ai_image_description: aiImageDescription
+      }])
+      .select()
+      .single();
+
+    if (noteError) {
+      console.error('Error creating text note:', noteError);
+      return res.status(500).json({ error: 'Failed to create text note' });
+    }
+
+    res.status(201).json({ note: noteData });
+  } catch (error) {
+    console.error('Text note creation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /api/notes/:id - Delete user's note
 app.delete('/api/notes/:id', requireAuth(), async (req, res) => {
   try {
@@ -1245,6 +1365,58 @@ app.delete('/api/notes/:id', requireAuth(), async (req, res) => {
     res.json({ message: 'Note deleted successfully' });
   } catch (error) {
     console.error('Note deletion error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/notes/:id - Update user's note
+app.put('/api/notes/:id', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const noteId = req.params.id;
+    const { title, transcript } = req.body;
+
+    // Validate required fields
+    if (!title || !transcript) {
+      return res.status(400).json({ error: 'Title and transcript are required' });
+    }
+
+    // Check if note exists and belongs to user
+    const { data: existingNote, error: fetchError } = await supabase
+      .from('notes')
+      .select('id')
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !existingNote) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    // Update the note
+    const { data: updatedNote, error: updateError } = await supabase
+      .from('notes')
+      .update({
+        title: title.trim(),
+        transcript: transcript.trim(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('Error updating note:', updateError);
+      return res.status(500).json({ error: 'Failed to update note' });
+    }
+
+    res.json({ 
+      message: 'Note updated successfully',
+      note: updatedNote
+    });
+  } catch (error) {
+    console.error('Note update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

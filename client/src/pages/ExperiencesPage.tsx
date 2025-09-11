@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlayCircle, Trash2, Share2, Image as ImageIcon, User, X, Play, Pause, Mic } from 'lucide-react';
+import { PlayCircle, Trash2, Edit, Image as ImageIcon, User, X, Play, Pause, Mic, FileText } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
 import Header from '../components/Header';
@@ -10,6 +10,7 @@ import DurationSelectorModal from '../components/DurationSelectorModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
 import MeditationPlayer from '../components/MeditationPlayer';
+import EditExperienceModal from '../components/EditExperienceModal';
 import type { Note, SearchResult } from '../types';
 
 interface PlaylistItem {
@@ -28,6 +29,7 @@ const ExperiencesPage: React.FC = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const [isUploadingText, setIsUploadingText] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
     
     // Search state
@@ -39,6 +41,10 @@ const ExperiencesPage: React.FC = () => {
     // Modal state
     const [modalOpen, setModalOpen] = useState<boolean>(false);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+    
+    // Edit modal state
+    const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+    const [noteToEdit, setNoteToEdit] = useState<Note | null>(null);
     
     // Multi-select state
     const [selectionMode, setSelectionMode] = useState<boolean>(false);
@@ -125,6 +131,30 @@ const ExperiencesPage: React.FC = () => {
         }
     };
 
+    const handleSaveTextNote = async (title: string, content: string, image?: File) => {
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('content', content);
+        formData.append('date', new Date().toISOString());
+        
+        if (image) {
+            formData.append('image', image);
+        }
+        
+        setIsUploadingText(true);
+        try {
+            await api.post('/notes/text', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            fetchNotes();
+        } catch (err) {
+            console.error("Error saving text note:", err);
+            alert('Failed to save text note. See console for details.');
+        } finally {
+            setIsUploadingText(false);
+        }
+    };
+
     const handleDeleteNote = async (id: string) => {
         if (window.confirm('Are you sure you want to delete this note?')) {
             try {
@@ -134,6 +164,28 @@ const ExperiencesPage: React.FC = () => {
                 console.error("Error deleting note:", err);
             }
         }
+    };
+
+    const handleEditNote = (note: Note) => {
+        setNoteToEdit(note);
+        setEditModalOpen(true);
+    };
+
+    const handleUpdateNote = async (noteId: string, updates: { title: string; transcript: string }) => {
+        try {
+            await api.put(`/notes/${noteId}`, updates);
+            fetchNotes(); // Refresh the notes list
+            setEditModalOpen(false);
+            setNoteToEdit(null);
+        } catch (err) {
+            console.error("Error updating note:", err);
+            alert('Failed to update note. Please try again.');
+        }
+    };
+
+    const handleCloseEditModal = () => {
+        setEditModalOpen(false);
+        setNoteToEdit(null);
     };
 
     const handlePlayNote = async (audioUrl: string) => {
@@ -540,6 +592,8 @@ const ExperiencesPage: React.FC = () => {
                                             <div style={styles.noteIcon}>
                                                 {note.type === 'photo' ? (
                                                     <ImageIcon size={16} style={{ color: '#6366f1' }} />
+                                                ) : note.type === 'text' ? (
+                                                    <FileText size={16} style={{ color: '#6366f1' }} />
                                                 ) : (
                                                     <Mic size={16} style={{ color: '#6366f1' }} />
                                                 )}
@@ -577,8 +631,29 @@ const ExperiencesPage: React.FC = () => {
                                                                     </button>
                                                                 </div>
                                                             </div>
+                                                        ) : note.type === 'text' ? (
+                                                            <div>
+                                                                {/* Optional image for text notes */}
+                                                                {note.imageUrl && note.imageUrl.trim() && (
+                                                                    <div style={styles.photoContainer}>
+                                                                        <div style={styles.photoPlaceholder}>
+                                                                            <SupabaseImage
+                                                                                src={note.imageUrl}
+                                                                                alt={note.userTitle || note.title}
+                                                                                style={styles.photo}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                <div style={styles.transcript}>
+                                                                    <p style={styles.transcriptText}>
+                                                                        {note.transcript}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
                                                         ) : (
                                                             <div>
+                                                                {/* Photo notes */}
                                                                 <div style={styles.photoContainer}>
                                                                     <div style={styles.photoPlaceholder}>
                                                                         {note.imageUrl && (
@@ -592,7 +667,7 @@ const ExperiencesPage: React.FC = () => {
                                                                 </div>
                                                                 <div style={styles.transcript}>
                                                                     <p style={styles.transcriptText}>
-                                                                        {note.type === 'photo' ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                                                        {note.originalCaption || 'No caption provided'}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -600,13 +675,19 @@ const ExperiencesPage: React.FC = () => {
                                                         
                                                         <div style={styles.actionButtons}>
                                                             <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleEditNote(note);
+                                                                }}
+                                                                style={styles.editButton}
+                                                            >
+                                                                <Edit size={16} />
+                                                            </button>
+                                                            <button 
                                                                 onClick={() => handleDeleteNote(note.id)}
                                                                 style={styles.deleteButton}
                                                             >
                                                                 <Trash2 size={16} />
-                                                            </button>
-                                                            <button style={styles.shareButton}>
-                                                                <Share2 size={16} />
                                                             </button>
                                                         </div>
                                                     </div>
@@ -632,7 +713,9 @@ const ExperiencesPage: React.FC = () => {
             <FloatingUploadButton 
                 onSaveAudio={handleSaveAudioNote}
                 onSavePhoto={handleSavePhotoNote}
+                onSaveText={handleSaveTextNote}
                 isUploadingPhoto={isUploadingPhoto}
+                isUploadingText={isUploadingText}
             />
 
             {/* Search Result Modal */}
@@ -753,6 +836,16 @@ const ExperiencesPage: React.FC = () => {
                     handleClearSelection();
                 }}
             />
+
+            {/* Edit Experience Modal */}
+            {noteToEdit && (
+                <EditExperienceModal
+                    isOpen={editModalOpen}
+                    onClose={handleCloseEditModal}
+                    note={noteToEdit}
+                    onSave={handleUpdateNote}
+                />
+            )}
         </div>
     );
 };
@@ -1030,13 +1123,13 @@ const styles = {
         justifyContent: 'center',
         transition: 'all 0.2s',
     },
-    shareButton: {
+    editButton: {
         width: '40px',
         height: '40px',
         borderRadius: '8px',
         border: 'none',
-        backgroundColor: '#e5e7eb',
-        color: '#6b7280',
+        backgroundColor: '#ede9fe',
+        color: '#6366f1',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
