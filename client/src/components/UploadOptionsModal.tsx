@@ -1,11 +1,12 @@
 import React from 'react';
-import { Mic, Camera, X } from 'lucide-react';
+import { Mic, Camera, X, FileText } from 'lucide-react';
 
 interface UploadOptionsModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSelectAudio: () => void;
     onSelectPhoto: () => void;
+    onSelectText: () => void;
 }
 
 const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
@@ -13,6 +14,7 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
     onClose,
     onSelectAudio,
     onSelectPhoto,
+    onSelectText,
 }) => {
     if (!isOpen) return null;
 
@@ -27,6 +29,18 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
                 </div>
                 
                 <div style={styles.options}>
+                    <button onClick={onSelectText} style={styles.optionButton}>
+                        <div style={styles.optionIcon}>
+                            <FileText size={32} />
+                        </div>
+                        <div style={styles.optionContent}>
+                            <h4 style={styles.optionTitle}>Write Text Entry</h4>
+                            <p style={styles.optionDescription}>
+                                Write your thoughts directly with a custom title and optional photo
+                            </p>
+                        </div>
+                    </button>
+
                     <button onClick={onSelectAudio} style={styles.optionButton}>
                         <div style={styles.optionIcon}>
                             <Mic size={32} />

@@ -2,17 +2,22 @@ import React, { useState, useRef } from 'react';
 import { Upload, StopCircle, Save, X, Mic } from 'lucide-react';
 import UploadOptionsModal from './UploadOptionsModal';
 import PhotoUploadModal from './PhotoUploadModal';
+import TextUploadModal from './TextUploadModal';
 
 interface FloatingUploadButtonProps {
     onSaveAudio: (blob: Blob) => void;
     onSavePhoto: (file: File, caption: string) => void;
+    onSaveText: (title: string, content: string, image?: File) => void;
     isUploadingPhoto?: boolean;
+    isUploadingText?: boolean;
 }
 
 const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({ 
     onSaveAudio, 
     onSavePhoto,
-    isUploadingPhoto = false 
+    onSaveText,
+    isUploadingPhoto = false,
+    isUploadingText = false 
 }) => {
     // Audio recording states
     const [isRecording, setIsRecording] = useState(false);
@@ -24,6 +29,7 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
     // Modal states
     const [showOptionsModal, setShowOptionsModal] = useState(false);
     const [showPhotoModal, setShowPhotoModal] = useState(false);
+    const [showTextModal, setShowTextModal] = useState(false);
 
     // Audio recording functions
     const startRecording = async () => {
@@ -143,9 +149,19 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
         setShowPhotoModal(true);
     };
 
+    const handleSelectText = () => {
+        setShowOptionsModal(false);
+        setShowTextModal(true);
+    };
+
     const handleSavePhoto = (file: File, caption: string) => {
         onSavePhoto(file, caption);
         setShowPhotoModal(false);
+    };
+
+    const handleSaveText = (title: string, content: string, image?: File) => {
+        onSaveText(title, content, image);
+        setShowTextModal(false);
     };
 
     // Show audio controls if we have a recorded audio blob
@@ -225,6 +241,7 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
                 onClose={() => setShowOptionsModal(false)}
                 onSelectAudio={handleSelectAudio}
                 onSelectPhoto={handleSelectPhoto}
+                onSelectText={handleSelectText}
             />
 
             <PhotoUploadModal
@@ -232,6 +249,13 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
                 onClose={() => setShowPhotoModal(false)}
                 onUpload={handleSavePhoto}
                 isUploading={isUploadingPhoto}
+            />
+
+            <TextUploadModal
+                isOpen={showTextModal}
+                onClose={() => setShowTextModal(false)}
+                onUpload={handleSaveText}
+                isUploading={isUploadingText}
             />
         </>
     );

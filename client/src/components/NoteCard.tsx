@@ -18,24 +18,15 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
 
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
+    const isTextNote = note.type === 'text';
 
-    // Debug logging for photo notes
-    if (isPhotoNote) {
-        console.log('NoteCard DEBUG - Photo Note:', {
-            title: note.title,
-            type: note.type,
-            transcript: note.transcript,
-            originalCaption: note.originalCaption,
-            aiImageDescription: note.aiImageDescription,
-            hasOriginalCaption: !!note.originalCaption
-        });
-    }
 
     // Get emoji based on note type
-    const getNoteTypeEmoji = (noteType: 'audio' | 'photo') => {
+    const getNoteTypeEmoji = (noteType: 'audio' | 'photo' | 'text') => {
         switch (noteType) {
             case 'audio': return '🎤';
             case 'photo': return '📸';
+            case 'text': return '📝';
             default: return '📝';
         }
     };
@@ -69,7 +60,9 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                     {getNoteTypeEmoji(note.type)}
                 </div>
                 <div style={styles.textContent}>
-                    <h3 style={styles.title}>{note.title}</h3>
+                    <h3 style={styles.title}>
+                        {isTextNote && note.userTitle ? note.userTitle : note.title}
+                    </h3>
                     <p style={styles.date}>{formatDate(note.date)}</p>
                 </div>
                 <ChevronRight 
@@ -83,12 +76,12 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
             
             {showDetails && (
                 <div style={styles.detailsContainer}>
-                    {/* Photo display */}
-                    {isPhotoNote && note.imageUrl && (
+                    {/* Image display for photo notes and text notes with images */}
+                    {(isPhotoNote || isTextNote) && note.imageUrl && note.imageUrl.trim() && (
                         <div style={styles.imageContainer}>
                             <img 
                                 src={getFileUrl(note.imageUrl)} 
-                                alt={note.title}
+                                alt={isTextNote && note.userTitle ? note.userTitle : note.title}
                                 style={styles.image}
                             />
                         </div>
@@ -106,10 +99,12 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                                 />
                             ) : (
                                 <p style={styles.transcriptText}>
-                                    {isPhotoNote ? (note.originalCaption || 'No caption provided') : note.transcript}
+                                    {isPhotoNote 
+                                        ? (note.originalCaption || 'No caption provided') 
+                                        : note.transcript}
                                 </p>
                             )}
-                            {isAudioNote && onUpdateTranscript && (
+                            {(isAudioNote || isTextNote) && onUpdateTranscript && (
                                 <div style={styles.transcriptControls}>
                                     {isEditingTranscript ? (
                                         <>

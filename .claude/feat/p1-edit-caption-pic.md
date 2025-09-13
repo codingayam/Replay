@@ -1,0 +1,1 @@
+changing capiton doesn't change the one displayed in card

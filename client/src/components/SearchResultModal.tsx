@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, PlayCircle, Mic, Camera } from 'lucide-react';
+import { X, PlayCircle, Mic, Camera, FileText } from 'lucide-react';
 import type { Note } from '../types';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 
@@ -154,6 +154,8 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
                   <div style={styles.typeIcon}>
                     {note.type === 'audio' ? (
                       <Mic size={16} color="#3b82f6" />
+                    ) : note.type === 'text' ? (
+                      <FileText size={16} color="#8b5cf6" />
                     ) : (
                       <Camera size={16} color="#059669" />
                     )}
