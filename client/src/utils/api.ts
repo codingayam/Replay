@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 // Get API base URL from environment or use default
@@ -21,44 +22,44 @@ const api = axios.create({
 export const useAuthenticatedApi = () => {
   const { getToken } = useAuth();
 
-  // Create an axios instance with authentication
-  const authenticatedApi = axios.create({
-    baseURL: getApiBaseUrl(),
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  // Memoise the axios instance so components don't trigger
+  // new effects on every render (prevents image flicker loops).
+  const authenticatedApi = useMemo(() => {
+    const instance = axios.create({
+      baseURL: getApiBaseUrl(),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  // Add request interceptor to include auth token
-  authenticatedApi.interceptors.request.use(
-    async (config) => {
-      try {
-        const token = await getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+    instance.interceptors.request.use(
+      async (config) => {
+        try {
+          const token = await getToken();
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
+        } catch (error) {
+          console.error('Failed to get auth token:', error);
         }
-      } catch (error) {
-        console.error('Failed to get auth token:', error);
-      }
-      return config;
-    },
-    (error) => {
-      return Promise.reject(error);
-    }
-  );
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
 
-  // Add response interceptor for error handling
-  authenticatedApi.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      if (error.response?.status === 401) {
-        console.error('Authentication failed - redirecting to login');
-        // Redirect to login page
-        window.location.href = '/login';
+    instance.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          console.error('Authentication failed - redirecting to login');
+          window.location.href = '/login';
+        }
+        return Promise.reject(error);
       }
-      return Promise.reject(error);
-    }
-  );
+    );
+
+    return instance;
+  }, [getToken]);
 
   return authenticatedApi;
 };
