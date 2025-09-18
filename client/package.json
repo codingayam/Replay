@@ -8,19 +8,21 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:ci": "jest --ci --coverage --watchAll=false",
-    "test:coverage": "jest --coverage"
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:ci": "NODE_OPTIONS=--experimental-vm-modules jest --ci --coverage --watchAll=false",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.56.0",
     "axios": "^1.11.0",
+    "firebase": "^12.2.1",
     "lucide-react": "^0.539.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.8.0"
+    "react-router-dom": "^7.8.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

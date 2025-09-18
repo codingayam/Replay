@@ -34,17 +34,9 @@ A full-stack reflection and journaling application that combines audio recording
    ```
 
 2. **Set up environment variables**
-   ```bash
-   cd server
-   cp .env.example .env
-   ```
-   
-   Edit `server/.env` and add your API keys:
-   ```env
-   GEMINI_API_KEY=your_actual_gemini_api_key
-   OPENAI_API_KEY=your_actual_openai_api_key
-   PORT=3001
-   ```
+   - Copy `client/.env.example` to `client/.env` and populate credentials from secret storage.
+   - Copy `server/.env.example` to `server/.env` and populate server-side keys.
+   - Run `npm run push:generate-sw-config` to emit `firebase-sw-config.js` (consumed by the Firebase messaging service worker). Do not commit generated files.
 
 3. **Install dependencies**
    ```bash
@@ -77,10 +69,8 @@ The application will be available at `http://localhost:5173` (client) with the A
 2. Create a new API key
 3. Add it to your `.env` file as `GEMINI_API_KEY`
 
-### OpenAI API
-1. Visit [OpenAI API Keys](https://platform.openai.com/api-keys)
-2. Create a new API key
-3. Add it to your `.env` file as `OPENAI_API_KEY`
+### Push Notification Credentials
+See `config/push-notifications/README.md` for the complete credential inventory and rotation process covering Firebase, VAPID, and Apple Web Push secrets. Use the validation checklist in `config/push-notifications/VALIDATION.md` after provisioning new keys.
 
 ## Project Structure
 

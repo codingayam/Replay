@@ -1,5 +1,9 @@
+import presets from 'ts-jest/presets/index.js';
+
+const { defaultsESM } = presets;
+
 export default {
-  preset: 'ts-jest',
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   testMatch: [
@@ -7,17 +11,15 @@ export default {
     '**/*.(test|spec).(ts|tsx|js|jsx)'
   ],
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
-      useESM: true,
-      tsconfig: {
-        jsx: 'react-jsx',
-        esModuleInterop: true,
-        allowSyntheticDefaultImports: true,
-        module: 'esnext',
-        target: 'es2020'
-      }
-    }],
+    '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: true, tsconfig: '<rootDir>/tsconfig.jest.json' }],
   },
+  globals: {
+    'ts-jest': {
+      useESM: true,
+      tsconfig: '<rootDir>/tsconfig.jest.json',
+    },
+  },
+  transformIgnorePatterns: ['node_modules/(?!(firebase|@firebase)/)'],
   collectCoverageFrom: [
     'src/**/*.(ts|tsx)',
     '!src/**/*.d.ts',
@@ -28,8 +30,10 @@ export default {
     '\\.(css|less|scss)$': 'identity-obj-proxy',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^../utils/api$': '<rootDir>/src/__mocks__/api.ts',
+    '^../lib/firebase$': '<rootDir>/src/__mocks__/firebase.ts',
+    '^firebase/messaging$': '<rootDir>/src/__mocks__/firebase-messaging.ts',
   },
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   globals: {
     'import.meta': {

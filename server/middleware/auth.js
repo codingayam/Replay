@@ -38,6 +38,9 @@ const requireAuth = () => {
                 userId: user.id,
                 user: user
             };
+
+            // Preserve legacy access pattern used by older routes
+            req.user = user;
             
             next();
         } catch (error) {
@@ -62,6 +65,7 @@ const optionalAuth = () => {
                         userId: user.id,
                         user: user
                     };
+                    req.user = user;
                 }
             }
             

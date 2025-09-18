@@ -54,12 +54,16 @@ This is a full-stack reflection and journaling application called "Replay" with:
 ### Core Features
 1. **Multi-User Authentication**: Secure user registration and login via Supabase Auth with email/password authentication
 2. **User Onboarding**: 3-step onboarding flow for new users (name, values, mission)
-3. **Audio & Photo Journaling**: Record daily voice notes or upload photos with captions, both transcribed and titled automatically
-4. **Note Categorization**: Automatic categorization of notes into ideas or feelings
-5. **Reflection Generation**: Creates personalized guided meditations from selected experiences using AI
-6. **Profile Management**: User-specific profiles with values, mission, and profile picture upload
-7. **Experience Tracking**: Timeline view of both audio and photo-based experiences with category badges
-8. **User Data Isolation**: Complete data separation between users with Row Level Security
+3. **Multi-Modal Journaling**: Record voice notes, upload photos with captions, or write text entries - all automatically titled and categorized
+4. **Note Categorization**: Automatic categorization of notes into ideas or experiences
+5. **Advanced Search**: Full-text search across all experiences with filtering capabilities
+6. **Reflection Generation**: Creates personalized guided meditations from selected experiences using AI with multiple meditation types (guided, affirmation, breathwork)
+7. **Background Job Processing**: Asynchronous meditation generation with status tracking and retry capabilities
+8. **Profile Management**: User-specific profiles with values, mission, and profile picture upload
+9. **Experience Management**: Timeline view with edit/delete capabilities, category badges, and date grouping
+10. **Statistics & Tracking**: Meditation streak tracking, monthly stats, and calendar view of meditation history
+11. **Replay Radio**: AI-powered daily meditation generation based on user's recent experiences
+12. **User Data Isolation**: Complete data separation between users with Row Level Security
 
 ### Key Components
 
@@ -75,20 +79,35 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **pages/ProfilePage.tsx**: User profile editing with profile picture upload functionality
 - **components/AudioRecorder.tsx**: Handles microphone recording with MediaRecorder API
 - **components/MeditationPlayer.tsx**: Plays generated meditation playlists (speech + pause segments)
-- **components/NoteCard.tsx**: Displays individual notes with transcripts (supports both audio and photo)
+- **components/NoteCard.tsx**: Displays individual notes with transcripts (supports audio, photo, and text)
 - **components/BottomTabNavigation.tsx**: Bottom navigation between main app sections
-- **components/FloatingUploadButton.tsx**: Floating action button for adding new experiences
+- **components/FloatingUploadButton.tsx**: Floating action button with multi-modal upload options
 - **components/PhotoUploadModal.tsx**: Modal for uploading photos with captions
-- **components/DateSelectorModal.tsx**: Date range picker for reflection generation
+- **components/TextUploadModal.tsx**: Modal for writing text entries with optional image
+- **components/EditExperienceModal.tsx**: Modal for editing existing experiences
+- **components/UploadOptionsModal.tsx**: Modal for selecting upload type (voice, photo, text)
+- **components/SearchBar.tsx**: Search input component with debouncing
+- **components/SearchResults.tsx**: Display search results with filtering
+- **components/SearchResultModal.tsx**: Full-screen modal for search functionality
+- **components/SearchResultCard.tsx**: Individual search result card component
+- **components/TimePeriodModal.tsx**: Time period selector for reflection generation
 - **components/DurationSelectorModal.tsx**: Duration selector for meditation length
 - **components/ExperienceSelectionModal.tsx**: Experience selection interface for reflections
-- **components/ReflectionSummaryModal.tsx**: Summary display before meditation generation
-- **components/MeditationGenerationModal.tsx**: Progress indicator during meditation creation
-- **components/CategoryBadge.tsx**: Display category badges with color-coded styling
-- **types.ts**: TypeScript interfaces (Note interface supports both audio and photo types)
+- **components/ReplayModeSelectionModal.tsx**: Selection for Replay Radio meditation types
+- **components/ReflectionTypeModal.tsx**: Selection for standard meditation types
+- **components/MeditationSubTypeModal.tsx**: Sub-type selection for meditation variants
+- **components/MeditationGeneratingModal.tsx**: Progress indicator with background job status
+- **components/BackgroundJobIndicator.tsx**: Shows active background meditation generation jobs
+- **components/ReadyToBeginModal.tsx**: Pre-meditation preparation screen
+- **components/CalendarModal.tsx**: Calendar view for meditation history
+- **components/RecentActivityCalendar.tsx**: Compact calendar for recent activity
+- **components/StatsCards.tsx**: Display meditation statistics
+- **components/Header.tsx**: App header with user info and stats
+- **components/SupabaseImage.tsx**: Optimized image component for Supabase Storage
+- **types.ts**: TypeScript interfaces (Note supports audio, photo, and text types; MeditationJob for background processing)
 - **utils/api.ts**: Authenticated API utility with automatic JWT token handling
 - **utils/dateUtils.ts**: Date formatting and grouping utilities
-- **utils/categoryUtils.ts**: Note categorization logic and category definitions (ideas or experience only)
+- **utils/categoryUtils.ts**: Note categorization logic and category definitions (ideas or experiences only)
 
 #### Server Architecture (`server/`)
 - **server.js**: Express server with Supabase JWT authentication and database integration
@@ -98,20 +117,33 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **Authentication**: All API routes protected with custom Supabase `requireAuth()` middleware
 - **API Routes** (all require authentication):
   - `GET /api/auth/test` - Test authentication middleware (returns user info)
-  - `GET /api/notes` - Get user's notes
+  - `GET /api/debug/ffmpeg` - Debug endpoint for ffmpeg path resolution
+  - `GET /api/notes` - Get user's notes with pagination and filtering
   - `GET /api/notes/date-range` - Get user's notes within date range for reflection
+  - `GET /api/notes/search` - Search notes with full-text search
+  - `GET /api/notes/:id` - Get specific note by ID
   - `POST /api/notes` - Create user's audio note (with file upload)
   - `POST /api/notes/photo` - Create user's photo note (with image upload)
+  - `POST /api/notes/text` - Create user's text note (with optional image)
+  - `PUT /api/notes/:id` - Update existing note (edit functionality)
   - `DELETE /api/notes/:id` - Delete user's note
-  - `GET/POST /api/profile` - User profile management with image upload
+  - `GET/POST /api/profile` - User profile management
   - `POST /api/profile/image` - Upload profile image (with file upload)
   - `POST /api/reflect/suggest` - Get suggested experiences for user's reflection
   - `POST /api/reflect/summary` - Generate reflection summary for user
-  - `POST /api/meditate` - Generate meditation from user's selected experiences
+  - `POST /api/meditate` - Generate meditation synchronously (deprecated)
+  - `POST /api/meditate/jobs` - Create background meditation generation job
+  - `GET /api/meditate/jobs` - Get all user's meditation jobs
+  - `GET /api/meditate/jobs/:id` - Get specific job status
+  - `POST /api/meditate/jobs/:id/retry` - Retry failed job
+  - `DELETE /api/meditate/jobs/:id` - Delete job
+  - `POST /api/replay/radio` - Generate Replay Radio meditation
   - `GET /api/meditations` - Get user's saved meditations
   - `GET /api/meditations/:id` - Get specific meditation by ID
-  - `GET /api/meditations/day/default` - Get default day meditation playlist
+  - `PUT /api/meditations/:id/mark-viewed` - Mark meditation as viewed
+  - `POST /api/meditations/:id/complete` - Mark meditation as completed
   - `DELETE /api/meditations/:id` - Delete user's meditation
+  - `GET /api/meditations/day/default` - Get default day meditation playlist
   - `GET /api/stats/streak` - Get user's meditation streak count
   - `GET /api/stats/monthly` - Get current month's meditation count
   - `GET /api/stats/calendar` - Get all meditation dates for calendar display
@@ -120,9 +152,12 @@ This is a full-stack reflection and journaling application called "Replay" with:
   - `GET /api/files/audio/:userId/:filename` - Serve audio files with signed URLs
 
 ### AI Workflow
-1. **Audio Note Creation**: Audio upload → Gemini transcription → Gemini title generation
-2. **Photo Note Creation**: Image upload + caption → Gemini enhanced description → Gemini title generation
-3. **Reflection Generation**: Selected experiences + profile + date range → Gemini reflection summary → Gemini meditation script → Replicate TTS → Audio playlist with speech/pause segments
+1. **Audio Note Creation**: Audio upload → Gemini transcription → Gemini title generation → Category assignment
+2. **Photo Note Creation**: Image upload + caption → Gemini enhanced description → Gemini title generation → Category assignment
+3. **Text Note Creation**: Text input + optional image → Gemini title generation → Category assignment
+4. **Reflection Generation**: Selected experiences + profile + date range → Gemini reflection summary → Gemini meditation script → Replicate TTS → Audio playlist with speech/pause segments
+5. **Background Processing**: Meditation generation runs as background job with status tracking, retry capability, and progress updates
+6. **Replay Radio**: Automatic daily meditation generation based on recent experiences with multiple meditation type options
 
 ### Environment Variables Required
 
@@ -142,7 +177,7 @@ Note: OpenAI API key is NOT required - the app uses Replicate for TTS instead
 - `VITE_API_URL` - API base URL (http://localhost:3001 for local development)
 
 ### Data Flow
-All data is user-specific and isolated by `user_id` (Supabase Auth UUID). Notes support both audio and photo types with fields: id, user_id, title, transcript (transcription for audio, enhanced caption for photos), date, type ('audio'|'photo'), audioUrl (Supabase Storage URLs), imageUrl (Supabase Storage URLs), originalCaption (photo only). User profiles contain id, user_id, name, values, mission, and profile_image_url. Meditations are linked to users and reference their noteIds with playlists containing speech segments (Supabase Storage audio URLs) and pause segments (durations).
+All data is user-specific and isolated by `user_id` (Supabase Auth UUID). Notes support audio, photo, and text types with fields: id, user_id, title, transcript (transcription for audio, enhanced caption for photos, or text content), date, type ('audio'|'photo'|'text'), category ('idea'|'experience'), audioUrl (Supabase Storage URLs), imageUrl (Supabase Storage URLs), originalCaption (photo/text only), duration (audio only). User profiles contain id, user_id, name, values, mission, and profile_image_url. Meditations are linked to users and reference their noteIds with playlists containing speech segments (Supabase Storage audio URLs) and pause segments (durations). Background jobs track meditation generation with status, progress, and error handling.
 
 ### Technology Stack
 - **Frontend**: React 19, TypeScript, Vite, React Router DOM, Lucide React icons, Axios
@@ -154,8 +189,10 @@ All data is user-specific and isolated by `user_id` (Supabase Auth UUID). Notes 
 ### Database Schema
 The application uses Supabase PostgreSQL with the following tables:
 - **profiles**: User profiles (id, user_id, name, values, mission, profile_image_url, timestamps)
-- **notes**: User notes (id, user_id, title, transcript, category, type, date, duration, audio_url, image_url, original_caption, timestamps)  
-- **meditations**: User meditations (id, user_id, title, playlist, note_ids, script, duration, summary, time_of_reflection, timestamps)
+- **notes**: User notes (id, user_id, title, transcript, category, type, date, duration, audio_url, image_url, original_caption, timestamps)
+- **meditations**: User meditations (id, user_id, title, playlist, note_ids, script, duration, summary, time_of_reflection, type, sub_type, timestamps)
+- **meditation_completions**: Track meditation completion history (id, user_id, meditation_id, completed_at)
+- **meditation_jobs**: Background job tracking (id, user_id, status, progress, meditation_id, error, metadata, timestamps)
 
 All tables have Row Level Security (RLS) enabled for user data isolation using `auth.uid()`.
 

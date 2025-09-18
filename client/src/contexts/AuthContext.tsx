@@ -14,6 +14,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
+  const testAuth = (globalThis as any).__REPLAY_TEST_AUTH__ as AuthContextType | undefined;
+  if (testAuth) {
+    return testAuth;
+  }
+
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
@@ -55,6 +60,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       email,
       password,
     });
+
+    // Check if the error indicates user already exists
+    if (error && (
+      error.message.includes('User already registered') ||
+      error.message.includes('already registered') ||
+      error.message.includes('already been registered')
+    )) {
+      return {
+        user: null,
+        error: { message: 'An account with this email already exists. Please sign in instead.' }
+      };
+    }
+
     return { user: data.user, error };
   };
 

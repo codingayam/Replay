@@ -18,6 +18,11 @@ build/
 .env.production
 *.env
 .envrc
+firebase-sw-config.js
+client/public/firebase-sw-config.js
+client/public/firebase-config.json
+client/push-package/signature
+client/push-package/pushPackage.apns
 
 # API Keys and credentials
 **/secrets/
@@ -25,6 +30,7 @@ build/
 *.key
 *.pem
 *.p12
+*.p8
 *.pfx
 *.crt
 *.cer

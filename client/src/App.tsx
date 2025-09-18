@@ -9,6 +9,9 @@ import SignUpPage from './pages/SignUpPage';
 import OnboardingPage from './pages/OnboardingPage';
 import BottomTabNavigation from './components/BottomTabNavigation';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
+import NotificationPermissionBanner from './components/NotificationPermissionBanner';
+import ServiceWorkerUpdateBanner from './components/ServiceWorkerUpdateBanner';
+import { useNotifications } from './hooks/useNotifications';
 
 function App() {
   return (
@@ -122,8 +125,23 @@ function App() {
 
 // Layout component for authenticated app pages
 function AppLayout({ children }: { children: React.ReactNode }) {
+  const notifications = useNotifications();
+
   return (
     <>
+      {notifications.hasServiceWorkerUpdate && (
+        <ServiceWorkerUpdateBanner
+          version={notifications.serviceWorkerVersion}
+          onApplyUpdate={notifications.applyPendingServiceWorker}
+        />
+      )}
+      {notifications.showPermissionBanner && (
+        <NotificationPermissionBanner
+          onRequestPermission={notifications.requestPermission}
+          onDismiss={notifications.dismissBanner}
+          supportMessage={notifications.supportReason}
+        />
+      )}
       <BackgroundJobIndicator />
       <main style={styles.main}>
         {children}

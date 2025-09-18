@@ -10,6 +10,7 @@ const SignUpPage: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [showUserExistsMessage, setShowUserExistsMessage] = useState(false);
 
   // If user is already signed in, redirect to main app
   if (loading) {
@@ -29,6 +30,7 @@ const SignUpPage: React.FC = () => {
     setIsLoading(true);
     setError('');
     setSuccessMessage('');
+    setShowUserExistsMessage(false);
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
@@ -45,7 +47,11 @@ const SignUpPage: React.FC = () => {
     try {
       const { error } = await signUp(email, password);
       if (error) {
-        setError(error.message);
+        if (error.message.includes('already exists')) {
+          setShowUserExistsMessage(true);
+        } else {
+          setError(error.message);
+        }
       } else {
         setSuccessMessage('Check your email for a verification link!');
       }
@@ -80,6 +86,27 @@ const SignUpPage: React.FC = () => {
           {successMessage && (
             <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-green-600 text-sm">{successMessage}</p>
+            </div>
+          )}
+
+          {/* User Exists Message */}
+          {showUserExistsMessage && (
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center mb-2">
+                <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-blue-800 font-medium text-sm">Account Already Exists</p>
+              </div>
+              <p className="text-blue-700 text-sm mb-3">
+                An account with <strong>{email}</strong> already exists.
+              </p>
+              <Link
+                to="/login"
+                className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                Sign In Instead
+              </Link>
             </div>
           )}
 

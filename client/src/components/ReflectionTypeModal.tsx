@@ -40,7 +40,7 @@ const ReflectionTypeModal: React.FC<ReflectionTypeModalProps> = ({
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <div style={styles.header}>
                     <h2 style={styles.title}>Choose Your Reflection Type</h2>
-                    <button onClick={onClose} style={styles.closeButton}>
+                    <button onClick={onClose} style={styles.closeButton} aria-label="Close modal">
                         <X size={24} />
                     </button>
                 </div>

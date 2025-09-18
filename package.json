@@ -9,7 +9,13 @@
     "build": "npm run install:clean && cd client && npm run build",
     "build:client": "cd client && npm run build",
     "install:clean": "cd client && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "push:generate-sw-config": "node scripts/generate-firebase-sw-config.mjs",
+    "push:setup-icons": "python3 scripts/generate-apns-iconset.py",
+    "push:manifest": "node scripts/generate-apns-manifest.mjs",
+    "push:sign": "scripts/sign-apns-push-package.sh",
+    "push:archive": "scripts/archive-apns-push-package.sh",
+    "push:validate": "node scripts/validate-apns-package.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

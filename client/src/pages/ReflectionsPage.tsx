@@ -15,6 +15,7 @@ import CalendarModal from '../components/CalendarModal';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthenticatedApi } from '../utils/api';
 import { useJobs } from '../contexts/JobContext';
+import { markMeditationGenerated } from '../utils/notificationUtils';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -255,6 +256,9 @@ const ReflectionsPage: React.FC = () => {
             // Mark API as complete - loading modal will handle the transition
             console.log('✅ API Success - setting isMeditationApiComplete to true');
             setIsMeditationApiComplete(true);
+
+            // Mark that user has generated a meditation for notification permission banner
+            markMeditationGenerated();
         } catch (err) {
             const errorType = selectedReflectionType === 'Casual' ? 'radio show' : 'meditation';
             console.error(`Error generating ${errorType}:`, err);
@@ -277,6 +281,9 @@ const ReflectionsPage: React.FC = () => {
             });
 
             console.log('✅ Background job created:', jobResponse);
+
+            // Mark that user has generated a meditation for notification permission banner
+            markMeditationGenerated();
 
             // Reset state after starting background job
             setSelectedReflectionType('Day');

@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X } from 'lucide-react';
+import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, Bell, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 import SupabaseImage from '../components/SupabaseImage';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationSettings from '../components/NotificationSettings';
 
 interface Profile {
     name: string;
@@ -24,9 +27,12 @@ const ProfilePage: React.FC = () => {
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [tagInput, setTagInput] = useState('');
     const [focusedField, setFocusedField] = useState<string | null>(null);
-    
+    const [activeTab, setActiveTab] = useState<'profile' | 'notifications'>('profile');
+
     const api = useAuthenticatedApi();
     const { signOut } = useAuth();
+    const navigate = useNavigate();
+    const notifications = useNotifications();
 
     useEffect(() => {
         console.log('ProfilePage: Fetching profile...');
@@ -251,6 +257,7 @@ const ProfilePage: React.FC = () => {
         try {
             await signOut();
             setStatus('Logged out successfully!');
+            navigate('/', { replace: true });
         } catch (error) {
             console.error('Error logging out:', error);
             setStatus('Error logging out.');
@@ -286,10 +293,37 @@ const ProfilePage: React.FC = () => {
     return (
         <div style={styles.container}>
             <Header title="Profile" />
-            
+
+            {/* Tab Navigation */}
+            <div style={styles.tabContainer}>
+                <button
+                    style={{
+                        ...styles.tab,
+                        ...(activeTab === 'profile' ? styles.activeTab : {})
+                    }}
+                    onClick={() => setActiveTab('profile')}
+                >
+                    <UserIcon size={16} />
+                    Profile
+                </button>
+                <button
+                    style={{
+                        ...styles.tab,
+                        ...(activeTab === 'notifications' ? styles.activeTab : {})
+                    }}
+                    onClick={() => setActiveTab('notifications')}
+                >
+                    <Bell size={16} />
+                    Notifications
+                </button>
+            </div>
+
             <div style={styles.contentContainer}>
-                {/* Profile Card */}
-                <div style={styles.profileCard}>
+                {/* Profile Tab Content */}
+                {activeTab === 'profile' && (
+                    <>
+                        {/* Profile Card */}
+                        <div style={styles.profileCard}>
                     <div style={styles.profileImageContainer} onClick={handleProfilePictureClick}>
                         {profile.profileImageUrl ? (
                             <SupabaseImage
@@ -491,18 +525,58 @@ const ProfilePage: React.FC = () => {
                     </button>
                 </form>
 
-                {status && <p style={styles.status}>{status}</p>}
+                        {status && <p style={styles.status}>{status}</p>}
+                    </>
+                )}
+
+                {/* Notifications Tab Content */}
+                {activeTab === 'notifications' && (
+                    <NotificationSettings
+                        preferences={notifications.preferences}
+                        onUpdatePreferences={notifications.updatePreferences}
+                        onTestNotification={notifications.testNotification}
+                        isLoading={notifications.isLoading}
+                        error={notifications.error}
+                    />
+                )}
+
             </div>
         </div>
     );
 };
 
 const styles = {
-    container: { 
+    container: {
         paddingBottom: '100px',
         backgroundColor: '#f8f9ff',
         minHeight: '100vh',
         width: '100%',
+    },
+    tabContainer: {
+        display: 'flex',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        padding: '1rem',
+        backgroundColor: '#f8f9ff',
+    },
+    tab: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        padding: '0.75rem 1.5rem',
+        backgroundColor: 'white',
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        cursor: 'pointer',
+        fontSize: '14px',
+        fontWeight: '500' as const,
+        color: '#6b7280',
+        transition: 'all 0.2s',
+    },
+    activeTab: {
+        backgroundColor: '#7c3aed',
+        color: 'white',
+        borderColor: '#7c3aed',
     },
     contentContainer: {
         padding: '1rem',

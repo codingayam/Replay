@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import fs from 'fs';
+import http from 'http';
+import https from 'https';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import path from 'path';
@@ -16,8 +18,74 @@ import { writeFile } from 'fs';
 import Replicate from 'replicate';
 import { promisify } from 'util';
 import { exec, execSync } from 'child_process';
+import moment from 'moment-timezone';
+import cron from 'node-cron';
+import { getMetricsSnapshot, recordTokenRegistration } from './observability/metrics.js';
 
 const execAsync = promisify(exec);
+
+const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const VALID_WEEK_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+function dayStringToIndex(day) {
+  if (!day) return null;
+  const lower = day.toLowerCase();
+  const index = VALID_WEEK_DAYS.indexOf(lower);
+  return index === -1 ? null : index;
+}
+
+function validateNotificationPreferences(preferences) {
+  if (!preferences || typeof preferences !== 'object') {
+    return 'Preferences must be an object';
+  }
+
+  if (typeof preferences.enabled !== 'boolean') {
+    return 'Preferences.enabled must be a boolean';
+  }
+
+  const validateToggle = (key, value, { requiresTime = false, requiresDay = false } = {}) => {
+    if (value == null || typeof value !== 'object') {
+      return `${key} preferences must be an object`;
+    }
+
+    if (typeof value.enabled !== 'boolean') {
+      return `${key}.enabled must be a boolean`;
+    }
+
+    if (requiresTime && value.time && !TIME_REGEX.test(value.time)) {
+      return `${key}.time must be in HH:MM format`;
+    }
+
+    if (requiresTime && value.enabled && !value.time) {
+      return `${key}.time is required when enabled`;
+    }
+
+    if (requiresDay && value.day) {
+      const index = dayStringToIndex(value.day);
+      if (index == null) {
+        return `${key}.day must be a valid weekday name`;
+      }
+    }
+  };
+
+  const checks = [
+    ['daily_reminder', { requiresTime: true }],
+    ['streak_reminder', { requiresTime: true }],
+    ['meditation_ready', {}],
+    ['weekly_reflection', { requiresTime: true, requiresDay: true }],
+    ['replay_radio', { requiresTime: true }],
+    ['achievements', {}]
+  ];
+
+  for (const [key, options] of checks) {
+    if (preferences[key]) {
+      const err = validateToggle(key, preferences[key], options);
+      if (err) return err;
+    }
+  }
+
+  return null;
+}
 
 // FFmpeg path resolution utility for Railway deployment
 function getFFmpegPath() {
@@ -78,6 +146,8 @@ const __dirname = dirname(__filename);
 
 // Import middleware
 import { requireAuth, optionalAuth, supabase } from './middleware/auth.js';
+import notificationService from '../services/notificationService.js';
+import notificationConfig from '../config/notifications.js';
 
 // Initialize AI services
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -163,6 +233,8 @@ const PORT = process.env.PORT || 3001;
 
 // Background job processing system
 let jobWorkerInterval = null;
+let retryQueueInterval = null;
+const NOTIFICATION_METRICS_TOKEN = process.env.NOTIFICATION_METRICS_TOKEN;
 
 // Background worker functions
 async function processMeditationJob(job) {
@@ -249,6 +321,23 @@ async function processMeditationJob(job) {
           meditation_id: savedMeditation.id
         })
         .eq('id', job.id);
+
+      // Send push notification for meditation completion
+      try {
+        await notificationService.sendPushNotification(userId, {
+          type: 'meditation_ready',
+          title: 'Your Daily Meditation is Ready!',
+          body: 'Your daily reflection meditation is ready to listen. Tap to begin your mindful moment.',
+          data: {
+            meditationId: savedMeditation.id,
+            jobId: job.id,
+            url: `/reflections?meditationId=${savedMeditation.id}`
+          }
+        });
+        console.log(`📱 Push notification sent for completed day meditation job ${job.id}`);
+      } catch (notificationError) {
+        console.error(`Failed to send push notification for job ${job.id}:`, notificationError);
+      }
 
       console.log(`✅ Day meditation job ${job.id} completed successfully`);
       return;
@@ -530,6 +619,30 @@ async function processMeditationJob(job) {
         meditation_id: meditation.id
       })
       .eq('id', job.id);
+
+    // Send push notification for meditation completion
+    try {
+      const meditationTypeMap = {
+        'Night': 'evening reflection',
+        'Ideas': 'insights meditation',
+        'Day': 'daily meditation'
+      };
+      const friendlyType = meditationTypeMap[reflectionType] || 'meditation';
+
+      await notificationService.sendPushNotification(userId, {
+        type: 'meditation_ready',
+        title: 'Your Meditation is Ready!',
+        body: `Your ${friendlyType} is ready to listen. Tap to begin your mindful journey.`,
+        data: {
+          meditationId: meditation.id,
+          jobId: job.id,
+          url: `/reflections?meditationId=${meditation.id}`
+        }
+      });
+      console.log(`📱 Push notification sent for completed ${reflectionType} meditation job ${job.id}`);
+    } catch (notificationError) {
+      console.error(`Failed to send push notification for job ${job.id}:`, notificationError);
+    }
 
     console.log(`✅ Background job ${job.id} completed successfully`);
 
@@ -3460,6 +3573,23 @@ app.post('/api/replay/radio', requireAuth(), async (req, res) => {
 
       console.log(`🎙️ Radio show generated successfully: ${savedRadioShow.id}`);
 
+      // Send push notification for radio show completion
+      try {
+        await notificationService.sendPushNotification(userId, {
+          type: 'meditation_ready',
+          title: 'Your Radio Show is Ready!',
+          body: 'Your personalized talk show replay is ready to listen. Tap to tune in now.',
+          data: {
+            meditationId: savedRadioShow.id,
+            type: 'radio',
+            url: `/reflections?meditationId=${savedRadioShow.id}`
+          }
+        });
+        console.log(`📱 Push notification sent for completed radio show ${savedRadioShow.id}`);
+      } catch (notificationError) {
+        console.error(`Failed to send push notification for radio show ${savedRadioShow.id}:`, notificationError);
+      }
+
       res.json({
         radioShow: savedRadioShow,
         playlist: playlist
@@ -3476,6 +3606,543 @@ app.post('/api/replay/radio', requireAuth(), async (req, res) => {
   }
 });
 
+// =============================================================================
+// PUSH NOTIFICATIONS API ENDPOINTS
+// =============================================================================
+
+// Token management - Save FCM or APNs token for user
+app.post('/api/notifications/token', requireAuth(), async (req, res) => {
+  try {
+    const {
+      token,
+      channel,
+      browser,
+      userAgent,
+      appVersion,
+      platform,
+      deviceId,
+      deviceName,
+      language,
+      timezone: deviceTimezone
+    } = req.body;
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!token || !channel) {
+      return res.status(400).json({ error: 'Token and channel are required' });
+    }
+
+    if (!['fcm', 'apns'].includes(channel)) {
+      return res.status(400).json({ error: 'Channel must be either "fcm" or "apns"' });
+    }
+
+    // Normalize and validate token
+    let normalizedToken;
+    try {
+      normalizedToken = notificationService.normalizeToken(token, channel);
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
+    }
+
+    const nowIso = new Date().toISOString();
+    const normalizedPlatformCandidate = platform || browser || (channel === 'apns' ? 'safari' : 'web');
+    const normalizedPlatform = typeof normalizedPlatformCandidate === 'string'
+      ? normalizedPlatformCandidate.toLowerCase()
+      : null;
+
+    const devicePayload = {
+      user_id: userId,
+      token: normalizedToken,
+      push_provider: channel,
+      platform: normalizedPlatform,
+      timezone: deviceTimezone || null,
+      app_version: appVersion || null,
+      device_id: deviceId || null,
+      device_name: deviceName || browser || null,
+      language: language || null,
+      last_registered_at: nowIso,
+      updated_at: nowIso
+    };
+
+    if (userAgent && !devicePayload.device_name) {
+      devicePayload.device_name = userAgent.slice(0, 255);
+    }
+
+    const { error } = await supabase
+      .from('notification_devices')
+      .upsert(devicePayload, { onConflict: 'token' });
+
+    if (error) {
+    recordTokenRegistration({
+      channel,
+      browser: browser || normalizedPlatform || 'unknown',
+      status: 'failed'
+      });
+
+      await notificationService.logEvent(userId, 'notification_token_registration_failed', 'client', {
+        channel,
+        platform: normalizedPlatform,
+        error: error.message
+      });
+
+      console.error('Error updating push token:', error);
+      return res.status(500).json({ error: 'Failed to update push token' });
+    }
+
+    recordTokenRegistration({
+      channel,
+      browser: browser || normalizedPlatform || 'unknown',
+      status: 'success'
+    });
+
+    await notificationService.logEvent(userId, 'notification_token_registered', 'client', {
+      channel,
+      platform: normalizedPlatform,
+      deviceId: deviceId || null,
+      language: language || null
+    });
+
+    console.log(`✅ Push device registered for user ${userId}, channel: ${channel}`);
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Token management error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Token validation and health check endpoint
+app.post('/api/notifications/token/validate', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { data: devices, error } = await supabase
+      .from('notification_devices')
+      .select('push_provider, token, last_registered_at, updated_at, created_at')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error fetching notification devices:', error);
+      return res.status(500).json({ error: 'Failed to fetch user tokens' });
+    }
+
+    const providerStatus = (provider) => {
+      const providerDevices = (devices || [])
+        .filter((device) => device.push_provider === provider && device.token);
+
+      if (!providerDevices.length) {
+        return { hasToken: false, isValid: false, lastUpdated: null };
+      }
+
+      providerDevices.sort((a, b) => {
+        const aDate = new Date(a.last_registered_at || a.updated_at || a.created_at || 0);
+        const bDate = new Date(b.last_registered_at || b.updated_at || b.created_at || 0);
+        return bDate - aDate;
+      });
+
+      const latest = providerDevices[0];
+      const lastUpdated = latest.last_registered_at || latest.updated_at || latest.created_at;
+      const tokenLength = latest.token?.length || 0;
+      const minLength = provider === 'apns' ? 20 : 50;
+
+      return {
+        hasToken: true,
+        isValid: tokenLength >= minLength,
+        lastUpdated
+      };
+    };
+
+    const fcmStatus = providerStatus('fcm');
+    const apnsStatus = providerStatus('apns');
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const needsRefresh = [fcmStatus, apnsStatus]
+      .filter((status) => status.hasToken && status.lastUpdated)
+      .some((status) => new Date(status.lastUpdated) < thirtyDaysAgo);
+
+    res.json({
+      fcm: fcmStatus,
+      apns: apnsStatus,
+      needsRefresh
+    });
+
+  } catch (error) {
+    console.error('Token validation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Token deletion/cleanup endpoint
+app.delete('/api/notifications/token/:channel', requireAuth(), async (req, res) => {
+  try {
+    const { channel } = req.params;
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!['fcm', 'apns', 'all'].includes(channel)) {
+      return res.status(400).json({ error: 'Channel must be fcm, apns, or all' });
+    }
+
+    const deleteQuery = supabase
+      .from('notification_devices')
+      .delete()
+      .eq('user_id', userId);
+
+    if (channel !== 'all') {
+      deleteQuery.eq('push_provider', channel);
+    }
+
+    const { error } = await deleteQuery;
+
+    if (error) {
+      console.error('Error deleting push tokens:', error);
+      return res.status(500).json({ error: 'Failed to delete push tokens' });
+    }
+
+    console.log(`✅ Push tokens deleted for user ${userId}, channel: ${channel}`);
+    res.json({ success: true, message: `${channel} tokens deleted successfully` });
+
+  } catch (error) {
+    console.error('Token deletion error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get notification preferences
+app.get('/api/notifications/preferences', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const [{ data: prefRows, error: prefError }, { data: profileRows, error: profileError }] = await Promise.all([
+      supabase
+        .from('notification_preferences')
+        .select('preferences')
+        .eq('user_id', userId)
+        .limit(1),
+      supabase
+        .from('profiles')
+        .select('push_channel_preference')
+        .eq('user_id', userId)
+        .limit(1)
+    ]);
+
+    if (prefError || profileError) {
+      console.error('Error fetching notification preferences:', prefError || profileError);
+      return res.status(500).json({ error: 'Failed to fetch preferences' });
+    }
+
+    const preferenceRow = prefRows?.[0];
+    const preferences = preferenceRow?.preferences || notificationService.getDefaultPreferences();
+    const pushChannelPreference = profileRows?.[0]?.push_channel_preference || 'auto';
+
+    res.json({
+      preferences,
+      push_channel_preference: pushChannelPreference
+    });
+
+  } catch (error) {
+    console.error('Get preferences error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update notification preferences
+app.put('/api/notifications/preferences', requireAuth(), async (req, res) => {
+  try {
+    const { preferences, push_channel_preference } = req.body;
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const validationError = validateNotificationPreferences(preferences);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    if (push_channel_preference && !['auto', 'fcm', 'apns'].includes(push_channel_preference)) {
+      return res.status(400).json({ error: 'push_channel_preference must be auto, fcm, or apns' });
+    }
+
+    const timestamp = new Date().toISOString();
+
+    const { error: preferenceError } = await supabase
+      .from('notification_preferences')
+      .upsert(
+        {
+          user_id: userId,
+          preferences,
+          updated_at: timestamp
+        },
+        { onConflict: 'user_id' }
+      );
+
+    if (preferenceError) {
+      console.error('Error updating notification preferences:', preferenceError);
+      return res.status(500).json({ error: 'Failed to update preferences' });
+    }
+
+    if (push_channel_preference) {
+      const { error: channelError } = await supabase
+        .from('profiles')
+        .update({ push_channel_preference })
+        .eq('user_id', userId);
+
+      if (channelError) {
+        console.error('Error updating push channel preference:', channelError);
+        return res.status(500).json({ error: 'Failed to update channel preference' });
+      }
+    }
+
+    // Also update scheduled notifications if timing preferences changed
+    await updateScheduledNotifications(userId, preferences);
+
+    res.json({ success: true, preferences });
+
+  } catch (error) {
+    console.error('Update preferences error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Client-side notification analytics events
+app.post('/api/notifications/events', requireAuth(), async (req, res) => {
+  try {
+    const { eventName, payload } = req.body || {};
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!eventName || typeof eventName !== 'string') {
+      return res.status(400).json({ error: 'eventName is required' });
+    }
+
+    await notificationService.logEvent(userId, eventName, 'client', payload || {});
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Notification event logging failed:', error);
+    res.status(500).json({ error: 'Failed to log notification event' });
+  }
+});
+
+// Test notification endpoint
+app.post('/api/notifications/test', requireAuth(), async (req, res) => {
+  try {
+    const { type = 'test' } = req.body;
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const result = await notificationService.testNotification(userId, type);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Test notification sent successfully via ${result.channel}`,
+        channel: result.channel
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.reason || result.error || 'Failed to send test notification'
+      });
+    }
+
+  } catch (error) {
+    console.error('Test notification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get notification history
+app.get('/api/notifications/history', requireAuth(), async (req, res) => {
+  try {
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { limit = 50, offset = 0 } = req.query;
+
+    const { data: notifications, error, count } = await supabase
+      .from('notification_history')
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId)
+      .order('sent_at', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    if (error) {
+      console.error('Error fetching notification history:', error);
+      return res.status(500).json({ error: 'Failed to fetch notification history' });
+    }
+
+    res.json({
+      notifications: notifications || [],
+      total: count || 0
+    });
+
+  } catch (error) {
+    console.error('Notification history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark notification as opened
+app.post('/api/notifications/ack', requireAuth(), async (req, res) => {
+  try {
+    const { notificationId } = req.body;
+    const userId = req.auth?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!notificationId) {
+      return res.status(400).json({ error: 'Notification ID is required' });
+    }
+
+    const { error } = await supabase
+      .from('notification_history')
+      .update({
+        opened: true,
+        opened_at: new Date().toISOString()
+      })
+      .eq('id', notificationId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error acknowledging notification:', error);
+      return res.status(500).json({ error: 'Failed to acknowledge notification' });
+    }
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('Notification acknowledgment error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Timezone management endpoint
+app.put('/api/notifications/timezone', requireAuth(), async (req, res) => {
+  try {
+    const { timezone } = req.body;
+    const userId = req.user.id;
+
+    if (!timezone) {
+      return res.status(400).json({ error: 'Timezone is required' });
+    }
+
+    // Validate timezone using moment-timezone
+    if (!moment.tz.zone(timezone)) {
+      return res.status(400).json({ error: 'Invalid timezone' });
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ timezone })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating timezone:', error);
+      return res.status(500).json({ error: 'Failed to update timezone' });
+    }
+
+    console.log(`🌍 Timezone updated for user ${userId}: ${timezone}`);
+    res.json({ success: true, timezone });
+
+  } catch (error) {
+    console.error('Timezone update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/internal/notifications/metrics', (req, res) => {
+  if (!NOTIFICATION_METRICS_TOKEN) {
+    return res.status(404).json({ error: 'Metrics endpoint not configured' });
+  }
+
+  const token = req.headers['x-notification-admin-token'];
+  if (token !== NOTIFICATION_METRICS_TOKEN) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  res.json(getMetricsSnapshot());
+});
+
+// Get available timezones
+app.get('/api/notifications/timezones', requireAuth(), (req, res) => {
+  const timezones = moment.tz.names().map(name => ({
+    value: name,
+    label: name.replace(/_/g, ' '),
+    offset: moment.tz(name).format('Z')
+  }));
+
+  res.json({ timezones });
+});
+
+// Helper function to update scheduled notifications
+async function updateScheduledNotifications(userId, preferences) {
+  try {
+    const scheduledUpdates = [
+      { key: 'daily_reminder', type: 'daily_reminder' },
+      { key: 'streak_reminder', type: 'streak_reminder' },
+      { key: 'weekly_reflection', type: 'weekly_reflection', supportsDay: true }
+    ];
+
+    for (const { key, type, supportsDay } of scheduledUpdates) {
+      const pref = preferences[key];
+      if (!pref) continue;
+
+      const updatePayload = {};
+
+      if (typeof pref.enabled === 'boolean') {
+        updatePayload.enabled = pref.enabled;
+      }
+
+      if (pref.time) {
+        updatePayload.scheduled_time = pref.time;
+      }
+
+      if (supportsDay && pref.day) {
+        const dayIndex = dayStringToIndex(pref.day);
+        if (dayIndex != null) {
+          updatePayload.days_of_week = [dayIndex];
+        }
+      }
+
+      if (Object.keys(updatePayload).length === 0) {
+        continue;
+      }
+
+      await supabase
+        .from('scheduled_notifications')
+        .update(updatePayload)
+        .eq('user_id', userId)
+        .eq('type', type);
+    }
+
+  } catch (error) {
+    console.error('Error updating scheduled notifications:', error);
+  }
+}
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -3490,20 +4157,111 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Replay server running on port ${PORT}`);
-  console.log(`📍 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔗 API base: http://localhost:${PORT}/api`);
-  
-  // Start background job worker
-  console.log(`⚙️ Starting background job worker...`);
-  jobWorkerInterval = setInterval(processJobQueue, 10000); // Check for jobs every 10 seconds
-  
-  // Initial check for pending jobs
+const startSchedulers = (protocol) => {
+  console.log(`🚀 Replay server running on ${protocol.toUpperCase()} port ${PORT}`);
+  console.log(`📍 Health check: ${protocol}://localhost:${PORT}/health`);
+  console.log(`🔗 API base: ${protocol}://localhost:${PORT}/api`);
+
+  console.log('⚙️ Starting background job worker...');
+  jobWorkerInterval = setInterval(processJobQueue, 10000);
+
+  console.log('📅 Starting scheduled notifications cron...');
+  cron.schedule(notificationConfig.scheduler.cronExpression, () => {
+    notificationService.sendScheduledNotifications().catch(error => {
+      console.error('Scheduled notifications job failed:', error);
+    });
+  });
+
+  console.log('🔧 Starting token cleanup cron...');
+  cron.schedule(notificationConfig.scheduler.tokenCleanupCron, () => {
+    notificationService.cleanupExpiredTokens().catch(error => {
+      console.error('Token cleanup job failed:', error);
+    });
+  });
+
+  console.log('💤 Starting inactivity check cron...');
+  cron.schedule(notificationConfig.scheduler.inactivityCheckCron, () => {
+    notificationService.sendInactivityReminders().catch(error => {
+      console.error('Inactivity check job failed:', error);
+    });
+  });
+
+  console.log('🧹 Scheduling notification history prune...');
+  cron.schedule('0 3 * * *', () => {
+    notificationService.pruneNotificationHistory().catch(error => {
+      console.error('Notification history prune job failed:', error);
+    });
+  });
+
+  if (retryQueueInterval) {
+    clearInterval(retryQueueInterval);
+  }
+
+  retryQueueInterval = setInterval(() => {
+    notificationService.processRetryQueue().catch(error => {
+      console.error('Retry queue processing failed:', error);
+    });
+  }, 60000);
+
+  notificationService.processRetryQueue().catch(error => {
+    console.error('Initial retry queue processing failed:', error);
+  });
+
   processJobQueue().catch(error => {
     console.error('Initial job queue check failed:', error);
   });
-});
+
+  notificationService.cleanupExpiredTokens().catch(error => {
+    console.error('Initial token cleanup failed:', error);
+  });
+
+  notificationService.pruneNotificationHistory().catch(error => {
+    console.error('Initial notification history prune failed:', error);
+  });
+};
+
+const maybeCreateHttpsServer = () => {
+  const certPath = process.env.DEV_SSL_CERT;
+  const keyPath = process.env.DEV_SSL_KEY;
+
+  if (!certPath || !keyPath) {
+    return null;
+  }
+
+  try {
+    const credentials = {
+      cert: fs.readFileSync(certPath),
+      key: fs.readFileSync(keyPath)
+    };
+
+    return https.createServer(credentials, app);
+  } catch (error) {
+    console.warn('⚠️  Failed to load dev HTTPS certificates. Falling back to HTTP.', error.message);
+    return null;
+  }
+};
+
+const httpsServer = maybeCreateHttpsServer();
+
+if (httpsServer) {
+  httpsServer.listen(PORT, () => startSchedulers('https'));
+} else {
+  app.listen(PORT, () => startSchedulers('http'));
+}
+
+const shutdownSchedulers = () => {
+  if (jobWorkerInterval) {
+    clearInterval(jobWorkerInterval);
+    jobWorkerInterval = null;
+  }
+
+  if (retryQueueInterval) {
+    clearInterval(retryQueueInterval);
+    retryQueueInterval = null;
+  }
+};
+
+process.on('SIGTERM', shutdownSchedulers);
+process.on('SIGINT', shutdownSchedulers);
 
 export default app;
