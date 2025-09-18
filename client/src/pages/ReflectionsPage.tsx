@@ -16,6 +16,7 @@ import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthenticatedApi } from '../utils/api';
 import { useJobs } from '../contexts/JobContext';
 import { markMeditationGenerated } from '../utils/notificationUtils';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -41,6 +42,7 @@ const ReflectionsPage: React.FC = () => {
     
     const api = useAuthenticatedApi();
     const { createJob } = useJobs();
+    const { isDesktop } = useResponsive();
     
     // Stats state
     const [dayStreak, setDayStreak] = useState(0);
@@ -402,18 +404,34 @@ const ReflectionsPage: React.FC = () => {
     }
 
     return (
-        <div style={styles.container}>
-            <Header />
-            
-            <div style={styles.contentContainer}>
-                {/* Stats Cards */}
-                <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
-            
-            {/* Recent Activity Calendar */}
-            <RecentActivityCalendar 
-                reflectionDates={reflectionDates || []}
-                onExpandClick={() => setShowCalendarModal(true)}
-            />
+        <div style={isDesktop ? styles.desktopContainer : styles.container}>
+            {/* Header - only show on mobile */}
+            {!isDesktop && <Header />}
+
+            {/* Desktop Header */}
+            {isDesktop && (
+                <div style={styles.desktopHeader}>
+                    <div style={styles.desktopHeaderContent}>
+                        <div style={styles.desktopTitleSection}>
+                            <h1 style={styles.desktopTitle}>Recent Reflections</h1>
+                            <p style={styles.desktopSubtitle}>Your completed meditation and reflection sessions</p>
+                            <span style={styles.sessionCount}>{savedMeditations.length} sessions</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
+                {/* Stats Cards and Calendar - only show on mobile */}
+                {!isDesktop && (
+                    <>
+                        <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
+                        <RecentActivityCalendar
+                            reflectionDates={reflectionDates || []}
+                            onExpandClick={() => setShowCalendarModal(true)}
+                        />
+                    </>
+                )}
             
             {/* Replay Button */}
             <button 
@@ -579,6 +597,48 @@ const styles = {
         width: '100%',
         position: 'relative',
     },
+    desktopContainer: {
+        backgroundColor: 'transparent',
+        minHeight: '100vh',
+        width: '100%',
+        position: 'relative',
+    },
+    desktopHeader: {
+        marginBottom: '2rem',
+        paddingBottom: '1.5rem',
+        borderBottom: '1px solid #e5e7eb',
+    },
+    desktopHeaderContent: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: '2rem',
+    },
+    desktopTitleSection: {
+        flex: 1,
+    },
+    desktopTitle: {
+        fontSize: '2rem',
+        fontWeight: '700',
+        color: '#1f2937',
+        margin: '0 0 0.5rem 0',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+    },
+    desktopSubtitle: {
+        fontSize: '1rem',
+        color: '#6b7280',
+        margin: '0 0 0.75rem 0',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+    },
+    sessionCount: {
+        display: 'inline-block',
+        padding: '0.25rem 0.75rem',
+        backgroundColor: '#ede9fe',
+        color: '#6366f1',
+        borderRadius: '20px',
+        fontSize: '0.875rem',
+        fontWeight: '500',
+    },
     contentContainer: {
         padding: '1.5rem 1rem',
         backgroundColor: '#ffffff',
@@ -588,6 +648,15 @@ const styles = {
         minHeight: 'calc(100vh - 120px)',
         maxWidth: '100%',
         margin: '-1rem auto 0 auto',
+        boxSizing: 'border-box',
+    },
+    desktopContentContainer: {
+        padding: '0',
+        backgroundColor: 'transparent',
+        borderRadius: '0',
+        minHeight: 'auto',
+        maxWidth: '100%',
+        margin: '0',
         boxSizing: 'border-box',
     },
     replayButton: {

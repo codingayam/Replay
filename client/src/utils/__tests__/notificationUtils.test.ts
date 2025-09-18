@@ -4,6 +4,7 @@ import {
   requiresPwaInstallForPush,
   shouldShowPermissionBanner,
   markMeditationGenerated,
+  markPermissionBannerShown,
   registerServiceWorker
 } from '../notificationUtils';
 
@@ -41,7 +42,7 @@ const setMatchMedia = (matches: boolean) => {
     addEventListener: jest.fn(),
     removeEventListener: jest.fn(),
     dispatchEvent: jest.fn(),
-  }));
+  })) as any;
 };
 
 const setNotificationPermission = (permission: NotificationPermission) => {
@@ -66,15 +67,27 @@ describe('notificationUtils', () => {
     setStandalone(undefined);
     setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Win32');
     setNotificationPermission('default');
+    localStorage.removeItem('notification_banner_prompted');
     Object.defineProperty(window, 'PushManager', {
       value: function () {},
       configurable: true,
     });
+    const defaultRegistration = {
+      addEventListener: jest.fn(),
+      installing: null,
+      waiting: null,
+      active: null,
+      update: jest.fn(),
+      unregister: jest.fn()
+    } as unknown as ServiceWorkerRegistration;
+
     Object.defineProperty(navigator, 'serviceWorker', {
       value: {
-        register: jest.fn().mockResolvedValue({}),
-        ready: Promise.resolve({}),
-      },
+        register: jest
+          .fn((script: string, opts?: RegistrationOptions) => Promise.resolve(defaultRegistration))
+          .mockName('register') as unknown as ServiceWorkerContainer['register'],
+        ready: Promise.resolve(defaultRegistration),
+      } as unknown as ServiceWorkerContainer,
       configurable: true,
     });
   });
@@ -124,7 +137,12 @@ describe('notificationUtils', () => {
   });
 
   describe('shouldShowPermissionBanner', () => {
+    it('returns true on first visit when permission is default', () => {
+      expect(shouldShowPermissionBanner()).toBe(true);
+    });
+
     it('returns true when permission is default and user generated a meditation', () => {
+      localStorage.setItem('notification_banner_prompted', 'true');
       localStorage.setItem('has_generated_meditation', 'true');
 
       expect(shouldShowPermissionBanner()).toBe(true);
@@ -160,6 +178,13 @@ describe('notificationUtils', () => {
     });
   });
 
+  describe('markPermissionBannerShown', () => {
+    it('sets the prompted flag in localStorage', () => {
+      markPermissionBannerShown();
+      expect(localStorage.getItem('notification_banner_prompted')).toBe('true');
+    });
+  });
+
   describe('registerServiceWorker', () => {
     it('allows registration on 127.0.0.1 origins', async () => {
       const originalNavigator = navigator.serviceWorker;
@@ -173,13 +198,22 @@ describe('notificationUtils', () => {
         configurable: true,
       });
 
-      const mockRegistration = {} as ServiceWorkerRegistration;
+      const mockRegistration = {
+        addEventListener: jest.fn(),
+        installing: null,
+        waiting: null,
+        active: null,
+        update: jest.fn(),
+        unregister: jest.fn()
+      } as unknown as ServiceWorkerRegistration;
 
       Object.defineProperty(navigator, 'serviceWorker', {
         value: {
-          register: jest.fn().mockResolvedValue(mockRegistration),
-          ready: Promise.resolve({}),
-        },
+          register: jest
+            .fn((script: string, opts?: RegistrationOptions) => Promise.resolve(mockRegistration))
+            .mockName('register') as unknown as ServiceWorkerContainer['register'],
+          ready: Promise.resolve(mockRegistration),
+        } as unknown as ServiceWorkerContainer,
         configurable: true,
       });
 

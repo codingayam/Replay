@@ -8,6 +8,7 @@ import SupabaseImage from '../components/SupabaseImage';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
 import NotificationSettings from '../components/NotificationSettings';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface Profile {
     name: string;
@@ -33,6 +34,7 @@ const ProfilePage: React.FC = () => {
     const { signOut } = useAuth();
     const navigate = useNavigate();
     const notifications = useNotifications();
+    const { isDesktop } = useResponsive();
 
     useEffect(() => {
         console.log('ProfilePage: Fetching profile...');
@@ -291,36 +293,40 @@ const ProfilePage: React.FC = () => {
     };
 
     return (
-        <div style={styles.container}>
-            <Header title="Profile" />
+        <div style={isDesktop ? styles.desktopContainer : styles.container}>
+            {/* Mobile Header and Tabs */}
+            {!isDesktop && (
+                <>
+                    <Header title="Profile" />
+                    {/* Tab Navigation */}
+                    <div style={styles.tabContainer}>
+                        <button
+                            style={{
+                                ...styles.tab,
+                                ...(activeTab === 'profile' ? styles.activeTab : {})
+                            }}
+                            onClick={() => setActiveTab('profile')}
+                        >
+                            <UserIcon size={16} />
+                            Profile
+                        </button>
+                        <button
+                            style={{
+                                ...styles.tab,
+                                ...(activeTab === 'notifications' ? styles.activeTab : {})
+                            }}
+                            onClick={() => setActiveTab('notifications')}
+                        >
+                            <Bell size={16} />
+                            Notifications
+                        </button>
+                    </div>
+                </>
+            )}
 
-            {/* Tab Navigation */}
-            <div style={styles.tabContainer}>
-                <button
-                    style={{
-                        ...styles.tab,
-                        ...(activeTab === 'profile' ? styles.activeTab : {})
-                    }}
-                    onClick={() => setActiveTab('profile')}
-                >
-                    <UserIcon size={16} />
-                    Profile
-                </button>
-                <button
-                    style={{
-                        ...styles.tab,
-                        ...(activeTab === 'notifications' ? styles.activeTab : {})
-                    }}
-                    onClick={() => setActiveTab('notifications')}
-                >
-                    <Bell size={16} />
-                    Notifications
-                </button>
-            </div>
-
-            <div style={styles.contentContainer}>
-                {/* Profile Tab Content */}
-                {activeTab === 'profile' && (
+            <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
+                {/* Desktop always shows profile, mobile shows based on tab */}
+                {(isDesktop || activeTab === 'profile') && (
                     <>
                         {/* Profile Card */}
                         <div style={styles.profileCard}>
@@ -529,8 +535,8 @@ const ProfilePage: React.FC = () => {
                     </>
                 )}
 
-                {/* Notifications Tab Content */}
-                {activeTab === 'notifications' && (
+                {/* Mobile Notifications Tab Content */}
+                {!isDesktop && activeTab === 'notifications' && (
                     <NotificationSettings
                         preferences={notifications.preferences}
                         onUpdatePreferences={notifications.updatePreferences}
@@ -551,6 +557,23 @@ const styles = {
         backgroundColor: '#f8f9ff',
         minHeight: '100vh',
         width: '100%',
+    },
+    desktopContainer: {
+        backgroundColor: 'transparent',
+        minHeight: '100vh',
+        width: '100%',
+        position: 'relative' as const,
+    },
+    desktopContentContainer: {
+        padding: '0',
+        maxWidth: '600px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '1rem',
+        backgroundColor: 'transparent',
+        borderRadius: '0',
+        minHeight: 'auto',
     },
     tabContainer: {
         display: 'flex',

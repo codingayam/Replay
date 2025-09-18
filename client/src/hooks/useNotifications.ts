@@ -16,6 +16,7 @@ import {
   handleNotificationClick,
   shouldShowPermissionBanner,
   dismissPermissionBanner,
+  markPermissionBannerShown,
   checkNotificationSupport,
   requestServiceWorkerVersion
 } from '../utils/notificationUtils';
@@ -84,7 +85,12 @@ export const useNotifications = (): UseNotificationsReturn => {
     setIsSupported(support.supported);
     setSupportReason(support.reason);
     setPermission(getPermissionStatus());
-    setShowPermissionBanner(shouldShowPermissionBanner());
+    const shouldShow = shouldShowPermissionBanner();
+    setShowPermissionBanner(shouldShow);
+
+    if (shouldShow) {
+      markPermissionBannerShown();
+    }
   }, []);
 
   const trackEvent = useCallback(async (eventName: string, payload: Record<string, unknown> = {}) => {
@@ -122,7 +128,11 @@ export const useNotifications = (): UseNotificationsReturn => {
 
   // Keep banner visibility in sync with permission changes/local markers
   useEffect(() => {
-    setShowPermissionBanner(shouldShowPermissionBanner());
+    const shouldShow = shouldShowPermissionBanner();
+    setShowPermissionBanner(shouldShow);
+    if (shouldShow) {
+      markPermissionBannerShown();
+    }
   }, [permission, isSupported]);
 
   useEffect(() => {
@@ -136,7 +146,11 @@ export const useNotifications = (): UseNotificationsReturn => {
 
   useEffect(() => {
     const handleMeditationGenerated = () => {
-      setShowPermissionBanner(shouldShowPermissionBanner());
+      const shouldShow = shouldShowPermissionBanner();
+      setShowPermissionBanner(shouldShow);
+      if (shouldShow) {
+        markPermissionBannerShown();
+      }
     };
 
     window.addEventListener('replay-meditation-generated', handleMeditationGenerated);
@@ -272,6 +286,23 @@ export const useNotifications = (): UseNotificationsReturn => {
         platform: browserInfo.platform,
         deviceId: browserInfo.deviceId
       });
+
+      if (browserInfo.timezone) {
+        try {
+          await api.put('/notifications/timezone', {
+            timezone: browserInfo.timezone
+          });
+          trackEvent('notification_timezone_synced', {
+            timezone: browserInfo.timezone
+          });
+        } catch (timezoneError: any) {
+          console.error('Failed to sync timezone preference:', timezoneError);
+          trackEvent('notification_timezone_sync_failed', {
+            error: timezoneError?.message || 'unknown',
+            timezone: browserInfo.timezone
+          });
+        }
+      }
 
       // Setup foreground message listener
       if (foregroundListenerRef.current) {

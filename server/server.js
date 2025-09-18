@@ -21,11 +21,18 @@ import { exec, execSync } from 'child_process';
 import moment from 'moment-timezone';
 import cron from 'node-cron';
 import { getMetricsSnapshot, recordTokenRegistration } from './observability/metrics.js';
+import notificationConfig from '../config/notifications.js';
 
 const execAsync = promisify(exec);
 
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const VALID_WEEK_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const ALL_WEEK_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const DEFAULT_SCHEDULE_TIMES = {
+  daily_reminder: '20:00',
+  streak_reminder: '21:00',
+  weekly_reflection: '19:00'
+};
 
 function dayStringToIndex(day) {
   if (!day) return null;
@@ -85,6 +92,53 @@ function validateNotificationPreferences(preferences) {
   }
 
   return null;
+}
+
+async function syncProfileTimezoneFromDevice(userId, deviceTimezone) {
+  if (!deviceTimezone || typeof deviceTimezone !== 'string') {
+    return;
+  }
+
+  if (!moment.tz.zone(deviceTimezone)) {
+    return;
+  }
+
+  try {
+    const { data: profileRow, error: profileError } = await supabase
+      .from('profiles')
+      .select('timezone')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Error fetching profile for timezone sync:', profileError);
+      return;
+    }
+
+    const currentTimezone = profileRow?.timezone;
+    if (currentTimezone === deviceTimezone) {
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ timezone: deviceTimezone })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.error('Error auto-updating timezone from device:', updateError);
+      return;
+    }
+
+    console.log(`🌍 Auto-synced timezone for user ${userId} to ${deviceTimezone}`);
+
+    await notificationService.logEvent(userId, 'timezone_synced_from_device', 'server', {
+      deviceTimezone,
+      previousTimezone: currentTimezone || null
+    });
+  } catch (error) {
+    console.error('Timezone sync error:', error);
+  }
 }
 
 // FFmpeg path resolution utility for Railway deployment
@@ -147,7 +201,6 @@ const __dirname = dirname(__filename);
 // Import middleware
 import { requireAuth, optionalAuth, supabase } from './middleware/auth.js';
 import notificationService from '../services/notificationService.js';
-import notificationConfig from '../config/notifications.js';
 
 // Initialize AI services
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -714,7 +767,27 @@ app.use(helmet());
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: function(origin, callback) {
+    // Allow both http and https localhost for development
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'https://localhost:5173',
+      'http://localhost:5174',
+      'https://localhost:5174',
+      'http://localhost:5175',
+      'https://localhost:5175',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -3692,6 +3765,10 @@ app.post('/api/notifications/token', requireAuth(), async (req, res) => {
       return res.status(500).json({ error: 'Failed to update push token' });
     }
 
+    if (deviceTimezone) {
+      await syncProfileTimezoneFromDevice(userId, deviceTimezone);
+    }
+
     recordTokenRegistration({
       channel,
       browser: browser || normalizedPlatform || 'unknown',
@@ -4110,32 +4187,73 @@ async function updateScheduledNotifications(userId, preferences) {
       const pref = preferences[key];
       if (!pref) continue;
 
+      const dayIndex = supportsDay && pref.day ? dayStringToIndex(pref.day) : null;
       const updatePayload = {};
 
       if (typeof pref.enabled === 'boolean') {
         updatePayload.enabled = pref.enabled;
       }
 
-      if (pref.time) {
-        updatePayload.scheduled_time = pref.time;
+      const resolvedTime = pref.time || DEFAULT_SCHEDULE_TIMES[type];
+      if (resolvedTime) {
+        updatePayload.scheduled_time = resolvedTime;
       }
 
-      if (supportsDay && pref.day) {
-        const dayIndex = dayStringToIndex(pref.day);
+      if (supportsDay) {
         if (dayIndex != null) {
           updatePayload.days_of_week = [dayIndex];
+        } else if (!pref.day) {
+          updatePayload.days_of_week = [0];
         }
+      } else {
+        updatePayload.days_of_week = ALL_WEEK_DAYS;
+      }
+
+      const { data: existingRows, error: existingError } = await supabase
+        .from('scheduled_notifications')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .limit(1);
+
+      if (existingError) {
+        console.error('Error checking scheduled notifications:', existingError);
+        continue;
+      }
+
+      if (!existingRows || existingRows.length === 0) {
+        const insertPayload = {
+          user_id: userId,
+          type,
+          enabled: typeof pref.enabled === 'boolean' ? pref.enabled : true,
+          scheduled_time: resolvedTime || DEFAULT_SCHEDULE_TIMES[type],
+          days_of_week: supportsDay
+            ? [dayIndex != null ? dayIndex : 0]
+            : ALL_WEEK_DAYS
+        };
+
+        const { error: insertError } = await supabase
+          .from('scheduled_notifications')
+          .insert(insertPayload);
+
+        if (insertError) {
+          console.error('Error inserting scheduled notification:', insertError);
+        }
+        continue;
       }
 
       if (Object.keys(updatePayload).length === 0) {
         continue;
       }
 
-      await supabase
+      const { error: updateError } = await supabase
         .from('scheduled_notifications')
         .update(updatePayload)
-        .eq('user_id', userId)
-        .eq('type', type);
+        .eq('id', existingRows[0].id);
+
+      if (updateError) {
+        console.error('Error updating scheduled notifications:', updateError);
+      }
     }
 
   } catch (error) {

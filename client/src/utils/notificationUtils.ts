@@ -238,6 +238,8 @@ export const setupForegroundMessageListener = (callback: (payload: any) => void)
 
 // Get browser info for backend
 const DEVICE_ID_STORAGE_KEY = 'replay_notification_device_id';
+const BANNER_DISMISSED_KEY = 'notification_banner_dismissed';
+const BANNER_PROMPTED_KEY = 'notification_banner_prompted';
 
 const getOrCreateDeviceId = (): string | null => {
   if (typeof window === 'undefined' || !window.localStorage) {
@@ -305,29 +307,41 @@ export const handleNotificationClick = (url: string) => {
 
 // Check if should show permission banner
 export const shouldShowPermissionBanner = (): boolean => {
-  // Don't show if notifications not supported
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return false;
+  }
+
   if (!isPushSupported()) return false;
 
-  // Don't show if already granted or denied
   if (Notification.permission !== 'default') return false;
 
-  // Check if user dismissed recently (within 7 days)
-  const lastDismissed = localStorage.getItem('notification_banner_dismissed');
+  const lastDismissed = localStorage.getItem(BANNER_DISMISSED_KEY);
   if (lastDismissed) {
     const dismissedDate = new Date(lastDismissed);
     const daysSinceDismissed = (Date.now() - dismissedDate.getTime()) / (1000 * 60 * 60 * 24);
     if (daysSinceDismissed < 7) return false;
   }
 
-  // Check if user has generated at least one meditation
-  const hasGeneratedMeditation = localStorage.getItem('has_generated_meditation') === 'true';
+  const hasBeenPrompted = localStorage.getItem(BANNER_PROMPTED_KEY) === 'true';
+  if (!hasBeenPrompted) {
+    return true;
+  }
 
+  const hasGeneratedMeditation = localStorage.getItem('has_generated_meditation') === 'true';
   return hasGeneratedMeditation;
 };
 
 // Mark banner as dismissed
 export const dismissPermissionBanner = () => {
-  localStorage.setItem('notification_banner_dismissed', new Date().toISOString());
+  localStorage.setItem(BANNER_DISMISSED_KEY, new Date().toISOString());
+};
+
+// Record that the banner has been shown at least once.
+export const markPermissionBannerShown = () => {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
+  localStorage.setItem(BANNER_PROMPTED_KEY, 'true');
 };
 
 // Mark that user has generated a meditation

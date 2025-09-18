@@ -22,6 +22,7 @@ import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useResponsive } from '../hooks/useResponsive';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -70,6 +71,7 @@ const ExperiencesPage: React.FC = () => {
     
     const api = useAuthenticatedApi();
     const { user } = useAuth();
+    const { isDesktop } = useResponsive();
     
     // Calculate recommended duration based on number of experiences
     const calculateRecommendedDuration = (experienceCount: number): number => {
@@ -505,20 +507,54 @@ const ExperiencesPage: React.FC = () => {
     }
 
     return (
-        <div style={styles.container}>
-            {/* Header with integrated search */}
-            <Header 
-                showSearch={true}
-                searchPlaceholder="Search your experiences..."
-                onSearch={handleSearch}
-                onClearSearch={handleClearSearch}
-                searchQuery={searchQuery}
-                isSearching={isSearching}
-            />
+        <div style={isDesktop ? styles.desktopContainer : styles.container}>
+            {/* Header with integrated search - only show on mobile */}
+            {!isDesktop && (
+                <Header
+                    showSearch={true}
+                    searchPlaceholder="Search your experiences..."
+                    onSearch={handleSearch}
+                    onClearSearch={handleClearSearch}
+                    searchQuery={searchQuery}
+                    isSearching={isSearching}
+                />
+            )}
+
+            {/* Desktop Header */}
+            {isDesktop && (
+                <div style={styles.desktopHeader}>
+                    <div style={styles.desktopHeaderContent}>
+                        <div style={styles.desktopTitleSection}>
+                            <h1 style={styles.desktopTitle}>Your Experiences</h1>
+                            <p style={styles.desktopSubtitle}>Moments captured on your mindful journey</p>
+                            <span style={styles.experienceCount}>{notes.length} experiences</span>
+                        </div>
+                        <div style={styles.desktopSearchSection}>
+                            <div style={styles.searchContainer}>
+                                <input
+                                    type="text"
+                                    placeholder="Search your experiences..."
+                                    value={searchQuery}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        setSearchQuery(value);
+                                        if (value.trim()) {
+                                            handleSearch(value);
+                                        } else {
+                                            handleClearSearch();
+                                        }
+                                    }}
+                                    style={styles.desktopSearchInput}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Search Results or Timeline */}
             {searchActive ? (
-                <div style={styles.contentContainer}>
+                <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
                     <SearchResults
                         results={searchResults}
                         isLoading={isSearching}
@@ -528,7 +564,7 @@ const ExperiencesPage: React.FC = () => {
                     />
                 </div>
             ) : (
-                <div style={styles.contentContainer}>
+                <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
                     <div style={styles.timeline}>
                     {sortedDateGroups.map((dateGroup, groupIndex) => {
                         const groupNotes = groupedNotes[dateGroup].sort((a, b) => 
@@ -852,11 +888,78 @@ const ExperiencesPage: React.FC = () => {
 
 const styles = {
     container: {
-        paddingBottom: '160px', // Space for FAB, bottom nav, and audio player  
+        paddingBottom: '160px', // Space for FAB, bottom nav, and audio player
         backgroundColor: '#f8f9ff',
         minHeight: '100vh',
         width: '100%',
         position: 'relative',
+    },
+    desktopContainer: {
+        backgroundColor: 'transparent',
+        minHeight: '100vh',
+        width: '100%',
+        position: 'relative',
+    },
+    desktopHeader: {
+        marginBottom: '2rem',
+        paddingBottom: '1.5rem',
+        borderBottom: '1px solid #e5e7eb',
+    },
+    desktopHeaderContent: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: '2rem',
+    },
+    desktopTitleSection: {
+        flex: 1,
+    },
+    desktopTitle: {
+        fontSize: '2rem',
+        fontWeight: '700',
+        color: '#1f2937',
+        margin: '0 0 0.5rem 0',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+    },
+    desktopSubtitle: {
+        fontSize: '1rem',
+        color: '#6b7280',
+        margin: '0 0 0.75rem 0',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+    },
+    experienceCount: {
+        display: 'inline-block',
+        padding: '0.25rem 0.75rem',
+        backgroundColor: '#ede9fe',
+        color: '#6366f1',
+        borderRadius: '20px',
+        fontSize: '0.875rem',
+        fontWeight: '500',
+    },
+    desktopSearchSection: {
+        flex: '0 0 400px',
+    },
+    desktopSearchInput: {
+        width: '100%',
+        padding: '12px 16px',
+        borderRadius: '12px',
+        border: '1px solid #d1d5db',
+        backgroundColor: '#ffffff',
+        fontSize: '16px',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        color: '#374151',
+        outline: 'none',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        transition: 'border-color 0.2s, box-shadow 0.2s',
+    },
+    desktopContentContainer: {
+        padding: '0',
+        backgroundColor: 'transparent',
+        borderRadius: '0',
+        minHeight: 'auto',
+        maxWidth: '100%',
+        margin: '0',
+        boxSizing: 'border-box',
     },
     contentContainer: {
         padding: '1.5rem 1rem',
