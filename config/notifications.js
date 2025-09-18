@@ -15,11 +15,12 @@ const notificationConfig = {
 
   // Apple Push Notification Configuration
   apns: {
-    keyId: process.env.APPLE_KEY_ID,
-    teamId: process.env.APPLE_TEAM_ID,
+    keyId: process.env.APNS_KEY_ID,
+    teamId: process.env.APNS_TEAM_ID,
     keyPath: process.env.APPLE_PRIVATE_KEY_PATH,
-    bundleId: process.env.APPLE_WEB_PUSH_ID || 'web.com.replay.app',
-    webPushId: process.env.APPLE_WEB_PUSH_ID || 'web.com.replay.app',
+    keyContent: process.env.APNS_KEY,
+    bundleId: process.env.APNS_WEB_PUSH_ID || 'web.com.replay.app',
+    webPushId: process.env.APNS_WEB_PUSH_ID || 'web.com.replay.app',
     production: process.env.NODE_ENV === 'production'
   },
 

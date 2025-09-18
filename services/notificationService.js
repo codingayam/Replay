@@ -81,10 +81,18 @@ class NotificationService {
       }
 
       // Initialize APNs configuration for HTTP/2 with JWT
-      if (config.apns.teamId && config.apns.keyId && config.apns.keyPath) {
+      if (config.apns.teamId && config.apns.keyId) {
         try {
-          // Read the .p8 private key file
-          this.apnsKey = fs.readFileSync(config.apns.keyPath, 'utf8');
+          // Try to get key from environment variable first, then fall back to file
+          if (config.apns.keyContent) {
+            this.apnsKey = config.apns.keyContent;
+          } else if (config.apns.keyPath) {
+            // Fallback to file reading for local development
+            this.apnsKey = fs.readFileSync(config.apns.keyPath, 'utf8');
+          } else {
+            throw new Error('No APNs key source available (neither APNS_KEY nor APPLE_PRIVATE_KEY_PATH)');
+          }
+
           this.apnsConfig = {
             teamId: config.apns.teamId,
             keyId: config.apns.keyId,
@@ -93,7 +101,7 @@ class NotificationService {
           };
           console.log('APNs HTTP/2 configuration loaded successfully');
         } catch (error) {
-          console.error('Failed to load APNs key file:', error);
+          console.error('Failed to load APNs key:', error);
           this.apnsKey = null;
           this.apnsConfig = null;
         }
