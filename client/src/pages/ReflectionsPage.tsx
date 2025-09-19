@@ -413,7 +413,7 @@ const ReflectionsPage: React.FC = () => {
                 <div style={styles.desktopHeader}>
                     <div style={styles.desktopHeaderContent}>
                         <div style={styles.desktopTitleSection}>
-                            <h1 style={styles.desktopTitle}>Recent Reflections</h1>
+                            <h1 style={styles.desktopTitle}>Reflections</h1>
                             <p style={styles.desktopSubtitle}>Your completed meditation and reflection sessions</p>
                             <span style={styles.sessionCount}>{savedMeditations.length} sessions</span>
                         </div>
@@ -445,7 +445,7 @@ const ReflectionsPage: React.FC = () => {
 
             {/* Recent Reflections Section */}
             <div style={styles.reflectionsSection}>
-                <h2 style={styles.sectionTitle}>Recent Reflections</h2>
+                <h2 style={styles.sectionTitle}>Your Reflections</h2>
                 {savedMeditations.length > 0 ? (
                     <div style={styles.meditationsList}>
                     {savedMeditations

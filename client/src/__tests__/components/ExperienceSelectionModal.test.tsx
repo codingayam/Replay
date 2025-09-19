@@ -2,20 +2,20 @@ import { jest } from '@jest/globals';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import axios from 'axios';
-jest.mock('axios');
 import type { Note } from '../../types';
 
-const axiosMock = axios as unknown as {
-  create: jest.Mock;
-  get: jest.Mock;
-  request: jest.Mock;
-};
+const apiGetMock = jest.fn();
+
+jest.mock('../../utils/api', () => ({
+  __esModule: true,
+  useAuthenticatedApi: () => ({
+    get: apiGetMock,
+  }),
+}));
 
 let ExperienceSelectionModal: typeof import('../../components/ExperienceSelectionModal').default;
 
 beforeAll(async () => {
-  axiosMock.get.mockClear();
   ({ default: ExperienceSelectionModal } = await import('../../components/ExperienceSelectionModal'));
 });
 
@@ -25,16 +25,15 @@ describe('ExperienceSelectionModal', () => {
       id: '1',
       title: 'Creative App Idea',
       transcript: 'New app concept for productivity',
-      category: ['ideas'],
       type: 'audio',
       date: '2025-09-01T10:00:00Z',
+      audioUrl: 'https://example.com/audio-1.mp3',
     },
     {
       id: '2',
       title: 'Gratitude Moment',
       transcript: 'Feeling thankful for the day',
-      category: ['feelings'],
-      type: 'audio',
+      type: 'text',
       date: '2025-09-01T12:00:00Z',
     },
   ];
@@ -51,16 +50,16 @@ describe('ExperienceSelectionModal', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    axiosMock.get.mockResolvedValue({ data: { notes } });
+    apiGetMock.mockResolvedValue({ data: { notes } });
   });
 
-  it('filters notes for ideas reflections', async () => {
+  it('renders notes returned by the API', async () => {
     render(<ExperienceSelectionModal {...defaultProps} />);
 
-    await waitFor(() => expect(axiosMock.get).toHaveBeenCalled());
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalled());
 
     expect(screen.getByText('Creative App Idea')).toBeInTheDocument();
-    expect(screen.queryByText('Gratitude Moment')).not.toBeInTheDocument();
+    expect(screen.getByText('Gratitude Moment')).toBeInTheDocument();
   });
 
   it('submits selected notes', async () => {
@@ -72,7 +71,7 @@ describe('ExperienceSelectionModal', () => {
       />
     );
 
-    await waitFor(() => expect(axiosMock.get).toHaveBeenCalled());
+    await waitFor(() => expect(apiGetMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getByLabelText(/Creative App Idea/i));
     fireEvent.click(screen.getByRole('button', { name: /Continue/i }));

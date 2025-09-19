@@ -162,6 +162,15 @@ describe('notificationUtils', () => {
 
       expect(shouldShowPermissionBanner()).toBe(false);
     });
+
+    it('ignores dismissal cooldown when permission resets to default', () => {
+      localStorage.setItem('notification_banner_dismissed', new Date().toISOString());
+      localStorage.setItem('notification_banner_dismissed_reason', 'granted');
+
+      expect(shouldShowPermissionBanner()).toBe(true);
+      expect(localStorage.getItem('notification_banner_dismissed')).toBeNull();
+      expect(localStorage.getItem('notification_banner_dismissed_reason')).toBeNull();
+    });
   });
 
   describe('markMeditationGenerated', () => {

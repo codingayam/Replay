@@ -56,7 +56,7 @@ const NotificationPermissionBanner: React.FC<NotificationPermissionBannerProps> 
               Stay Connected with Your Practice
             </h3>
             <p className="mt-1 text-sm text-gray-600">
-              Get notified when your meditations are ready, receive daily reminders to capture moments, and maintain your streak.
+              Get notified when your personalized meditations are ready, receive daily reminders to capture moments, and maintain your streak.
             </p>
 
             {supportMessage && (

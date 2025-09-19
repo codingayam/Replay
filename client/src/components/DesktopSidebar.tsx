@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Calendar, Brain, User, Flame, Target, Bell } from 'lucide-react';
 import RecentActivityCalendar from './RecentActivityCalendar';
+import CalendarModal from './CalendarModal';
 import { useAuthenticatedApi } from '../utils/api';
 
 const DesktopSidebar: React.FC = () => {
@@ -12,6 +13,7 @@ const DesktopSidebar: React.FC = () => {
   const [dayStreak, setDayStreak] = useState(0);
   const [monthlyCount, setMonthlyCount] = useState(0);
   const [reflectionDates, setReflectionDates] = useState<string[]>([]);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   const navigation = [
     { path: '/experiences', icon: Calendar, label: 'Experiences' },
@@ -42,8 +44,7 @@ const DesktopSidebar: React.FC = () => {
   }, [api]);
 
   const handleCalendarExpand = () => {
-    // Could open a calendar modal if needed
-    console.log('Calendar expand clicked');
+    setShowCalendarModal(true);
   };
 
   return (
@@ -57,11 +58,6 @@ const DesktopSidebar: React.FC = () => {
         <p style={styles.tagline}>Your mindful journey</p>
       </div>
 
-      {/* Start Reflection Button */}
-      <Link to="/reflections" style={styles.startButton}>
-        <span style={styles.startButtonIcon}>✨</span>
-        <span style={styles.startButtonText}>Start Reflection</span>
-      </Link>
 
       {/* Navigation */}
       <nav style={styles.navigation}>
@@ -116,6 +112,13 @@ const DesktopSidebar: React.FC = () => {
         reflectionDates={reflectionDates}
         onExpandClick={handleCalendarExpand}
       />
+
+      {/* Calendar Modal */}
+      <CalendarModal
+        isOpen={showCalendarModal}
+        onClose={() => setShowCalendarModal(false)}
+        reflectionDates={reflectionDates || []}
+      />
     </div>
   );
 };
@@ -168,29 +171,6 @@ const styles = {
     color: '#6b7280',
     margin: 0,
     fontFamily: 'system-ui, -apple-system, sans-serif',
-  },
-  startButton: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.75rem',
-    padding: '1rem 1.5rem',
-    backgroundColor: '#6366f1',
-    color: 'white',
-    borderRadius: '12px',
-    textDecoration: 'none',
-    fontWeight: '600',
-    fontSize: '1rem',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
-  },
-  startButtonIcon: {
-    fontSize: '1.25rem',
-  },
-  startButtonText: {
-    fontSize: '1rem',
-    fontWeight: '600',
   },
   navigation: {
     display: 'flex',

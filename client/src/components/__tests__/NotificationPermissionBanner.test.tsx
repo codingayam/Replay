@@ -14,7 +14,8 @@ describe('NotificationPermissionBanner', () => {
   });
 
   it('triggers permission request when enable button clicked', async () => {
-    const onRequestPermission = jest.fn().mockResolvedValue(true);
+    const onRequestPermission = jest.fn<() => Promise<boolean>>();
+    onRequestPermission.mockResolvedValue(true);
     const onDismiss = jest.fn();
 
     render(
@@ -47,7 +48,7 @@ describe('NotificationPermissionBanner', () => {
       value: false,
       configurable: true,
     });
-    window.matchMedia = () => ({
+    window.matchMedia = jest.fn().mockReturnValue({
       matches: false,
       media: '',
       onchange: null,
@@ -55,10 +56,11 @@ describe('NotificationPermissionBanner', () => {
       removeListener: jest.fn(),
       addEventListener: jest.fn(),
       removeEventListener: jest.fn(),
-      dispatchEvent: jest.fn(),
-    });
+      dispatchEvent: jest.fn(() => false),
+    } as MediaQueryList) as unknown as typeof window.matchMedia;
 
-    const onRequestPermission = jest.fn().mockResolvedValue(true);
+    const onRequestPermission = jest.fn<() => Promise<boolean>>();
+    onRequestPermission.mockResolvedValue(true);
 
     render(
       <NotificationPermissionBanner

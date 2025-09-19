@@ -200,7 +200,7 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                 <div style={styles.experiencesSection}>
                                     <div style={styles.sectionHeader}>
                                         <h3 style={styles.sectionTitle}>
-                                            Your Experiences ({selectedNoteIds.size} selected)
+                                            Experiences ({selectedNoteIds.size} selected)
                                         </h3>
                                     </div>
 

@@ -21,11 +21,30 @@ function createNotificationHistoryBuilder({ counts = [], onInsert } = {}) {
   return builder;
 }
 
-function buildSupabaseClient({ history }) {
+function createNotificationDeviceBuilder({ onDelete } = {}) {
+  return {
+    delete() {
+      return {
+        eq(column, value) {
+          if (column === 'token') {
+            onDelete?.(value);
+          }
+          return Promise.resolve({ error: null });
+        }
+      };
+    }
+  };
+}
+
+function buildSupabaseClient({ history, devices } = {}) {
   return {
     from(table) {
       if (table === 'notification_history') {
         return createNotificationHistoryBuilder(history);
+      }
+
+      if (table === 'notification_devices' && devices) {
+        return createNotificationDeviceBuilder(devices);
       }
 
       throw new Error(`Unexpected table request: ${table}`);
@@ -234,6 +253,57 @@ test('sendPushNotification logs failure details when transport throws', async (t
   assert.equal(inserted[0].channel, 'fcm');
   assert.equal(transportSpy.mock.callCount(), 1);
   assert.equal(enqueueSpy.mock.callCount(), 1);
+});
+
+test('sendPushNotification prunes device and skips retry when token unregistered', async (t) => {
+  const inserted = [];
+  const deletedTokens = [];
+
+  const clientConfig = {
+    history: {
+      counts: [0, 0],
+      onInsert: (row) => inserted.push(row)
+    },
+    devices: {
+      onDelete: (token) => deletedTokens.push(token)
+    }
+  };
+
+  withSupabaseStub(t, clientConfig);
+  t.mock.method(notificationService, 'fetchUserNotificationContext', async () => ({
+    profile: {
+      user_id: 'user-5',
+      push_channel_preference: 'auto'
+    },
+    preferences: {
+      enabled: true,
+      daily_reminder: { enabled: true }
+    },
+    devices: [
+      { push_provider: 'fcm', token: 'token-fcm-expired', platform: 'chrome', last_registered_at: new Date().toISOString() }
+    ]
+  }));
+
+  t.mock.method(notificationService, 'sendFCMNotification', async () => {
+    throw new Error('FCM send failed after 3 attempts: Requested entity was not found.');
+  });
+
+  const enqueueSpy = t.mock.method(notificationService, 'enqueueRetry', async () => {});
+
+  const result = await notificationService.sendPushNotification('user-5', {
+    type: 'daily_reminder',
+    title: 'Reminder',
+    body: 'Reflect today',
+    data: { url: '/' }
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /Requested entity was not found/);
+  assert.equal(inserted.length, 1);
+  assert.equal(inserted[0].delivered, false);
+  assert.equal(inserted[0].channel, 'fcm');
+  assert.deepEqual(deletedTokens, ['token-fcm-expired']);
+  assert.equal(enqueueSpy.mock.callCount(), 0);
 });
 
 test('sendPushNotification routes through APNs when safari preference detected', async (t) => {

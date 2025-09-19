@@ -1,8 +1,8 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import multer from 'multer';
 import fs from 'fs';
 import http from 'http';
@@ -190,9 +190,6 @@ function getFFmpegPath() {
   console.log('🏠 Using default ffmpeg command for local development');
   return 'ffmpeg';
 }
-
-// Load environment variables
-dotenv.config();
 
 // Get current directory (ES modules)
 const __filename = fileURLToPath(import.meta.url);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Clock, Calendar, Smartphone, TestTube, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../hooks/useNotifications';
@@ -24,6 +24,26 @@ interface NotificationPreferences {
   };
 }
 
+const DEFAULT_PREFERENCES: NotificationPreferences = {
+  enabled: true,
+  daily_reminder: {
+    enabled: true,
+    time: '01:00'
+  },
+  streak_reminder: {
+    enabled: true,
+    time: '09:00'
+  },
+  meditation_ready: {
+    enabled: true
+  },
+  weekly_reflection: {
+    enabled: true,
+    day: 'sunday',
+    time: '10:00'
+  }
+};
+
 const NotificationsPage: React.FC = () => {
   const navigate = useNavigate();
   const notifications = useNotifications();
@@ -31,33 +51,49 @@ const NotificationsPage: React.FC = () => {
 
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [testingType, setTestingType] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const saveResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Load notification preferences - simplified for now
-    const defaultPrefs: NotificationPreferences = {
-      enabled: true,
-      daily_reminder: {
-        enabled: true,
-        time: '01:00'
-      },
-      streak_reminder: {
-        enabled: true,
-        time: '09:00'
-      },
-      meditation_ready: {
-        enabled: true
-      },
-      weekly_reflection: {
-        enabled: true,
-        day: 'sunday',
-        time: '10:00'
+    let isMounted = true;
+
+    const loadPreferences = async () => {
+      setIsFetching(true);
+      setError(null);
+
+      try {
+        const response = await api.get('/notifications/preferences');
+        if (!isMounted) return;
+
+        const remote = response.data?.preferences as NotificationPreferences | undefined;
+        setPreferences(remote ?? DEFAULT_PREFERENCES);
+        setHasChanges(false);
+      } catch (err) {
+        console.error('Failed to load notification preferences:', err);
+        if (!isMounted) return;
+        setError('Failed to load notification preferences');
+        setPreferences(DEFAULT_PREFERENCES);
+        setHasChanges(false);
+      } finally {
+        if (isMounted) {
+          setIsFetching(false);
+        }
       }
     };
-    setPreferences(defaultPrefs);
-  }, []);
+
+    loadPreferences();
+
+    return () => {
+      isMounted = false;
+      if (saveResetRef.current) {
+        clearTimeout(saveResetRef.current);
+      }
+    };
+  }, [api]);
 
   const handleChange = (path: string[], value: any) => {
     if (!preferences) return;
@@ -74,18 +110,37 @@ const NotificationsPage: React.FC = () => {
 
     setPreferences(updated);
     setHasChanges(true);
+    setJustSaved(false);
   };
 
   const handleSave = async () => {
     if (!preferences || !hasChanges) return;
 
     setIsLoading(true);
+    setError(null);
     try {
-      // API call to save preferences would go here
-      console.log('Saving preferences:', preferences);
+      const response = await api.put('/notifications/preferences', {
+        preferences
+      });
+
+      if (response.data?.preferences) {
+        setPreferences(response.data.preferences);
+      }
       setHasChanges(false);
-    } catch (err) {
-      setError('Failed to save notification settings');
+      setJustSaved(true);
+      if (saveResetRef.current) {
+        clearTimeout(saveResetRef.current);
+      }
+      saveResetRef.current = setTimeout(() => {
+        setJustSaved(false);
+      }, 2000);
+    } catch (err: unknown) {
+      console.error('Failed to save notification settings:', err);
+      const message =
+        (err as any)?.response?.data?.error ||
+        (err as any)?.message ||
+        'Failed to save notification settings';
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -102,8 +157,12 @@ const NotificationsPage: React.FC = () => {
     }
   };
 
-  if (!preferences) {
+  if (isFetching && !preferences) {
     return <div style={styles.loading}>Loading preferences...</div>;
+  }
+
+  if (!preferences) {
+    return <div style={styles.loading}>Unable to load preferences.</div>;
   }
 
   return (
@@ -304,18 +363,25 @@ const NotificationsPage: React.FC = () => {
         </div>
 
         {/* Save Button */}
-        {hasChanges && (
+        {(hasChanges || isLoading || justSaved) && (
           <div style={styles.saveSection}>
             <button
               onClick={handleSave}
-              disabled={isLoading}
+              disabled={isLoading || !hasChanges}
               style={{
                 ...styles.saveButton,
-                ...(isLoading ? styles.saveButtonDisabled : {})
+                ...((isLoading || !hasChanges) ? styles.saveButtonDisabled : {})
               }}
             >
-              {isLoading ? 'Saving Notification Settings' : 'Save Notification Settings'}
+              {isLoading
+                ? 'Saving Notification Settings'
+                : !hasChanges && justSaved
+                  ? 'Notification Settings Saved'
+                  : 'Save Notification Settings'}
             </button>
+            {justSaved && !hasChanges && (
+              <p style={styles.saveMessage}>Your preferences are now synced.</p>
+            )}
           </div>
         )}
       </div>
@@ -569,7 +635,9 @@ const styles = {
     paddingTop: '1.5rem',
     borderTop: '1px solid #f3f4f6',
     display: 'flex',
-    justifyContent: 'center',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-end',
+    gap: '0.5rem',
   },
   saveButton: {
     padding: '0.75rem 2rem',
@@ -586,6 +654,13 @@ const styles = {
   saveButtonDisabled: {
     opacity: 0.5,
     cursor: 'not-allowed',
+    backgroundColor: '#4f46e5',
+  },
+  saveMessage: {
+    fontSize: '0.85rem',
+    color: '#10b981',
+    margin: 0,
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   },
 };
 

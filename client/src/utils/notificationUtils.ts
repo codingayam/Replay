@@ -239,6 +239,7 @@ export const setupForegroundMessageListener = (callback: (payload: any) => void)
 // Get browser info for backend
 const DEVICE_ID_STORAGE_KEY = 'replay_notification_device_id';
 const BANNER_DISMISSED_KEY = 'notification_banner_dismissed';
+const BANNER_DISMISSED_REASON_KEY = 'notification_banner_dismissed_reason';
 const BANNER_PROMPTED_KEY = 'notification_banner_prompted';
 
 const getOrCreateDeviceId = (): string | null => {
@@ -316,10 +317,18 @@ export const shouldShowPermissionBanner = (): boolean => {
   if (Notification.permission !== 'default') return false;
 
   const lastDismissed = localStorage.getItem(BANNER_DISMISSED_KEY);
+  const lastDismissedReason = localStorage.getItem(BANNER_DISMISSED_REASON_KEY);
   if (lastDismissed) {
     const dismissedDate = new Date(lastDismissed);
     const daysSinceDismissed = (Date.now() - dismissedDate.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSinceDismissed < 7) return false;
+    const ignoreCooldown = Notification.permission === 'default' && lastDismissedReason === 'granted';
+
+    if (ignoreCooldown) {
+      localStorage.removeItem(BANNER_DISMISSED_KEY);
+      localStorage.removeItem(BANNER_DISMISSED_REASON_KEY);
+    } else if (daysSinceDismissed < 7) {
+      return false;
+    }
   }
 
   const hasBeenPrompted = localStorage.getItem(BANNER_PROMPTED_KEY) === 'true';
@@ -332,8 +341,9 @@ export const shouldShowPermissionBanner = (): boolean => {
 };
 
 // Mark banner as dismissed
-export const dismissPermissionBanner = () => {
+export const dismissPermissionBanner = (reason: 'user' | 'granted' = 'user') => {
   localStorage.setItem(BANNER_DISMISSED_KEY, new Date().toISOString());
+  localStorage.setItem(BANNER_DISMISSED_REASON_KEY, reason);
 };
 
 // Record that the banner has been shown at least once.

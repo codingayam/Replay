@@ -393,7 +393,7 @@ export const useNotifications = (): UseNotificationsReturn => {
 
       if (perm === 'granted') {
         await initializeNotifications();
-        dismissPermissionBanner();
+        dismissPermissionBanner('granted');
         setShowPermissionBanner(false);
         trackEvent('notification_permission_granted');
         return true;
@@ -413,7 +413,7 @@ export const useNotifications = (): UseNotificationsReturn => {
 
   // Dismiss permission banner
   const dismissBanner = useCallback(() => {
-    dismissPermissionBanner();
+    dismissPermissionBanner('user');
     setShowPermissionBanner(false);
     trackEvent('notification_permission_banner_dismissed');
   }, [trackEvent]);

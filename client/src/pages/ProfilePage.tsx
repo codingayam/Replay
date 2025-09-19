@@ -460,7 +460,7 @@ const ProfilePage: React.FC = () => {
                                         borderColor: focusedField === 'values' ? '#7c3aed' : '#e5e7eb',
                                         backgroundColor: focusedField === 'values' ? '#ffffff' : '#f9fafb',
                                     }} 
-                                    placeholder="Type a value and press Enter to add"
+                                    placeholder="Values that matter most to you.."
                                 />
                                 <Plus 
                                     size={20} 

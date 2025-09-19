@@ -3,19 +3,21 @@ import React from 'react';
 import { renderHook } from '@testing-library/react';
 import { act } from 'react';
 
-const requestMock = jest.fn();
+const requestMock = jest.fn(async () => ({ data: { jobs: [] } })) as jest.MockedFunction<
+  (config: { method: string; url: string; data?: unknown; headers?: Record<string, string> }) => Promise<any>
+>;
 
-jest.mock('axios', () => {
-  const axiosMock: any = {
-    create: jest.fn(() => axiosMock),
-    request: requestMock,
-    interceptors: { request: { use: jest.fn() }, response: { use: jest.fn() } },
-  };
-  return { __esModule: true, default: axiosMock };
-});
+jest.mock('../../utils/api', () => ({
+  __esModule: true,
+  default: {
+    request: (config: any) => requestMock(config),
+  },
+}));
+
+const getTokenMock = jest.fn(async () => 'mock-jwt') as jest.MockedFunction<() => Promise<string | null>>;
 
 (globalThis as any).__REPLAY_TEST_AUTH__ = {
-  getToken: jest.fn().mockResolvedValue('mock-jwt'),
+  getToken: getTokenMock,
   user: { id: 'user-123' },
   loading: false,
   signUp: jest.fn(),
@@ -28,7 +30,6 @@ let JobProvider: typeof import('../JobContext').JobProvider;
 let useJobs: typeof import('../JobContext').useJobs;
 
 beforeAll(async () => {
-  requestMock.mockResolvedValue({ data: { jobs: [] } });
   const jobModule = await import('../JobContext');
   JobProvider = jobModule.JobProvider;
   useJobs = jobModule.useJobs;
@@ -37,17 +38,18 @@ beforeAll(async () => {
 describe('JobContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (globalThis as any).__REPLAY_TEST_AUTH__.getToken.mockResolvedValue('mock-jwt');
+    getTokenMock.mockResolvedValue('mock-jwt');
     requestMock.mockReset();
-    requestMock.mockImplementation(() => Promise.resolve({ data: { jobs: [] } }));
+    requestMock.mockImplementation(async (config) => {
+      if (config.method === 'POST' && config.url === '/meditate/jobs') {
+        return { data: { jobId: 'job-1', status: 'pending', message: 'created' } };
+      }
+
+      return { data: { jobs: [] } };
+    });
   });
 
   it('uses API client without double /api prefix', async () => {
-    requestMock
-      .mockResolvedValueOnce({ data: { jobs: [] } })
-      .mockResolvedValueOnce({ data: { jobId: 'job-1', status: 'pending', message: 'created' } })
-      .mockResolvedValueOnce({ data: { jobs: [] } });
-
     const { result } = renderHook(() => useJobs(), {
       wrapper: ({ children }) => <JobProvider>{children}</JobProvider>,
     });

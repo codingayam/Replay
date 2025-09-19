@@ -416,6 +416,8 @@ class NotificationService {
     });
 
     let channelUsed = 'unknown';
+    let contextData = null;
+    let selectedDevice = null;
     const startTime = Date.now();
 
     logInfo('notification.delivery.attempt', logContext);
@@ -434,7 +436,7 @@ class NotificationService {
         return { success: false, reason: rateCheck.reason };
       }
 
-      const contextData = context || await this.fetchUserNotificationContext(userId);
+      contextData = context || await this.fetchUserNotificationContext(userId);
 
       if (!contextData.profile) {
         const error = new Error(`User not found: ${userId}`);
@@ -460,6 +462,7 @@ class NotificationService {
       }
 
       channelUsed = channel;
+      selectedDevice = device;
 
       let result;
       if (channel === 'fcm') {
@@ -489,8 +492,11 @@ class NotificationService {
 
       return { success: true, channel, result };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const errorCode = error?.code || 'unknown';
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorCode = error?.code || (typeof error?.errorInfo?.code === 'string' ? error.errorInfo.code : 'unknown');
+
+      const lowerMessage = errorMessage.toLowerCase();
+      const isUnregisteredToken = lowerMessage.includes('requested entity was not found') || errorCode === 'messaging/registration-token-not-registered';
 
       recordDelivery({
         channel: channelUsed || 'unknown',
@@ -499,32 +505,53 @@ class NotificationService {
         durationSeconds: (Date.now() - startTime) / 1000
       });
 
-      await this.logNotificationHistory(userId, notification, channelUsed, false, message);
+      await this.logNotificationHistory(userId, notification, channelUsed, false, errorMessage);
       await this.logEvent(userId, 'notification_delivery_failure', 'server', {
         channel: channelUsed,
         type: notification.type,
         origin,
-        error: message,
+        error: errorMessage,
         errorCode
       });
 
       logError('notification.delivery.failed', {
         ...logContext,
         channel: channelUsed,
-        error: message,
+        error: errorMessage,
         errorCode
       });
 
-      const lowerMessage = message.toLowerCase();
-      const retryable = !disableRetry &&
-        !lowerMessage.includes('notifications disabled') &&
-        !lowerMessage.includes('no valid notification channel');
-
-      if (retryable) {
-        await this.enqueueRetry(userId, notification, message, errorCode);
+      if (isUnregisteredToken && channelUsed && selectedDevice?.token) {
+        try {
+          const supabase = this.getSupabaseClient();
+          await supabase
+            .from('notification_devices')
+            .delete()
+            .eq('token', selectedDevice.token);
+          logInfo('notification.tokens.pruned', {
+            userId,
+            channel: channelUsed,
+            reason: 'token_unregistered'
+          });
+        } catch (pruneError) {
+          logWarn('notification.tokens.prune_failed', {
+            userId,
+            channel: channelUsed,
+            error: pruneError instanceof Error ? pruneError.message : String(pruneError)
+          });
+        }
       }
 
-      return { success: false, error: message, reason: errorCode };
+      const retryable = !disableRetry &&
+        !lowerMessage.includes('notifications disabled') &&
+        !lowerMessage.includes('no valid notification channel') &&
+        !isUnregisteredToken;
+
+      if (retryable) {
+        await this.enqueueRetry(userId, notification, errorMessage, errorCode);
+      }
+
+      return { success: false, error: errorMessage, reason: errorCode };
     }
   }
 
