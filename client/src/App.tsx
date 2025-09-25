@@ -70,19 +70,7 @@ function App() {
               </>
             }
           />
-          <Route
-            path="/reset-password"
-            element={
-              <>
-                <SignedIn>
-                  <Navigate to="/experiences" replace />
-                </SignedIn>
-                <SignedOut>
-                  <ResetPasswordPage />
-                </SignedOut>
-              </>
-            }
-          />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           

@@ -130,6 +130,13 @@ const replicate = new Replicate({
 
 // Initialize Express app
 const app = express();
+
+// When running behind a proxy (Railway, Vercel, etc.) ensure Express trusts the
+// forwarded headers so rate limiting and IP checks work correctly.
+const shouldTrustProxy = process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? '1' : '0');
+if (shouldTrustProxy !== '0' && shouldTrustProxy !== 'false') {
+  app.set('trust proxy', shouldTrustProxy === '1' ? 1 : shouldTrustProxy);
+}
 const PORT = process.env.PORT || 3001;
 
 // Background job processing system
