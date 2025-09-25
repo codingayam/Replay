@@ -1,0 +1,5 @@
+# Replay Overview
+- Purpose: AI-assisted journaling platform that captures audio, photos, and text, then generates transcripts and guided meditations.
+- Architecture: Monorepo with React 19 + Vite client (`client/`) and Express server (`server/`). Client uses Supabase auth, Firebase messaging, and hooks/contexts for state. Server orchestrates AI integrations (Gemini, OpenAI) and stores data on filesystem (`server/data`). Supporting scripts/configuration live under `config/` and `scripts/`.
+- Key integrations: Supabase authentication, Google Gemini for transcription, OpenAI text-to-speech, Firebase web push, Apple Web Push package tooling.
+- Tooling: Jest + Testing Library for client tests, ESLint for linting, Vite build pipeline, Nodemon for server dev, Nixpacks + Vercel deployment helpers.

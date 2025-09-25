@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { validatePasswordStrength } from '../utils/passwordPolicy';
 
 interface AuthContextType {
   user: any | null; // Simplified to avoid import issues
@@ -9,6 +10,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ user: any | null; error: any | null }>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
+  signInWithGoogle: () => Promise<{ error: any | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,6 +58,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const signUp = async (email: string, password: string) => {
+    const { isValid, failedRuleLabels } = validatePasswordStrength(password);
+    if (!isValid) {
+      return {
+        user: null,
+        error: {
+          message: `Password requirements not met: ${failedRuleLabels.join(', ')}`,
+        },
+      };
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -88,6 +100,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     await supabase.auth.signOut();
   };
 
+  const signInWithGoogle = async (): Promise<{ error: any | null }> => {
+    const redirectTo =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/callback`
+        : undefined;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+        scopes: 'https://www.googleapis.com/auth/userinfo.email profile',
+      },
+    });
+
+    return { error };
+  };
+
   const getToken = async (): Promise<string | null> => {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error || !session) {
@@ -104,6 +133,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signIn,
     signOut,
     getToken,
+    signInWithGoogle,
   };
 
   return (

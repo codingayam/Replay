@@ -7,7 +7,10 @@ import ProfilePage from './pages/ProfilePage';
 import NotificationsPage from './pages/NotificationsPage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import OnboardingPage from './pages/OnboardingPage';
+import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import BottomTabNavigation from './components/BottomTabNavigation';
 import DesktopLayout from './components/DesktopLayout';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
@@ -15,6 +18,7 @@ import NotificationPermissionBanner from './components/NotificationPermissionBan
 import ServiceWorkerUpdateBanner from './components/ServiceWorkerUpdateBanner';
 import { useNotifications } from './hooks/useNotifications';
 import { useResponsive } from './hooks/useResponsive';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 
 function App() {
   return (
@@ -36,8 +40,8 @@ function App() {
               </>
             } 
           />
-          <Route 
-            path="/signup" 
+          <Route
+            path="/signup"
             element={
               <>
                 <SignedIn>
@@ -47,8 +51,40 @@ function App() {
                   <SignUpPage />
                 </SignedOut>
               </>
-            } 
+            }
           />
+          <Route
+            path="/confirm-email"
+            element={<EmailConfirmationPage />}
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <>
+                <SignedIn>
+                  <Navigate to="/experiences" replace />
+                </SignedIn>
+                <SignedOut>
+                  <ForgotPasswordPage />
+                </SignedOut>
+              </>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <>
+                <SignedIn>
+                  <Navigate to="/experiences" replace />
+                </SignedIn>
+                <SignedOut>
+                  <ResetPasswordPage />
+                </SignedOut>
+              </>
+            }
+          />
+
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           
           {/* Protected Routes - Main App */}
           <Route 

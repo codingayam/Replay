@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, Bell, Settings } from 'lucide-react';
+import axios from 'axios';
+import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, Bell, Settings, AlertTriangle, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
@@ -29,6 +30,9 @@ const ProfilePage: React.FC = () => {
     const [tagInput, setTagInput] = useState('');
     const [focusedField, setFocusedField] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'profile' | 'notifications'>('profile');
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
 
     const api = useAuthenticatedApi();
     const { signOut } = useAuth();
@@ -263,6 +267,40 @@ const ProfilePage: React.FC = () => {
         } catch (error) {
             console.error('Error logging out:', error);
             setStatus('Error logging out.');
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (isDeletingAccount) {
+            return;
+        }
+
+        const confirmed = window.confirm('This will permanently delete your Replay account and all associated data. This action cannot be undone. Are you absolutely sure?');
+        if (!confirmed) {
+            return;
+        }
+
+        setIsDeletingAccount(true);
+        setDeleteError('');
+
+        try {
+            await api.delete('/account');
+
+            try {
+                await signOut();
+            } catch (signOutError) {
+                console.warn('Sign out after account deletion failed:', signOutError);
+            }
+
+            navigate('/', { replace: true });
+        } catch (error: unknown) {
+            console.error('Error deleting account:', error);
+            if (axios.isAxiosError(error)) {
+                setDeleteError(error.response?.data?.error || 'Failed to delete account. Please try again.');
+            } else {
+                setDeleteError('Failed to delete account. Please try again.');
+            }
+            setIsDeletingAccount(false);
         }
     };
 
@@ -530,6 +568,76 @@ const ProfilePage: React.FC = () => {
                         Log Out
                     </button>
                 </form>
+
+                {/* Danger Zone Section */}
+                <div style={styles.dangerZone}>
+                    <div style={styles.dangerZoneHeader}>
+                        <div style={styles.dangerZoneIconContainer}>
+                            <AlertTriangle size={20} color="#dc2626" />
+                        </div>
+                        <h3 style={styles.dangerZoneTitle}>Danger Zone</h3>
+                    </div>
+                    <div style={styles.dangerZoneContent}>
+                        <p style={styles.dangerZoneWarning}>
+                            Once you delete your account, there is no going back. This action cannot be undone and will permanently remove all your data.
+                        </p>
+                        {deleteError && (
+                            <p style={styles.deleteError}>{deleteError}</p>
+                        )}
+                        {showDeleteConfirm ? (
+                            <div style={styles.deleteConfirmContainer}>
+                                <p style={styles.deleteConfirmMessage}>
+                                    This will permanently remove your Replay account, notes, meditations, and notification history. This cannot be undone.
+                                </p>
+                                <div style={styles.deleteConfirmActions}>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (isDeletingAccount) return;
+                                            setShowDeleteConfirm(false);
+                                            setDeleteError('');
+                                        }}
+                                        style={{
+                                            ...styles.deleteCancelButton,
+                                            ...(isDeletingAccount ? styles.disabledButton : {}),
+                                        }}
+                                        disabled={isDeletingAccount}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleDeleteAccount}
+                                        style={{
+                                            ...styles.deleteConfirmButton,
+                                            ...(isDeletingAccount ? styles.disabledButton : {}),
+                                        }}
+                                        disabled={isDeletingAccount}
+                                    >
+                                        {isDeletingAccount ? 'Deleting…' : 'Yes, delete my account'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isDeletingAccount) return;
+                                    setShowDeleteConfirm(true);
+                                    setDeleteError('');
+                                }}
+                                style={{
+                                    ...styles.deleteAccountButton,
+                                    ...(isDeletingAccount ? styles.disabledButton : {}),
+                                }}
+                                disabled={isDeletingAccount}
+                            >
+                                <Trash2 size={20} color="#dc2626" />
+                                Delete Account
+                            </button>
+                        )}
+                    </div>
+                </div>
 
                         {status && <p style={styles.status}>{status}</p>}
                     </>
@@ -887,8 +995,8 @@ const styles = {
         cursor: 'pointer',
         transition: 'all 0.2s ease',
     },
-    status: { 
-        marginTop: '1rem', 
+    status: {
+        marginTop: '1rem',
         color: '#7c3aed',
         textAlign: 'center' as const,
         fontSize: '0.9rem',
@@ -897,6 +1005,110 @@ const styles = {
         padding: '1rem',
         borderRadius: '12px',
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    },
+    dangerZone: {
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        border: '1px solid #fecaca',
+    },
+    dangerZoneHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        padding: '1rem 1.25rem 0.5rem',
+    },
+    dangerZoneTitle: {
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: '#dc2626',
+        margin: 0,
+    },
+    dangerZoneIconContainer: {
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        backgroundColor: '#fef2f2',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dangerZoneContent: {
+        padding: '0 1.25rem 1.25rem',
+    },
+    dangerZoneWarning: {
+        fontSize: '0.875rem',
+        color: '#dc2626',
+        lineHeight: 1.5,
+        margin: '0 0 1rem 0',
+    },
+    deleteError: {
+        color: '#dc2626',
+        fontSize: '0.875rem',
+        margin: '0 0 0.75rem 0',
+    },
+    deleteConfirmContainer: {
+        border: '1px solid #fecaca',
+        backgroundColor: '#fef2f2',
+        borderRadius: '12px',
+        padding: '1rem',
+    },
+    deleteConfirmMessage: {
+        fontSize: '0.9rem',
+        color: '#dc2626',
+        lineHeight: 1.5,
+        margin: 0,
+    },
+    deleteConfirmActions: {
+        display: 'flex',
+        gap: '0.75rem',
+        marginTop: '1rem',
+    },
+    deleteCancelButton: {
+        flex: 1,
+        padding: '0.75rem',
+        backgroundColor: 'white',
+        border: '1px solid #e5e7eb',
+        borderRadius: '10px',
+        fontWeight: 600,
+        fontSize: '0.95rem',
+        cursor: 'pointer',
+    },
+    deleteConfirmButton: {
+        flex: 1,
+        padding: '0.75rem',
+        backgroundColor: '#dc2626',
+        color: 'white',
+        border: '1px solid #dc2626',
+        borderRadius: '10px',
+        fontWeight: 600,
+        fontSize: '0.95rem',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    deleteAccountButton: {
+        width: '100%',
+        padding: '1rem',
+        backgroundColor: 'white',
+        color: '#dc2626',
+        border: '1px solid #dc2626',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        fontWeight: '600',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        transition: 'all 0.2s',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    },
+    disabledButton: {
+        opacity: 0.7,
+        cursor: 'not-allowed',
     },
 };
 
