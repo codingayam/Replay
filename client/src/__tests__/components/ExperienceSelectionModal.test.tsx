@@ -1,17 +1,13 @@
 import { jest } from '@jest/globals';
+import type { MockedFunction } from 'jest-mock';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type { Note } from '../../types';
 
-const apiGetMock = jest.fn();
+type ApiGetResponse = { data: { notes: Note[] } };
 
-jest.mock('../../utils/api', () => ({
-  __esModule: true,
-  useAuthenticatedApi: () => ({
-    get: apiGetMock,
-  }),
-}));
+const apiGetMock = jest.fn() as MockedFunction<(endpoint: string) => Promise<ApiGetResponse>>;
 
 let ExperienceSelectionModal: typeof import('../../components/ExperienceSelectionModal').default;
 
@@ -50,7 +46,16 @@ describe('ExperienceSelectionModal', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    apiGetMock.mockReset();
     apiGetMock.mockResolvedValue({ data: { notes } });
+    (globalThis as any).__REPLAY_TEST_API_CLIENT__ = {
+      get: apiGetMock,
+    };
+  });
+
+  afterEach(() => {
+    apiGetMock.mockReset();
+    delete (globalThis as any).__REPLAY_TEST_API_CLIENT__;
   });
 
   it('renders notes returned by the API', async () => {
@@ -73,8 +78,8 @@ describe('ExperienceSelectionModal', () => {
 
     await waitFor(() => expect(apiGetMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByLabelText(/Creative App Idea/i));
-    fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
+    fireEvent.click(screen.getByText('Creative App Idea'));
+    fireEvent.click(screen.getByRole('button', { name: /Generate Reflection/i }));
 
     expect(handleSelect).toHaveBeenCalledWith(expect.arrayContaining(['1']));
   });

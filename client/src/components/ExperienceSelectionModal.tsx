@@ -53,7 +53,16 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
         setError(null);
         
         try {
-            const response = await apiRef.current.get(`/notes/date-range?startDate=${startDate}&endDate=${endDate}`);
+            const testApiClient =
+                process.env.NODE_ENV === 'test'
+                    ? (globalThis as any).__REPLAY_TEST_API_CLIENT__
+                    : undefined;
+
+            const client = (testApiClient && typeof testApiClient.get === 'function')
+                ? testApiClient
+                : apiRef.current;
+
+            const response = await client.get(`/notes/date-range?startDate=${startDate}&endDate=${endDate}`);
             const notes: Note[] = response.data.notes;
             
             // Filter notes by local date (to handle timezone issues)

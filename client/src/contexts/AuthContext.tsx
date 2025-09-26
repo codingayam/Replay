@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { validatePasswordStrength } from '../utils/passwordPolicy';
 
@@ -117,13 +117,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const getToken = async (): Promise<string | null> => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error || !session) {
+  const getToken = useCallback(async (): Promise<string | null> => {
+    try {
+      let activeSession = session;
+
+      if (!activeSession) {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('Failed to retrieve auth session:', error);
+          return null;
+        }
+
+        activeSession = data.session ?? null;
+
+        if (activeSession) {
+          setSession(activeSession);
+          setUser(activeSession.user ?? null);
+        }
+      }
+
+      if (!activeSession) {
+        return null;
+      }
+
+      const expiresAtMs = activeSession.expires_at ? activeSession.expires_at * 1000 : null;
+      const needsRefresh = typeof expiresAtMs === 'number' && expiresAtMs - Date.now() < 60_000;
+
+      if (needsRefresh) {
+        const { data, error } = await supabase.auth.refreshSession();
+
+        if (error || !data.session) {
+          console.error('Failed to refresh auth session:', error);
+          return null;
+        }
+
+        activeSession = data.session;
+        setSession(activeSession);
+        setUser(activeSession.user ?? null);
+      }
+
+      return activeSession.access_token ?? null;
+    } catch (error) {
+      console.error('Error retrieving auth token:', error);
       return null;
     }
-    return session.access_token;
-  };
+  }, [session]);
 
   const value = {
     user,

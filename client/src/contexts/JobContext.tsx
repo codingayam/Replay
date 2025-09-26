@@ -61,17 +61,30 @@ export function JobProvider({ children }: { children: ReactNode }) {
   const makeAuthenticatedRequest = useCallback(async (method: string, url: string, data?: any) => {
     try {
       const token = await getToken();
+      if (!token) {
+        console.error('Authentication token unavailable - skipping request');
+        throw new Error('Not authenticated');
+      }
       const config = {
         method,
         url: url, // Remove /api prefix since api instance already has it in baseURL
         data,
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` })
+          Authorization: `Bearer ${token}`
         }
       };
 
-      const response = await api.request(config);
+      const testApiClient =
+        process.env.NODE_ENV === 'test'
+          ? (globalThis as any).__REPLAY_TEST_API_CLIENT__
+          : undefined;
+
+      const client = (testApiClient && typeof testApiClient.request === 'function')
+        ? testApiClient
+        : api;
+
+      const response = await client.request(config);
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {

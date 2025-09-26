@@ -1,18 +1,19 @@
 import { jest } from '@jest/globals';
+import type { MockedFunction } from 'jest-mock';
 import React from 'react';
 import { renderHook } from '@testing-library/react';
 import { act } from 'react';
 
-const requestMock = jest.fn(async () => ({ data: { jobs: [] } })) as jest.MockedFunction<
-  (config: { method: string; url: string; data?: unknown; headers?: Record<string, string> }) => Promise<any>
->;
+type RequestConfig = {
+  method: string;
+  url: string;
+  data?: unknown;
+  headers?: Record<string, string>;
+};
 
-jest.mock('../../utils/api', () => ({
-  __esModule: true,
-  default: {
-    request: (config: any) => requestMock(config),
-  },
-}));
+const requestMock = jest.fn() as MockedFunction<
+  (config: RequestConfig) => Promise<{ data: any }>
+>;
 
 const getTokenMock = jest.fn(async () => 'mock-jwt') as jest.MockedFunction<() => Promise<string | null>>;
 
@@ -47,6 +48,9 @@ describe('JobContext', () => {
 
       return { data: { jobs: [] } };
     });
+    (globalThis as any).__REPLAY_TEST_API_CLIENT__ = {
+      request: requestMock,
+    };
   });
 
   it('uses API client without double /api prefix', async () => {
@@ -64,6 +68,10 @@ describe('JobContext', () => {
 
     const requestConfig = requestMock.mock.calls[1][0];
     expect(requestConfig.url).toBe('/meditate/jobs');
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).__REPLAY_TEST_API_CLIENT__;
   });
 });
 
