@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { AxiosError } from 'axios';
 import Header from '../components/Header';
 import MeditationPlayer from '../components/MeditationPlayer';
 import ReplayModeSelectionModal from '../components/ReplayModeSelectionModal';
@@ -30,7 +31,19 @@ interface SavedMeditation {
     playlist: PlaylistItem[];
     summary?: string;
     is_viewed: boolean;
+    duration?: number;
+    audioExpiresAt?: string | null;
+    audioRemovedAt?: string | null;
+    isAudioAvailable?: boolean;
+    audioSecondsRemaining?: number;
 }
+
+type ApiMeditation = SavedMeditation & {
+    audio_expires_at?: string | null;
+    audio_removed_at?: string | null;
+    is_audio_available?: boolean;
+    audio_seconds_remaining?: number;
+};
 
 const ReflectionsPage: React.FC = () => {
     const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>([]);
@@ -74,7 +87,19 @@ const ReflectionsPage: React.FC = () => {
     const fetchSavedMeditations = async () => {
         try {
             const res = await api.get('/meditations');
-            setSavedMeditations(res.data.meditations || []);
+            const apiMeditations: ApiMeditation[] = (res.data.meditations || []) as ApiMeditation[];
+            const meditations: SavedMeditation[] = apiMeditations.map((meditation) => {
+                const hasPlaylist = Array.isArray(meditation.playlist) && meditation.playlist.length > 0;
+                const normalized: SavedMeditation = {
+                    ...meditation,
+                    audioExpiresAt: meditation.audio_expires_at ?? null,
+                    audioRemovedAt: meditation.audio_removed_at ?? null,
+                    isAudioAvailable: meditation.is_audio_available ?? hasPlaylist,
+                    audioSecondsRemaining: meditation.audio_seconds_remaining ?? 0,
+                };
+                return normalized;
+            });
+            setSavedMeditations(meditations);
         } catch (err) {
             console.error("Error fetching meditations:", err);
         }
@@ -119,11 +144,25 @@ const ReflectionsPage: React.FC = () => {
         setIsLoadingMeditation(true);
         try {
             const res = await api.get(`/meditations/${meditationId}`);
-            setMeditationPlaylist(res.data.playlist);
+            const playlist = res.data?.playlist;
+
+            if (!playlist || playlist.length === 0) {
+                alert('This meditation session is no longer available to play.');
+                fetchSavedMeditations();
+                return;
+            }
+
+            setMeditationPlaylist(playlist);
             setCurrentMeditationId(meditationId);
         } catch (err) {
-            console.error("Error loading meditation:", err);
-            alert('Failed to load meditation. Please try again.');
+            const error = err as AxiosError<{ error?: string }>;
+            if (error?.response?.status === 410) {
+                alert('This meditation session expired after 24 hours and is no longer playable.');
+                fetchSavedMeditations();
+            } else {
+                console.error("Error loading meditation:", err);
+                alert('Failed to load meditation. Please try again.');
+            }
         } finally {
             setIsLoadingMeditation(false);
         }
@@ -291,7 +330,7 @@ const ReflectionsPage: React.FC = () => {
             setGeneratedSummary('');
             setGeneratedPlaylist(null);
 
-        } catch (error: any) {
+        } catch (error) {
             console.error('❌ Failed to start background job:', error);
         }
     };
@@ -384,6 +423,38 @@ const ReflectionsPage: React.FC = () => {
         return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
     };
 
+    const formatAvailabilityMessage = (meditation: SavedMeditation) => {
+        if (!meditation.audioExpiresAt) {
+            return 'Audio unavailable';
+        }
+
+        const expiry = new Date(meditation.audioExpiresAt);
+        if (Number.isNaN(expiry.getTime())) {
+            return meditation.isAudioAvailable ? 'Audio available for a limited time' : 'Audio expired after 24 hours';
+        }
+
+        if (!meditation.isAudioAvailable) {
+            return 'Audio expired after 24 hours';
+        }
+
+        const now = new Date();
+        const diffMs = expiry.getTime() - now.getTime();
+        if (diffMs <= 0) {
+            return 'Audio expired after 24 hours';
+        }
+
+        const diffMinutes = Math.ceil(diffMs / (1000 * 60));
+        if (diffMinutes >= 60) {
+            const diffHours = Math.ceil(diffMinutes / 60);
+            if (diffHours >= 24) {
+                return 'Audio available for 24 hours';
+            }
+            return `Audio available for ~${diffHours} hour${diffHours === 1 ? '' : 's'}`;
+        }
+
+        return `Audio available for ~${diffMinutes} minute${diffMinutes === 1 ? '' : 's'}`;
+    };
+
 
     if (isLoadingMeditation) {
         return (
@@ -447,6 +518,8 @@ const ReflectionsPage: React.FC = () => {
                         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                         .map(meditation => {
                         const isExpanded = expandedSummaries.has(meditation.id);
+                        const isAudioAvailable = meditation.isAudioAvailable !== false;
+                        const availabilityMessage = formatAvailabilityMessage(meditation);
                         return (
                             <div key={meditation.id} style={styles.meditationCard}>
                                 <div style={styles.cardHeader} onClick={() => {
@@ -463,6 +536,9 @@ const ReflectionsPage: React.FC = () => {
                                         <p style={styles.meditationDate}>
                                             {new Date(meditation.created_at).toLocaleDateString()}
                                         </p>
+                                        <span style={isAudioAvailable ? styles.availabilityBadgeActive : styles.availabilityBadgeExpired}>
+                                            {isAudioAvailable ? 'Playable' : 'Expired'}
+                                        </span>
                                     </div>
                                     <div style={styles.expandIcon}>
                                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -474,14 +550,22 @@ const ReflectionsPage: React.FC = () => {
                                 
                                 {isExpanded && meditation.summary && (
                                     <div style={styles.expandedContent}>
+                                        <div style={styles.availabilityNotice}>{availabilityMessage}</div>
+                                        {meditation.duration && (
+                                            <div style={styles.durationText}>
+                                                Duration: {Math.max(1, Math.round((meditation.duration || 0) / 60))} minutes
+                                            </div>
+                                        )}
                                         <p style={styles.summaryText}>{meditation.summary}</p>
                                         <div style={styles.meditationActions}>
-                                            <button 
-                                                onClick={() => handlePlaySavedMeditation(meditation.id)}
-                                                style={styles.playButton}
-                                            >
-                                                Play
-                                            </button>
+                                            {isAudioAvailable && (
+                                                <button 
+                                                    onClick={() => handlePlaySavedMeditation(meditation.id)}
+                                                    style={styles.playButton}
+                                                >
+                                                    Play
+                                                </button>
+                                            )}
                                             <button 
                                                 onClick={() => handleDeleteSavedMeditation(meditation.id)}
                                                 style={styles.deleteButton}
@@ -731,6 +815,28 @@ const styles = {
         color: '#64748b',
         margin: 0,
     },
+    availabilityBadgeActive: {
+        display: 'inline-block',
+        marginTop: '6px',
+        padding: '4px 8px',
+        borderRadius: '999px',
+        backgroundColor: '#dcfce7',
+        color: '#15803d',
+        fontSize: '12px',
+        fontWeight: 500,
+        width: 'fit-content' as const,
+    },
+    availabilityBadgeExpired: {
+        display: 'inline-block',
+        marginTop: '6px',
+        padding: '4px 8px',
+        borderRadius: '999px',
+        backgroundColor: '#fee2e2',
+        color: '#b91c1c',
+        fontSize: '12px',
+        fontWeight: 500,
+        width: 'fit-content' as const,
+    },
     expandIcon: {
         color: '#94a3b8',
         flexShrink: 0,
@@ -750,6 +856,17 @@ const styles = {
         padding: '16px',
         backgroundColor: '#f8fafc',
         animation: 'slideIn 0.2s ease',
+    },
+    availabilityNotice: {
+        fontSize: '13px',
+        color: '#0f172a',
+        margin: '0 0 8px 0',
+        fontWeight: 500,
+    },
+    durationText: {
+        fontSize: '13px',
+        color: '#475569',
+        margin: '0 0 12px 0',
     },
     summaryText: {
         fontSize: '14px',

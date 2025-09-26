@@ -361,7 +361,7 @@ const ProfilePage: React.FC = () => {
                         </div>
                     </div>
                     
-                    <h2 style={styles.profileName}>{profile.name || 'XJ'}</h2>
+                    <h2 style={styles.profileName}>{profile.name || 'Your name'}</h2>
                     <p style={styles.profileDescription}>
                         This information helps create personalized meditations just for you.
                     </p>

@@ -10,6 +10,135 @@ const __dirname = dirname(__filename);
 export function registerMeditationRoutes(deps) {
   const { app, requireAuth, supabase, uuidv4, gemini, replicate, createSilenceBuffer, mergeAudioBuffers, resolveVoiceSettings, processJobQueue } = deps;
 
+  const AUDIO_AVAILABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+  const extractJson = (rawText) => {
+    if (!rawText) return null;
+    try {
+      const trimmed = rawText.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        return JSON.parse(trimmed);
+      }
+
+      const match = trimmed.match(/\{[\s\S]*\}/);
+      if (match) {
+        return JSON.parse(match[0]);
+      }
+    } catch (error) {
+      console.error('Failed to parse Gemini JSON response:', error);
+    }
+    return null;
+  };
+
+  const limitSentences = (text, maxSentences) => {
+    if (!text) return '';
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+    if (!cleaned) return '';
+    const sentences = cleaned.match(/[^.!?]+[.!?]?/g) || [];
+    return sentences.slice(0, maxSentences).join(' ').trim();
+  };
+
+  const computeAudioAvailability = (meditation) => {
+    const expiresAtRaw = meditation?.audio_expires_at;
+    const removedAtRaw = meditation?.audio_removed_at;
+    const storagePath = meditation?.audio_storage_path;
+
+    if (!storagePath || !expiresAtRaw) {
+      return { isAvailable: false, secondsRemaining: 0, expiresAt: null };
+    }
+
+    const expiresAt = new Date(expiresAtRaw);
+    if (Number.isNaN(expiresAt.getTime())) {
+      return { isAvailable: false, secondsRemaining: 0, expiresAt: null };
+    }
+
+    const removedAt = removedAtRaw ? new Date(removedAtRaw) : null;
+    const now = new Date();
+    const isExpired = expiresAt <= now || (removedAt && !Number.isNaN(removedAt.getTime()));
+    const secondsRemaining = isExpired ? 0 : Math.floor((expiresAt.getTime() - now.getTime()) / 1000);
+
+    return {
+      isAvailable: !isExpired,
+      secondsRemaining,
+      expiresAt,
+      storagePath
+    };
+  };
+
+  const removeMeditationAudio = async (meditationId, userId, storagePath) => {
+    if (!storagePath) {
+      return;
+    }
+
+    try {
+      if (!storagePath.startsWith('default/')) {
+        await supabase.storage.from('meditations').remove([storagePath]);
+      }
+    } catch (storageError) {
+      console.error('Failed to remove expired meditation audio:', storageError);
+    }
+
+    try {
+      await supabase
+        .from('meditations')
+        .update({
+          audio_storage_path: null,
+          audio_removed_at: new Date().toISOString(),
+          playlist: []
+        })
+        .eq('id', meditationId)
+        .eq('user_id', userId);
+    } catch (updateError) {
+      console.error('Failed to mark meditation audio as removed:', updateError);
+    }
+  };
+
+  const generateTitleAndSummary = async (script, reflectionType, fallbackTitle) => {
+    const prompt = `
+      You will receive the full script of a guided meditation session.
+      Analyse the content and respond with a concise JSON object using this shape:
+      {
+        "title": "Short, evocative meditation title",
+        "summary": "A short overview, maximum three sentences."
+      }
+
+      Requirements:
+      - The title must be fewer than 12 words.
+      - The summary must not exceed three sentences and should stay under 350 characters.
+      - Capture the core themes, tone, and intent of the meditation.
+      - Do not include markdown, quotes, or escape sequences.
+
+      Meditation script:
+      """
+      ${script}
+      """
+    `;
+
+    try {
+      const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const result = await model.generateContent(prompt);
+      const rawText = result.response.text();
+      const parsed = extractJson(rawText) || {};
+
+      const titleCandidate = typeof parsed.title === 'string' ? parsed.title.trim() : '';
+      const summaryCandidate = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+
+      const resolvedTitle = titleCandidate || fallbackTitle;
+      const resolvedSummary = limitSentences(summaryCandidate, 3) || `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on your recent reflections.`;
+
+      return {
+        title: resolvedTitle,
+        summary: resolvedSummary
+      };
+    } catch (error) {
+      console.error('Failed to generate meditation title/summary:', error);
+      return {
+        title: fallbackTitle,
+        summary: `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on your recent reflections.`
+      };
+    }
+  };
+
   // ============= REFLECTION & MEDITATION API ROUTES =============
 
   // POST /api/reflect/suggest - Get suggested experiences for reflection
@@ -212,10 +341,13 @@ export function registerMeditationRoutes(deps) {
       // Handle Day meditation - use pre-recorded audio file
       if (reflectionType === 'Day') {
         try {
+          const storagePath = 'default/day-meditation.wav';
+          const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
+
           // Generate signed URL for the default day meditation file
           const { data: urlData, error: urlError } = await supabase.storage
             .from('meditations')
-            .createSignedUrl('default/day-meditation.wav', 3600 * 24); // 24 hours expiry
+            .createSignedUrl(storagePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
 
           if (urlError) {
             console.error('Error generating signed URL for day meditation:', urlError);
@@ -223,11 +355,19 @@ export function registerMeditationRoutes(deps) {
           }
 
           // Create playlist with the real audio file
-          const defaultPlaylist = [
+          const playbackPlaylist = [
             {
               type: 'speech',
               audioUrl: urlData.signedUrl,
               duration: 146000 // 2:26 duration in milliseconds
+            }
+          ];
+
+          const storedPlaylist = [
+            {
+              type: 'speech',
+              audioUrl: storagePath,
+              duration: 146000
             }
           ];
 
@@ -237,12 +377,15 @@ export function registerMeditationRoutes(deps) {
             .insert({
               user_id: userId,
               title: title || 'Daily Reflection',
-              playlist: defaultPlaylist,
+              playlist: storedPlaylist,
               note_ids: noteIds,
               script: 'Pre-recorded daily meditation',
               duration: 146,
               summary: 'Daily reflection meditation',
-              time_of_reflection: new Date().toISOString()
+              time_of_reflection: new Date().toISOString(),
+              audio_storage_path: storagePath,
+              audio_expires_at: audioExpiresAt.toISOString(),
+              audio_removed_at: null
             })
             .select()
             .single();
@@ -256,7 +399,8 @@ export function registerMeditationRoutes(deps) {
           return res.json({
             success: true,
             meditation: savedMeditation,
-            playlist: defaultPlaylist
+            playlist: playbackPlaylist,
+            expiresAt: audioExpiresAt.toISOString()
           });
 
         } catch (error) {
@@ -363,6 +507,13 @@ export function registerMeditationRoutes(deps) {
         const result = await model.generateContent(scriptPrompt);
         const script = result.response.text();
 
+        const fallbackTitle = title || `Meditation - ${new Date().toLocaleDateString()}`;
+        const { title: generatedTitle, summary: generatedSummary } = await generateTitleAndSummary(
+          script,
+          reflectionType,
+          fallbackTitle
+        );
+
         // Save meditation script to file for logging
         try {
           const logsDir = join(__dirname, 'logs', 'meditation-scripts');
@@ -423,6 +574,10 @@ export function registerMeditationRoutes(deps) {
 
         // Declare playlist variable in proper scope
         let playlist = null;
+        let storagePlaylist = null;
+        let signedPlaybackPlaylist = null;
+        let audioStoragePath = null;
+        let audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
 
         try {
           // Process all segments and create individual audio files
@@ -503,31 +658,45 @@ export function registerMeditationRoutes(deps) {
         
           // Upload the final continuous audio file to Supabase
           const finalAudioFileName = `${meditationId}-complete.wav`;
-        
+          const finalAudioStoragePath = `${userId}/${finalAudioFileName}`;
+
           const { data: audioUpload, error: audioError } = await supabase.storage
             .from('meditations')
-            .upload(`${userId}/${finalAudioFileName}`, finalAudioBuffer, {
+            .upload(finalAudioStoragePath, finalAudioBuffer, {
               contentType: 'audio/wav',
               upsert: false
             });
 
-          let audioUrl = null;
+          let signedAudioUrl = null;
           if (!audioError) {
             const { data: urlData } = await supabase.storage
               .from('meditations')
-              .createSignedUrl(`${userId}/${finalAudioFileName}`, 3600 * 24 * 30); // 30 days
-          
-            audioUrl = urlData?.signedUrl || `${userId}/${finalAudioFileName}`;
+              .createSignedUrl(finalAudioStoragePath, 3600 * 24);
+
+            signedAudioUrl = urlData?.signedUrl || null;
+            audioStoragePath = finalAudioStoragePath;
             console.log(`✅ Complete meditation audio uploaded: ${finalAudioFileName}`);
           } else {
             console.error('❌ Final audio upload error:', audioError);
           }
-        
+
           // Create simplified playlist with single continuous audio
           playlist = [{
             type: 'continuous',
-            audioUrl: audioUrl,
+            audioUrl: signedAudioUrl,
             duration: 0 // Will be calculated from actual audio duration
+          }];
+
+          storagePlaylist = [{
+            type: 'continuous',
+            audioUrl: finalAudioStoragePath,
+            duration: 0
+          }];
+
+          signedPlaybackPlaylist = [{
+            type: 'continuous',
+            audioUrl: signedAudioUrl,
+            duration: 0
           }];
 
           // Clean up temp files
@@ -542,6 +711,16 @@ export function registerMeditationRoutes(deps) {
           console.error('❌ Audio processing failed:', processingError);
           // Create fallback playlist for error cases
           playlist = [{
+            type: 'continuous',
+            audioUrl: null,
+            duration: 0
+          }];
+          storagePlaylist = [{
+            type: 'continuous',
+            audioUrl: null,
+            duration: 0
+          }];
+          signedPlaybackPlaylist = [{
             type: 'continuous',
             audioUrl: null,
             duration: 0
@@ -594,7 +773,27 @@ export function registerMeditationRoutes(deps) {
             audioUrl: null,
             duration: 0
           }];
+          storagePlaylist = [{
+            type: 'continuous',
+            audioUrl: null,
+            duration: 0
+          }];
+          signedPlaybackPlaylist = [{
+            type: 'continuous',
+            audioUrl: null,
+            duration: 0
+          }];
         }
+
+        const playlistDurationMs = totalDuration * 1000;
+        storagePlaylist = (storagePlaylist || []).map(item => ({
+          ...item,
+          duration: playlistDurationMs
+        }));
+        signedPlaybackPlaylist = (signedPlaybackPlaylist || []).map(item => ({
+          ...item,
+          duration: playlistDurationMs
+        }));
 
         // Save meditation to database
         const { data: meditation, error: saveError } = await supabase
@@ -602,13 +801,16 @@ export function registerMeditationRoutes(deps) {
           .insert([{
             id: meditationId,
             user_id: userId,
-            title: title || `Meditation - ${new Date().toLocaleDateString()}`,
+            title: generatedTitle,
             script,
-            playlist,
+            playlist: storagePlaylist,
             note_ids: noteIds,
             duration: totalDuration,
-            summary: `Generated ${reflectionType.toLowerCase()} meditation from personal experiences`,
-            time_of_reflection: new Date().toISOString()
+            summary: generatedSummary,
+            time_of_reflection: new Date().toISOString(),
+            audio_storage_path: audioStoragePath,
+            audio_expires_at: audioStoragePath ? audioExpiresAt.toISOString() : null,
+            audio_removed_at: null
           }])
           .select()
           .single();
@@ -625,9 +827,11 @@ export function registerMeditationRoutes(deps) {
         }
 
         res.status(201).json({ 
-          playlist: meditation.playlist,
-          summary: meditation.summary,
-          meditation // Keep for debugging
+          playlist: signedPlaybackPlaylist,
+          summary: generatedSummary,
+          title: generatedTitle,
+          expiresAt: audioStoragePath ? audioExpiresAt.toISOString() : null,
+          meditation
         });
 
       } catch (aiError) {
@@ -659,7 +863,18 @@ export function registerMeditationRoutes(deps) {
         return res.status(500).json({ error: 'Failed to fetch meditations' });
       }
 
-      res.json({ meditations });
+      const enrichedMeditations = (meditations || []).map(meditation => {
+        const availability = computeAudioAvailability(meditation);
+
+        return {
+          ...meditation,
+          playlist: availability.isAvailable ? meditation.playlist : [],
+          is_audio_available: availability.isAvailable,
+          audio_seconds_remaining: availability.isAvailable ? availability.secondsRemaining : 0
+        };
+      });
+
+      res.json({ meditations: enrichedMeditations });
     } catch (error) {
       console.error('Meditations fetch error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -686,18 +901,8 @@ export function registerMeditationRoutes(deps) {
 
       // Delete associated audio files from storage
       try {
-        if (meditation.playlist && Array.isArray(meditation.playlist)) {
-          const audioFiles = meditation.playlist
-            .filter(item => item.type === 'speech' && item.url)
-            .map(item => {
-              // Extract file path from URL
-              const urlParts = item.url.split('/');
-              return urlParts.slice(-2).join('/'); // Get last two parts (userId/fileName)
-            });
-
-          if (audioFiles.length > 0) {
-            await supabase.storage.from('meditations').remove(audioFiles);
-          }
+        if (meditation.audio_storage_path && !meditation.audio_storage_path.startsWith('default/')) {
+          await supabase.storage.from('meditations').remove([meditation.audio_storage_path]);
         }
       } catch (storageError) {
         console.error('Storage deletion error:', storageError);
@@ -770,7 +975,44 @@ export function registerMeditationRoutes(deps) {
         return res.status(404).json({ error: 'Meditation not found' });
       }
 
-      res.json(meditation);
+      const availability = computeAudioAvailability(meditation);
+
+      if (!availability.isAvailable) {
+        if (availability.storagePath && !meditation.audio_removed_at) {
+          await removeMeditationAudio(meditationId, userId, availability.storagePath);
+        }
+        return res.status(410).json({ error: 'Meditation audio is no longer available', isExpired: true });
+      }
+
+      const ttlSeconds = Math.max(1, Math.min(availability.secondsRemaining, 3600));
+
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('meditations')
+        .createSignedUrl(availability.storagePath, ttlSeconds);
+
+      if (urlError || !urlData?.signedUrl) {
+        console.error('Error generating signed URL for meditation playback:', urlError);
+        return res.status(500).json({ error: 'Failed to generate playback URL' });
+      }
+
+      const storedPlaylist = Array.isArray(meditation.playlist) ? meditation.playlist : [];
+      const playbackPlaylist = storedPlaylist.map(item => {
+        if ((item.audioUrl && typeof item.audioUrl === 'string') || !('audioUrl' in item)) {
+          return {
+            ...item,
+            audioUrl: urlData.signedUrl
+          };
+        }
+        return item;
+      });
+
+      res.json({
+        ...meditation,
+        playlist: playbackPlaylist,
+        is_audio_available: true,
+        audio_seconds_remaining: availability.secondsRemaining,
+        audio_expires_at: meditation.audio_expires_at
+      });
     } catch (error) {
       console.error('Get meditation error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -1203,6 +1445,10 @@ export function registerMeditationRoutes(deps) {
       }
 
       const radioId = uuidv4();
+      const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
+      let storagePlaylist = [];
+      let playbackPlaylist = [];
+      let audioStoragePath = null;
 
       // Get selected notes and user profile
       const { data: notes, error: notesError } = await supabase
@@ -1274,6 +1520,13 @@ export function registerMeditationRoutes(deps) {
         console.log('🎙️ Generating radio show script...');
         const result = await model.generateContent(radioScriptPrompt);
         const script = result.response.text();
+
+        const fallbackTitle = title || 'Radio Show Replay';
+        const { title: generatedTitle, summary: generatedSummary } = await generateTitleAndSummary(
+          script,
+          'radio reflection',
+          fallbackTitle
+        );
 
         console.log('📄 Generated script preview:');
         console.log('=' .repeat(80));
@@ -1446,7 +1699,7 @@ export function registerMeditationRoutes(deps) {
           // Generate signed URL for the uploaded file
           const { data: urlData, error: urlError } = await supabase.storage
             .from('meditations')
-            .createSignedUrl(filePath, 3600 * 24); // 24 hours expiry
+            .createSignedUrl(filePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
 
           if (urlError) {
             console.error('❌ [TTS] Error generating signed URL:', urlError);
@@ -1462,6 +1715,15 @@ export function registerMeditationRoutes(deps) {
               duration: duration * 60 * 1000 // Convert minutes to milliseconds
             }
           ];
+          storagePlaylist = [
+            {
+              type: 'speech',
+              audioUrl: filePath,
+              duration: duration * 60 * 1000
+            }
+          ];
+          playbackPlaylist = playlist;
+          audioStoragePath = filePath;
           console.log('✅ [TTS] Playlist created with duration:', duration * 60 * 1000, 'ms');
           console.log('🎉 [TTS] Deep Infra TTS process completed successfully!');
 
@@ -1477,13 +1739,16 @@ export function registerMeditationRoutes(deps) {
           .insert({
             id: radioId, // Add the missing radioId
             user_id: userId,
-            title: title || 'Radio Show Replay',
-            playlist: playlist,
+            title: generatedTitle,
+            playlist: storagePlaylist,
             note_ids: noteIds,
             script: script,
             duration: duration,
-            summary: 'Personalized radio talk show replay',
-            time_of_reflection: new Date().toISOString()
+            summary: generatedSummary,
+            time_of_reflection: new Date().toISOString(),
+            audio_storage_path: audioStoragePath,
+            audio_expires_at: audioStoragePath ? audioExpiresAt.toISOString() : null,
+            audio_removed_at: null
           })
           .select()
           .single();
@@ -1497,7 +1762,10 @@ export function registerMeditationRoutes(deps) {
 
         res.json({
           radioShow: savedRadioShow,
-          playlist: playlist
+          playlist: playbackPlaylist,
+          summary: generatedSummary,
+          title: generatedTitle,
+          expiresAt: audioStoragePath ? audioExpiresAt.toISOString() : null
         });
 
       } catch (aiError) {

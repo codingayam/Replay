@@ -142,7 +142,8 @@ function createSupabaseMock({
     meditations: [],
     jobs: [],
     uploads: [],
-    signedUrls: []
+    signedUrls: [],
+    removals: []
   };
 
   return {
@@ -156,6 +157,11 @@ function createSupabaseMock({
           },
           async upload(path, buffer) {
             state.uploads.push({ bucket, path, size: buffer.length });
+            return { data: {}, error: null };
+          },
+          async remove(paths) {
+            state.removals = state.removals || [];
+            state.removals.push({ bucket, paths });
             return { data: {}, error: null };
           }
         };
@@ -234,6 +240,14 @@ test('POST /api/meditate serves pre-recorded day meditation', async (t) => {
   assert.equal(resWrapper.statusCode, 200);
   assert.equal(resWrapper.json.success, true);
   assert.equal(resWrapper.json.meditation.title, 'Daily Reflection');
+  assert.ok(resWrapper.json.expiresAt);
+  assert.ok(Array.isArray(resWrapper.json.playlist));
+  assert.equal(resWrapper.json.playlist[0].audioUrl, 'signed://meditations/default/day-meditation.wav');
+
+  const storedMeditation = supabase.state.meditations[0];
+  assert.equal(storedMeditation.audio_storage_path, 'default/day-meditation.wav');
+  assert.ok(storedMeditation.audio_expires_at);
+  assert.equal(storedMeditation.playlist[0].audioUrl, 'default/day-meditation.wav');
 });
 
 test('POST /api/meditate generates custom night meditation and uploads audio', async (t) => {
@@ -296,6 +310,12 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   assert.equal(resWrapper.statusCode, 201);
   assert.equal(supabase.state.uploads.length, 1);
   assert.equal(replicateCalls.length >= 1, true);
+
+  const storedMeditation = supabase.state.meditations[0];
+  assert.ok(storedMeditation.audio_storage_path);
+  assert.ok(storedMeditation.audio_expires_at);
+  assert.equal(Array.isArray(resWrapper.json.playlist), true);
+  assert.equal(typeof resWrapper.json.summary, 'string');
 });
 
 test('POST /api/replay/radio generates show and playlist', async (t) => {
@@ -353,6 +373,12 @@ test('POST /api/replay/radio generates show and playlist', async (t) => {
   assert.equal(resWrapper.statusCode, 200);
   assert.equal(supabase.state.uploads.length, 1);
   assert.equal(resWrapper.json.radioShow.user_id, DEFAULT_USER);
+  assert.ok(resWrapper.json.title);
+  assert.ok(resWrapper.json.summary);
+  const storedRadioShow = supabase.state.meditations[0];
+  assert.ok(storedRadioShow.audio_storage_path);
+  assert.ok(storedRadioShow.audio_expires_at);
+  assert.equal(storedRadioShow.playlist[0].audioUrl, `${DEFAULT_USER}/radio_radio-1.wav`);
 });
 
 test('POST /api/meditate/jobs creates background job and triggers queue processing', async (t) => {

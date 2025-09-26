@@ -52,6 +52,79 @@ function resolveVoiceSettings(reflectionType) {
   return { voice: 'af_nicole', speed: 0.7 };
 }
 
+const AUDIO_AVAILABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const extractJson = (rawText) => {
+  if (!rawText) return null;
+  try {
+    const trimmed = rawText.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      return JSON.parse(trimmed);
+    }
+
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+  } catch (error) {
+    console.error('Failed to parse Gemini JSON response (worker):', error);
+  }
+  return null;
+};
+
+const limitSentences = (text, maxSentences) => {
+  if (!text) return '';
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  const sentences = cleaned.match(/[^.!?]+[.!?]?/g) || [];
+  return sentences.slice(0, maxSentences).join(' ').trim();
+};
+
+async function generateTitleAndSummary(script, reflectionType, fallbackTitle) {
+  const prompt = `
+    You will receive the full script of a guided meditation or reflection session.
+    Analyse it and respond with JSON only in this shape:
+    {
+      "title": "Short descriptive title",
+      "summary": "At most three sentences summarising the session."
+    }
+
+    Requirements:
+    - The title must be fewer than 12 words.
+    - The summary must be under 350 characters and no more than three sentences.
+    - Do not include markdown or extraneous commentary.
+
+    Script:
+    """
+    ${script}
+    """
+  `;
+
+  try {
+    const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const result = await model.generateContent(prompt);
+    const rawText = result.response.text();
+    const parsed = extractJson(rawText) || {};
+
+    const titleCandidate = typeof parsed.title === 'string' ? parsed.title.trim() : '';
+    const summaryCandidate = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+
+    const resolvedTitle = titleCandidate || fallbackTitle;
+    const resolvedSummary = limitSentences(summaryCandidate, 3) || `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on personal reflections.`;
+
+    return {
+      title: resolvedTitle,
+      summary: resolvedSummary
+    };
+  } catch (error) {
+    console.error('Worker failed to generate meditation title/summary:', error);
+    return {
+      title: fallbackTitle,
+      summary: `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on personal reflections.`
+    };
+  }
+}
+
 // FFmpeg path resolution utility for Railway deployment
 function getFFmpegPath() {
   try {
@@ -178,17 +251,19 @@ async function processMeditationJob(job) {
 
     // Handle Day meditation with pre-recorded audio
     if (reflectionType === 'Day') {
+      const storagePath = 'default/day-meditation.wav';
+      const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
       const { data: urlData, error: urlError } = await supabase.storage
         .from('meditations')
-        .createSignedUrl('default/day-meditation.wav', 3600 * 24);
+        .createSignedUrl(storagePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
 
       if (urlError) {
         throw new Error(`Failed to load day meditation: ${urlError.message}`);
       }
 
-      const defaultPlaylist = [{
+      const storagePlaylist = [{
         type: 'speech',
-        audioUrl: urlData.signedUrl,
+        audioUrl: storagePath,
         duration: 146000
       }];
 
@@ -198,12 +273,15 @@ async function processMeditationJob(job) {
         .insert({
           user_id: userId,
           title: 'Daily Reflection',
-          playlist: defaultPlaylist,
+          playlist: storagePlaylist,
           note_ids: noteIds,
           script: 'Pre-recorded daily meditation',
           duration: 146,
           summary: 'Daily reflection meditation',
-          time_of_reflection: new Date().toISOString()
+          time_of_reflection: new Date().toISOString(),
+          audio_storage_path: storagePath,
+          audio_expires_at: audioExpiresAt.toISOString(),
+          audio_removed_at: null
         })
         .select()
         .single();
@@ -279,9 +357,16 @@ async function processMeditationJob(job) {
     const scriptPrompt = getScriptPrompt(reflectionType);
     const result = await model.generateContent(scriptPrompt);
     const script = result.response.text();
+    const fallbackTitle = `${reflectionType} Reflection - ${new Date().toLocaleDateString()}`;
+    const { title: generatedTitle, summary: generatedSummary } = await generateTitleAndSummary(
+      script,
+      reflectionType,
+      fallbackTitle
+    );
 
     // Generate TTS and process audio (simplified for background processing)
     const meditationId = uuidv4();
+    const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
     const segments = script.split(/\[PAUSE=(\d+)s\]/);
     const tempDir = path.join(__dirname, 'temp', meditationId);
     
@@ -349,26 +434,27 @@ async function processMeditationJob(job) {
     const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
     const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
     const finalAudioFileName = `${meditationId}-complete.wav`;
+    const storagePath = `${userId}/${finalAudioFileName}`;
     
     const { data: audioUpload, error: audioError } = await supabase.storage
       .from('meditations')
-      .upload(`${userId}/${finalAudioFileName}`, finalAudioBuffer, {
+      .upload(storagePath, finalAudioBuffer, {
         contentType: 'audio/wav',
         upsert: false
       });
 
-    let audioUrl = null;
+    let signedAudioUrl = null;
     if (!audioError) {
       const { data: urlData } = await supabase.storage
         .from('meditations')
-        .createSignedUrl(`${userId}/${finalAudioFileName}`, 3600 * 24 * 30);
-      audioUrl = urlData?.signedUrl || `${userId}/${finalAudioFileName}`;
+        .createSignedUrl(storagePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
+      signedAudioUrl = urlData?.signedUrl || null;
     }
     
     // Create playlist and calculate duration
-    const playlist = [{
+    const storagePlaylist = [{
       type: 'continuous',
-      audioUrl: audioUrl,
+      audioUrl: audioError ? null : storagePath,
       duration: 0
     }];
 
@@ -393,19 +479,28 @@ async function processMeditationJob(job) {
       totalDuration = 300; // Default 5 minutes in seconds
     }
 
+    const playlistDurationMs = totalDuration * 1000;
+    const playlistForDb = storagePlaylist.map(item => ({
+      ...item,
+      duration: playlistDurationMs
+    }));
+
     // Save meditation to database
     const { data: meditation, error: saveError } = await supabase
       .from('meditations')
       .insert([{
         id: meditationId,
         user_id: userId,
-        title: `${reflectionType} Reflection - ${new Date().toLocaleDateString()}`,
+        title: generatedTitle,
         script,
-        playlist,
+        playlist: playlistForDb,
         note_ids: noteIds,
         duration: totalDuration,
-        summary: `Generated ${reflectionType.toLowerCase()} meditation from personal experiences`,
-        time_of_reflection: new Date().toISOString()
+        summary: generatedSummary,
+        time_of_reflection: new Date().toISOString(),
+        audio_storage_path: audioError ? null : storagePath,
+        audio_expires_at: audioError ? null : audioExpiresAt.toISOString(),
+        audio_removed_at: null
       }])
       .select()
       .single();
