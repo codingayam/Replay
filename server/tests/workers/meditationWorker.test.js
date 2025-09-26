@@ -124,10 +124,6 @@ test('processMeditationJob completes day reflection jobs', async (t) => {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'key';
 
   const supabaseProxy = createSupabaseProxy();
-  const notificationModule = await import('../../../services/notificationService.js');
-  const sendPushMock = t.mock.method(notificationModule.default, 'sendPushNotification', async () => {});
-  t.mock.method(notificationModule.default, 'logEvent', async () => {});
-
   const { supabase } = await import('../../middleware/auth.js');
   const originalFrom = supabase.from.bind(supabase);
   const originalStorage = supabase.storage;
@@ -155,7 +151,6 @@ test('processMeditationJob completes day reflection jobs', async (t) => {
   assert.equal(supabaseProxy.state.jobUpdates.length, 2);
   assert.equal(supabaseProxy.state.meditations.length, 1);
   assert.equal(supabaseProxy.state.storageSigned.length, 1);
-  assert.equal(sendPushMock.mock.calls.length, 1);
 });
 
 test('processJobQueue claims pending job and delegates to worker', async (t) => {
@@ -177,9 +172,6 @@ test('processJobQueue claims pending job and delegates to worker', async (t) => 
       }
     ]
   });
-
-  const notificationModule = await import('../../../services/notificationService.js');
-  t.mock.method(notificationModule.default, 'sendPushNotification', async () => {});
 
   const { supabase } = await import('../../middleware/auth.js');
   const originalFrom = supabase.from.bind(supabase);

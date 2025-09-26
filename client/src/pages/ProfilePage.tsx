@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, Bell, Settings, AlertTriangle, Trash2 } from 'lucide-react';
+import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, AlertTriangle, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 import SupabaseImage from '../components/SupabaseImage';
 import { useAuth } from '../contexts/AuthContext';
-import { useNotifications } from '../hooks/useNotifications';
-import NotificationSettings from '../components/NotificationSettings';
 import { useResponsive } from '../hooks/useResponsive';
 
 interface Profile {
@@ -29,7 +27,6 @@ const ProfilePage: React.FC = () => {
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [tagInput, setTagInput] = useState('');
     const [focusedField, setFocusedField] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'profile' | 'notifications'>('profile');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [deleteError, setDeleteError] = useState('');
@@ -37,7 +34,6 @@ const ProfilePage: React.FC = () => {
     const api = useAuthenticatedApi();
     const { signOut } = useAuth();
     const navigate = useNavigate();
-    const notifications = useNotifications();
     const { isDesktop } = useResponsive();
 
     useEffect(() => {
@@ -333,39 +329,10 @@ const ProfilePage: React.FC = () => {
     return (
         <div style={isDesktop ? styles.desktopContainer : styles.container}>
             {/* Mobile Header and Tabs */}
-            {!isDesktop && (
-                <>
-                    <Header title="Profile" />
-                    {/* Tab Navigation */}
-                    <div style={styles.tabContainer}>
-                        <button
-                            style={{
-                                ...styles.tab,
-                                ...(activeTab === 'profile' ? styles.activeTab : {})
-                            }}
-                            onClick={() => setActiveTab('profile')}
-                        >
-                            <UserIcon size={16} />
-                            Profile
-                        </button>
-                        <button
-                            style={{
-                                ...styles.tab,
-                                ...(activeTab === 'notifications' ? styles.activeTab : {})
-                            }}
-                            onClick={() => setActiveTab('notifications')}
-                        >
-                            <Bell size={16} />
-                            Notifications
-                        </button>
-                    </div>
-                </>
-            )}
+            {!isDesktop && <Header title="Profile" />}
 
             <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
-                {/* Desktop always shows profile, mobile shows based on tab */}
-                {(isDesktop || activeTab === 'profile') && (
-                    <>
+                {/* Profile content */}
                         {/* Profile Card */}
                         <div style={styles.profileCard}>
                     <div style={styles.profileImageContainer} onClick={handleProfilePictureClick}>
@@ -587,7 +554,7 @@ const ProfilePage: React.FC = () => {
                         {showDeleteConfirm ? (
                             <div style={styles.deleteConfirmContainer}>
                                 <p style={styles.deleteConfirmMessage}>
-                                    This will permanently remove your Replay account, notes, meditations, and notification history. This cannot be undone.
+                                    This will permanently remove your Replay account, notes, and meditations. This cannot be undone.
                                 </p>
                                 <div style={styles.deleteConfirmActions}>
                                     <button
@@ -640,19 +607,6 @@ const ProfilePage: React.FC = () => {
                 </div>
 
                         {status && <p style={styles.status}>{status}</p>}
-                    </>
-                )}
-
-                {/* Mobile Notifications Tab Content */}
-                {!isDesktop && activeTab === 'notifications' && (
-                    <NotificationSettings
-                        preferences={notifications.preferences}
-                        onUpdatePreferences={notifications.updatePreferences}
-                        onTestNotification={notifications.testNotification}
-                        isLoading={notifications.isLoading}
-                        error={notifications.error}
-                    />
-                )}
 
             </div>
         </div>
@@ -682,32 +636,6 @@ const styles = {
         backgroundColor: 'transparent',
         borderRadius: '0',
         minHeight: 'auto',
-    },
-    tabContainer: {
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '0.5rem',
-        padding: '1rem',
-        backgroundColor: '#f8f9ff',
-    },
-    tab: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        padding: '0.75rem 1.5rem',
-        backgroundColor: 'white',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        cursor: 'pointer',
-        fontSize: '14px',
-        fontWeight: '500' as const,
-        color: '#6b7280',
-        transition: 'all 0.2s',
-    },
-    activeTab: {
-        backgroundColor: '#7c3aed',
-        color: 'white',
-        borderColor: '#7c3aed',
     },
     contentContainer: {
         padding: '1rem',

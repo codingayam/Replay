@@ -25,10 +25,6 @@
   "categories": ["productivity", "lifestyle", "wellness"],
   "lang": "en-US",
   "dir": "ltr",
-  "safari_web_push": {
-    "webPushID": "web.com.replay.app",
-    "webServiceURL": "https://api.replay.com/push"
-  },
   "applinks": {
     "apps": [],
     "details": [

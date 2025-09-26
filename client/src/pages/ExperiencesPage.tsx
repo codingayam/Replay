@@ -23,7 +23,6 @@ import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
-import { useNotifications } from '../hooks/useNotifications';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -73,15 +72,6 @@ const ExperiencesPage: React.FC = () => {
     const api = useAuthenticatedApi();
     const { user } = useAuth();
     const { isDesktop } = useResponsive();
-    const { permission, requestPermission } = useNotifications();
-
-    const maybePromptForNotifications = () => {
-        if (permission === 'default') {
-            requestPermission().catch((err) => {
-                console.error('Notification permission request failed:', err);
-            });
-        }
-    };
     
     // Calculate recommended duration based on number of experiences
     const calculateRecommendedDuration = (experienceCount: number): number => {
@@ -109,7 +99,6 @@ const ExperiencesPage: React.FC = () => {
     }, []);
 
     const handleSaveAudioNote = async (blob: Blob) => {
-        maybePromptForNotifications();
         const formData = new FormData();
         formData.append('audio', blob, 'recording.wav');
         formData.append('localTimestamp', new Date().toISOString());
@@ -125,7 +114,6 @@ const ExperiencesPage: React.FC = () => {
     };
 
     const handleSavePhotoNote = async (file: File, caption: string) => {
-        maybePromptForNotifications();
         const formData = new FormData();
         formData.append('image', file);
         formData.append('caption', caption);
@@ -146,7 +134,6 @@ const ExperiencesPage: React.FC = () => {
     };
 
     const handleSaveTextNote = async (title: string, content: string, image?: File) => {
-        maybePromptForNotifications();
         const formData = new FormData();
         formData.append('title', title);
         formData.append('content', content);

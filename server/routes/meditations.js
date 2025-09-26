@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function registerMeditationRoutes(deps) {
-  const { app, requireAuth, supabase, uuidv4, gemini, replicate, notificationService, createSilenceBuffer, mergeAudioBuffers, resolveVoiceSettings, processJobQueue } = deps;
+  const { app, requireAuth, supabase, uuidv4, gemini, replicate, createSilenceBuffer, mergeAudioBuffers, resolveVoiceSettings, processJobQueue } = deps;
 
   // ============= REFLECTION & MEDITATION API ROUTES =============
 
@@ -1494,23 +1494,6 @@ export function registerMeditationRoutes(deps) {
         }
 
         console.log(`🎙️ Radio show generated successfully: ${savedRadioShow.id}`);
-
-        // Send push notification for radio show completion
-        try {
-          await notificationService.sendPushNotification(userId, {
-            type: 'meditation_ready',
-            title: 'Your Radio Show is Ready!',
-            body: 'Your personalized talk show replay is ready to listen. Tap to tune in now.',
-            data: {
-              meditationId: savedRadioShow.id,
-              type: 'radio',
-              url: `/reflections?meditationId=${savedRadioShow.id}`
-            }
-          });
-          console.log(`📱 Push notification sent for completed radio show ${savedRadioShow.id}`);
-        } catch (notificationError) {
-          console.error(`Failed to send push notification for radio show ${savedRadioShow.id}:`, notificationError);
-        }
 
         res.json({
           radioShow: savedRadioShow,

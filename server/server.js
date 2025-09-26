@@ -16,10 +16,6 @@ import mime from 'mime';
 import Replicate from 'replicate';
 import { promisify } from 'util';
 import { exec, execSync } from 'child_process';
-import moment from 'moment-timezone';
-import cron from 'node-cron';
-import { getMetricsSnapshot, recordTokenRegistration } from './observability/metrics.js';
-import notificationConfig from '../config/notifications.js';
 import { concatenateAudioBuffers, generateSilenceBuffer } from './utils/audio.js';
 
 const execAsync = promisify(exec);
@@ -112,10 +108,8 @@ const __dirname = dirname(__filename);
 
 // Import middleware
 import { requireAuth, optionalAuth, supabase } from './middleware/auth.js';
-import notificationService from '../services/notificationService.js';
 import { registerNotesRoutes } from './routes/notes.js';
 import { registerMeditationRoutes } from './routes/meditations.js';
-import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerStatsRoutes } from './routes/stats.js';
@@ -141,8 +135,6 @@ const PORT = process.env.PORT || 3001;
 
 // Background job processing system
 let jobWorkerInterval = null;
-let retryQueueInterval = null;
-const NOTIFICATION_METRICS_TOKEN = process.env.NOTIFICATION_METRICS_TOKEN;
 
 // Background worker functions
 async function processMeditationJob(job) {
@@ -229,23 +221,6 @@ async function processMeditationJob(job) {
           meditation_id: savedMeditation.id
         })
         .eq('id', job.id);
-
-      // Send push notification for meditation completion
-      try {
-        await notificationService.sendPushNotification(userId, {
-          type: 'meditation_ready',
-          title: 'Your Daily Meditation is Ready!',
-          body: 'Your daily reflection meditation is ready to listen. Tap to begin your mindful moment.',
-          data: {
-            meditationId: savedMeditation.id,
-            jobId: job.id,
-            url: `/reflections?meditationId=${savedMeditation.id}`
-          }
-        });
-        console.log(`📱 Push notification sent for completed day meditation job ${job.id}`);
-      } catch (notificationError) {
-        console.error(`Failed to send push notification for job ${job.id}:`, notificationError);
-      }
 
       console.log(`✅ Day meditation job ${job.id} completed successfully`);
       return;
@@ -451,30 +426,6 @@ async function processMeditationJob(job) {
         meditation_id: meditation.id
       })
       .eq('id', job.id);
-
-    // Send push notification for meditation completion
-    try {
-      const meditationTypeMap = {
-        'Night': 'evening reflection',
-        'Ideas': 'insights meditation',
-        'Day': 'daily meditation'
-      };
-      const friendlyType = meditationTypeMap[reflectionType] || 'meditation';
-
-      await notificationService.sendPushNotification(userId, {
-        type: 'meditation_ready',
-        title: 'Your Meditation is Ready!',
-        body: `Your ${friendlyType} is ready to listen. Tap to begin your mindful journey.`,
-        data: {
-          meditationId: meditation.id,
-          jobId: job.id,
-          url: `/reflections?meditationId=${meditation.id}`
-        }
-      });
-      console.log(`📱 Push notification sent for completed ${reflectionType} meditation job ${job.id}`);
-    } catch (notificationError) {
-      console.error(`Failed to send push notification for job ${job.id}:`, notificationError);
-    }
 
     console.log(`✅ Background job ${job.id} completed successfully`);
 
@@ -709,22 +660,10 @@ registerMeditationRoutes({
   uuidv4,
   gemini,
   replicate,
-  notificationService,
   createSilenceBuffer,
   mergeAudioBuffers,
   resolveVoiceSettings,
   processJobQueue
-});
-
-registerNotificationRoutes({
-  app,
-  requireAuth,
-  supabase,
-  notificationService,
-  getMetricsSnapshot,
-  recordTokenRegistration,
-  moment,
-  notificationMetricsToken: NOTIFICATION_METRICS_TOKEN
 });
 
 // Error handling middleware
@@ -747,60 +686,15 @@ const startSchedulers = (protocol) => {
   console.log(`🔗 API base: ${protocol}://localhost:${PORT}/api`);
 
   console.log('⚙️ Starting background job worker...');
-  jobWorkerInterval = setInterval(processJobQueue, 10000);
 
-  console.log('📅 Starting scheduled notifications cron...');
-  cron.schedule(notificationConfig.scheduler.cronExpression, () => {
-    notificationService.sendScheduledNotifications().catch(error => {
-      console.error('Scheduled notifications job failed:', error);
-    });
-  });
-
-  console.log('🔧 Starting token cleanup cron...');
-  cron.schedule(notificationConfig.scheduler.tokenCleanupCron, () => {
-    notificationService.cleanupExpiredTokens().catch(error => {
-      console.error('Token cleanup job failed:', error);
-    });
-  });
-
-  console.log('💤 Starting inactivity check cron...');
-  cron.schedule(notificationConfig.scheduler.inactivityCheckCron, () => {
-    notificationService.sendInactivityReminders().catch(error => {
-      console.error('Inactivity check job failed:', error);
-    });
-  });
-
-  console.log('🧹 Scheduling notification history prune...');
-  cron.schedule('0 3 * * *', () => {
-    notificationService.pruneNotificationHistory().catch(error => {
-      console.error('Notification history prune job failed:', error);
-    });
-  });
-
-  if (retryQueueInterval) {
-    clearInterval(retryQueueInterval);
+  if (jobWorkerInterval) {
+    clearInterval(jobWorkerInterval);
   }
 
-  retryQueueInterval = setInterval(() => {
-    notificationService.processRetryQueue().catch(error => {
-      console.error('Retry queue processing failed:', error);
-    });
-  }, 60000);
-
-  notificationService.processRetryQueue().catch(error => {
-    console.error('Initial retry queue processing failed:', error);
-  });
+  jobWorkerInterval = setInterval(processJobQueue, 10000);
 
   processJobQueue().catch(error => {
     console.error('Initial job queue check failed:', error);
-  });
-
-  notificationService.cleanupExpiredTokens().catch(error => {
-    console.error('Initial token cleanup failed:', error);
-  });
-
-  notificationService.pruneNotificationHistory().catch(error => {
-    console.error('Initial notification history prune failed:', error);
   });
 };
 
@@ -841,10 +735,6 @@ const shutdownSchedulers = () => {
     jobWorkerInterval = null;
   }
 
-  if (retryQueueInterval) {
-    clearInterval(retryQueueInterval);
-    retryQueueInterval = null;
-  }
 };
 
 process.on('SIGTERM', shutdownSchedulers);

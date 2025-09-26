@@ -179,17 +179,6 @@ function createSupabaseMock({
   };
 }
 
-function createNotificationService() {
-  const pushes = [];
-  return {
-    pushes,
-    async sendPushNotification(userId, payload) {
-      pushes.push({ userId, payload });
-    },
-    logEvent: async () => {}
-  };
-}
-
 function createSilenceBuffer() {
   return Buffer.alloc(44, 0);
 }
@@ -220,8 +209,6 @@ test('POST /api/meditate serves pre-recorded day meditation', async (t) => {
     ]
   });
 
-  const notificationService = createNotificationService();
-
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
@@ -229,7 +216,6 @@ test('POST /api/meditate serves pre-recorded day meditation', async (t) => {
     uuidv4: () => 'meditation-1',
     gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
     replicate: { run: async () => { throw new Error('should not run replicate for day meditation'); } },
-    notificationService,
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
@@ -258,8 +244,6 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
     ],
     profile: { name: 'Alex', values: 'Growth', mission: 'Inspire', thinking_about: 'Reflection' }
   });
-
-  const notificationService = createNotificationService();
 
   const modelScript = 'Take a breath.[PAUSE=2s]Continue your reflection.';
 
@@ -294,7 +278,6 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
     uuidv4: () => 'meditation-night',
     gemini,
     replicate,
-    notificationService,
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
@@ -315,7 +298,7 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   assert.equal(replicateCalls.length >= 1, true);
 });
 
-test('POST /api/replay/radio generates show and queues notification', async (t) => {
+test('POST /api/replay/radio generates show and playlist', async (t) => {
   const { app, routes } = createMockApp();
   const supabase = createSupabaseMock({
     notes: [
@@ -323,8 +306,6 @@ test('POST /api/replay/radio generates show and queues notification', async (t) 
     ],
     profile: { name: 'Jordan', values: 'Curiosity', mission: 'Explore', thinking_about: 'Innovation' }
   });
-
-  const notificationService = createNotificationService();
 
   const radioScript = 'Speaker 1: Welcome listeners!\nSpeaker 2: Great to be here!';
   const gemini = {
@@ -354,7 +335,6 @@ test('POST /api/replay/radio generates show and queues notification', async (t) 
     uuidv4: () => 'radio-1',
     gemini,
     replicate,
-    notificationService,
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
@@ -372,7 +352,6 @@ test('POST /api/replay/radio generates show and queues notification', async (t) 
 
   assert.equal(resWrapper.statusCode, 200);
   assert.equal(supabase.state.uploads.length, 1);
-  assert.equal(notificationService.pushes.length, 1);
   assert.equal(resWrapper.json.radioShow.user_id, DEFAULT_USER);
 });
 
@@ -398,7 +377,6 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
     uuidv4: () => 'job-meditation',
     gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
     replicate: { run: async () => ({ url: () => new URL('https://example.com/file.wav') }) },
-    notificationService: createNotificationService(),
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,

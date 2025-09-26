@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Calendar, Brain, User, Flame, Target, Bell } from 'lucide-react';
+import { Calendar, Brain, User, Flame, Target } from 'lucide-react';
 import RecentActivityCalendar from './RecentActivityCalendar';
 import CalendarModal from './CalendarModal';
 import { useAuthenticatedApi } from '../utils/api';
@@ -19,7 +19,6 @@ const DesktopSidebar: React.FC = () => {
     { path: '/experiences', icon: Calendar, label: 'Experiences' },
     { path: '/reflections', icon: Brain, label: 'Reflections' },
     { path: '/profile', icon: User, label: 'Profile' },
-    { path: '/notifications', icon: Bell, label: 'Notifications' },
   ];
 
   // Fetch stats data

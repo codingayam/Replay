@@ -97,10 +97,6 @@ export function registerAccountRoutes({ app, requireAuth, supabase }) {
     }
 
     const tableDeletions = [
-      { table: 'scheduled_notifications', column: 'user_id' },
-      { table: 'notification_history', column: 'user_id' },
-      { table: 'notification_devices', column: 'user_id' },
-      { table: 'notification_preferences', column: 'user_id' },
       { table: 'meditation_jobs', column: 'user_id' },
       { table: 'meditations', column: 'user_id' },
       { table: 'notes', column: 'user_id' },

@@ -19,7 +19,6 @@ export default {
       tsconfig: '<rootDir>/tsconfig.jest.json',
     },
   },
-  transformIgnorePatterns: ['node_modules/(?!(firebase|@firebase)/)'],
   collectCoverageFrom: [
     'src/**/*.(ts|tsx)',
     '!src/**/*.d.ts',
@@ -30,8 +29,6 @@ export default {
     '\\.(css|less|scss)$': 'identity-obj-proxy',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^../utils/api$': '<rootDir>/src/__mocks__/api.ts',
-    '^../lib/firebase$': '<rootDir>/src/__mocks__/firebase.ts',
-    '^firebase/messaging$': '<rootDir>/src/__mocks__/firebase-messaging.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
   extensionsToTreatAsEsm: ['.ts', '.tsx'],

@@ -9,21 +9,13 @@
     "build": "npm run install:clean && cd client && npm run build",
     "build:client": "cd client && npm run build",
     "install:clean": "cd client && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps",
-    "deploy": "vercel --prod",
-    "push:generate-sw-config": "node scripts/generate-firebase-sw-config.mjs",
-    "push:setup-icons": "python3 scripts/generate-apns-iconset.py",
-    "push:manifest": "node scripts/generate-apns-manifest.mjs",
-    "push:sign": "scripts/sign-apns-push-package.sh keys/AuthKey_JV68F75LTV.p8",
-    "push:archive": "scripts/archive-apns-push-package.sh",
-    "push:validate": "node scripts/validate-apns-package.mjs"
+    "deploy": "vercel --prod"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.55.0",
     "busboy": "^1.6.0",
-    "firebase-admin": "^13.5.0",
     "jsonwebtoken": "^9.0.2",
-    "moment-timezone": "^0.6.0",
     "multer": "^2.0.2",
     "replicate": "^1.0.1",
     "uuid": "^11.1.0"

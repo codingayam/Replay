@@ -10,10 +10,6 @@
   "scope": "/",
   "lang": "en-US",
   "dir": "ltr",
-  "safari_web_push": {
-    "webPushID": "web.com.replay.app",
-    "webServiceURL": "https://api.replay.com/push"
-  },
   "categories": ["productivity", "lifestyle", "wellness"],
   "icons": [
     {

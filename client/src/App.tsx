@@ -4,7 +4,6 @@ import { JobProvider } from './contexts/JobContext';
 import ExperiencesPage from './pages/ExperiencesPage';
 import ReflectionsPage from './pages/ReflectionsPage';
 import ProfilePage from './pages/ProfilePage';
-import NotificationsPage from './pages/NotificationsPage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -14,9 +13,6 @@ import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import BottomTabNavigation from './components/BottomTabNavigation';
 import DesktopLayout from './components/DesktopLayout';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
-import NotificationPermissionBanner from './components/NotificationPermissionBanner';
-import ServiceWorkerUpdateBanner from './components/ServiceWorkerUpdateBanner';
-import { useNotifications } from './hooks/useNotifications';
 import { useResponsive } from './hooks/useResponsive';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 
@@ -113,17 +109,6 @@ function App() {
               </SignedIn>
             }
           />
-          <Route
-            path="/notifications"
-            element={
-              <SignedIn>
-                <AppLayout>
-                  <NotificationsPage />
-                </AppLayout>
-              </SignedIn>
-            }
-          />
-          
           {/* Default Routes */}
           <Route 
             path="/" 
@@ -162,25 +147,11 @@ function App() {
 
 // Layout component for authenticated app pages
 function AppLayout({ children }: { children: React.ReactNode }) {
-  const notifications = useNotifications();
   const { isDesktop } = useResponsive();
 
   if (isDesktop) {
     return (
       <>
-        {notifications.hasServiceWorkerUpdate && (
-          <ServiceWorkerUpdateBanner
-            version={notifications.serviceWorkerVersion}
-            onApplyUpdate={notifications.applyPendingServiceWorker}
-          />
-        )}
-        {notifications.showPermissionBanner && (
-          <NotificationPermissionBanner
-            onRequestPermission={notifications.requestPermission}
-            onDismiss={notifications.dismissBanner}
-            supportMessage={notifications.supportReason}
-          />
-        )}
         <BackgroundJobIndicator />
         <DesktopLayout>
           {children}
@@ -192,19 +163,6 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   // Mobile layout
   return (
     <>
-      {notifications.hasServiceWorkerUpdate && (
-        <ServiceWorkerUpdateBanner
-          version={notifications.serviceWorkerVersion}
-          onApplyUpdate={notifications.applyPendingServiceWorker}
-        />
-      )}
-      {notifications.showPermissionBanner && (
-        <NotificationPermissionBanner
-          onRequestPermission={notifications.requestPermission}
-          onDismiss={notifications.dismissBanner}
-          supportMessage={notifications.supportReason}
-        />
-      )}
       <BackgroundJobIndicator />
       <main style={styles.main}>
         {children}
