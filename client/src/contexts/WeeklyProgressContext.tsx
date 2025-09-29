@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
 import type { AxiosError } from 'axios';
 import { useAuthenticatedApi } from '../utils/api';
+import { useAuth } from './AuthContext';
 import type { WeeklyProgressResponse, WeeklyProgressSummary, WeeklyProgressThresholds } from '../hooks/useWeeklyProgress';
 
 interface WeeklyProgressState {
@@ -24,6 +25,7 @@ interface WeeklyProgressProviderProps {
 export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ children, autoRefresh = true, clientOverride }) => {
   const authenticatedApi = useAuthenticatedApi();
   const api = clientOverride ?? authenticatedApi;
+  const { user, loading: authLoading } = useAuth();
   const [state, setState] = useState<Omit<WeeklyProgressState, 'refresh'>>({
     summary: null,
     weekStart: null,
@@ -33,9 +35,38 @@ export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ 
     error: null
   });
 
+  const resetState = useCallback((isLoading: boolean) => {
+    setState((prev) => {
+      if (
+        prev.summary === null &&
+        prev.weekStart === null &&
+        prev.timezone === null &&
+        prev.thresholds === null &&
+        prev.error === null &&
+        prev.isLoading === isLoading
+      ) {
+        return prev;
+      }
+
+      return {
+        summary: null,
+        weekStart: null,
+        timezone: null,
+        thresholds: null,
+        isLoading,
+        error: null
+      };
+    });
+  }, []);
+
   const refresh = useCallback(async () => {
+    if (!user) {
+      resetState(false);
+      return;
+    }
+
     try {
-      setState((prev) => ({ ...prev, isLoading: true }));
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
       const response = await api.get('/progress/week');
       const data = response.data as WeeklyProgressResponse;
 
@@ -52,13 +83,20 @@ export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ 
       const message = axiosError.response?.data?.error || axiosError.message || 'Failed to load weekly progress';
       setState((prev) => ({ ...prev, isLoading: false, error: message }));
     }
-  }, [api]);
+  }, [api, resetState, user]);
 
   useEffect(() => {
-    if (autoRefresh) {
-      refresh();
+    if (!autoRefresh || authLoading) {
+      return;
     }
-  }, [autoRefresh, refresh]);
+
+    if (!user) {
+      resetState(false);
+      return;
+    }
+
+    refresh();
+  }, [autoRefresh, authLoading, refresh, resetState, user]);
 
   const value = useMemo<WeeklyProgressState>(
     () => ({

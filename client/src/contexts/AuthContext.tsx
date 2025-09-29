@@ -63,7 +63,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return;
     }
 
-    const allowedOrigins = ['https://replay.agrix.ai'];
+    const allowedOrigins = [
+      'https://replay.agrix.ai',
+      'https://localhost:5173',
+      'http://localhost:5173'
+    ];
     const currentOrigin = window.location.origin;
 
     if (!allowedOrigins.includes(currentOrigin)) {

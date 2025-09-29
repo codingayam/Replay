@@ -38,11 +38,33 @@ const renderWithProvider = (client: { get: (url: string) => Promise<{ data: Week
   );
 
 describe('useWeeklyProgress hook', () => {
+  const setTestAuth = (overrides: Record<string, any> = {}) => {
+    const defaultGetToken = jest.fn<() => Promise<string | null>>();
+    defaultGetToken.mockResolvedValue('test-token');
+
+    const authStub = {
+      user: { id: 'user-1' },
+      session: {},
+      loading: false,
+      signUp: jest.fn(),
+      signIn: jest.fn(),
+      signOut: jest.fn(),
+      getToken: defaultGetToken,
+      signInWithGoogle: jest.fn(),
+      ...overrides
+    };
+
+    (globalThis as any).__REPLAY_TEST_AUTH__ = authStub;
+    return authStub;
+  };
+
   afterEach(() => {
     cleanup();
+    delete (globalThis as any).__REPLAY_TEST_AUTH__;
   });
 
   it('fetches and exposes weekly progress data', async () => {
+    setTestAuth();
     const apiGet = jest.fn();
     (apiGet as any).mockResolvedValue({
         data: {
@@ -82,5 +104,24 @@ describe('useWeeklyProgress hook', () => {
     expect(screen.getByTestId('unlocked')).toHaveTextContent('yes');
     expect(screen.getByTestId('threshold')).toHaveTextContent('3');
     expect(apiGet).toHaveBeenCalledWith('/progress/week');
+  });
+
+  it('skips fetching when there is no authenticated user', async () => {
+    const nullTokenMock = jest.fn<() => Promise<string | null>>();
+    nullTokenMock.mockResolvedValue(null);
+    setTestAuth({ user: null, getToken: nullTokenMock, loading: false });
+
+    const apiGet = jest.fn();
+    const mockClient = {
+      get: apiGet
+    } as unknown as { get: (url: string) => Promise<{ data: WeeklyProgressResponse }> };
+
+    renderWithProvider(mockClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('journals')).toHaveTextContent('0');
+    });
+
+    expect(apiGet).not.toHaveBeenCalled();
   });
 });
