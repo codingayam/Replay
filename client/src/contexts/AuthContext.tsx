@@ -77,8 +77,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const synchronizeOneSignal = async (oneSignal: any) => {
       try {
         if (user?.id) {
-          if (typeof oneSignal.login === 'function') {
-            await oneSignal.login(user.id);
+          const addAlias = oneSignal?.User?.addAlias;
+          const aliasAlreadySet = oneSignal?.User?.aliases?.external_id === user.id;
+
+          if (typeof addAlias === 'function' && !aliasAlreadySet) {
+            await addAlias('external_id', user.id);
           }
 
           const permissionState = oneSignal?.Notifications?.permissionNative ?? oneSignal?.Notifications?.permission;
@@ -95,8 +98,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         } else {
           hasRequestedPushPermission.current = false;
-          if (typeof oneSignal.logout === 'function') {
-            await oneSignal.logout();
+          const removeAlias = oneSignal?.User?.removeAlias;
+          if (typeof removeAlias === 'function') {
+            await removeAlias('external_id');
           }
         }
       } catch (error) {

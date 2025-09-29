@@ -93,7 +93,6 @@ This is a full-stack reflection and journaling application called "Replay" with:
 - **components/TimePeriodModal.tsx**: Time period selector for reflection generation
 - **components/DurationSelectorModal.tsx**: Duration selector for meditation length
 - **components/ExperienceSelectionModal.tsx**: Experience selection interface for reflections
-- **components/ReplayModeSelectionModal.tsx**: Selection for Replay Radio meditation types
 - **components/ReflectionTypeModal.tsx**: Selection for standard meditation types
 - **components/MeditationSubTypeModal.tsx**: Sub-type selection for meditation variants
 - **components/MeditationGeneratingModal.tsx**: Progress indicator with background job status
@@ -129,7 +128,6 @@ This is a full-stack reflection and journaling application called "Replay" with:
   - `DELETE /api/notes/:id` - Delete user's note
   - `GET/POST /api/profile` - User profile management
   - `POST /api/profile/image` - Upload profile image (with file upload)
-  - `POST /api/reflect/suggest` - Get suggested experiences for user's reflection
   - `POST /api/reflect/summary` - Generate reflection summary for user
   - `POST /api/meditate` - Generate meditation synchronously (deprecated)
   - `POST /api/meditate/jobs` - Create background meditation generation job
@@ -137,13 +135,11 @@ This is a full-stack reflection and journaling application called "Replay" with:
   - `GET /api/meditate/jobs/:id` - Get specific job status
   - `POST /api/meditate/jobs/:id/retry` - Retry failed job
   - `DELETE /api/meditate/jobs/:id` - Delete job
-  - `POST /api/replay/radio` - Generate Replay Radio meditation
   - `GET /api/meditations` - Get user's saved meditations
   - `GET /api/meditations/:id` - Get specific meditation by ID
   - `PUT /api/meditations/:id/mark-viewed` - Mark meditation as viewed
   - `POST /api/meditations/:id/complete` - Mark meditation as completed
   - `DELETE /api/meditations/:id` - Delete user's meditation
-  - `GET /api/meditations/day/default` - Get default day meditation playlist
   - `GET /api/stats/streak` - Get user's meditation streak count
   - `GET /api/stats/monthly` - Get current month's meditation count
   - `GET /api/stats/calendar` - Get all meditation dates for calendar display

@@ -1,5 +1,135 @@
+import {
+  buildProgressSummary as buildProgressSummaryDefault,
+  incrementJournalProgress as incrementJournalProgressDefault,
+  decrementJournalProgress as decrementJournalProgressDefault,
+  loadUserTimezone as loadUserTimezoneDefault
+} from '../utils/weeklyProgress.js';
+import {
+  onesignalEnabled,
+  updateOneSignalUser,
+  sendOneSignalEvent,
+} from '../utils/onesignal.js';
+
 export function registerNotesRoutes(deps) {
   const { app, requireAuth, supabase, upload, uuidv4, gemini } = deps;
+  const { weeklyProgressOverrides = {} } = deps;
+
+  const loadUserTimezone = weeklyProgressOverrides.loadUserTimezone ?? loadUserTimezoneDefault;
+  const incrementJournalProgress = weeklyProgressOverrides.incrementJournalProgress ?? incrementJournalProgressDefault;
+  const decrementJournalProgress = weeklyProgressOverrides.decrementJournalProgress ?? decrementJournalProgressDefault;
+  const buildProgressSummary = weeklyProgressOverrides.buildProgressSummary ?? buildProgressSummaryDefault;
+
+  async function updateProgressAfterJournal({ userId, noteDate }) {
+    try {
+      const timezone = await loadUserTimezone({ supabase, userId });
+      const updatedProgress = await incrementJournalProgress({
+        supabase,
+        userId,
+        noteDate,
+        timezone,
+        eventTimestamp: new Date().toISOString()
+      });
+
+      return buildProgressSummary(updatedProgress, timezone);
+    } catch (error) {
+      console.error('Weekly progress update failed after journal creation:', error);
+      return null;
+    }
+  }
+
+  async function reduceProgressAfterJournal({ userId, noteDate }) {
+    try {
+      const timezone = await loadUserTimezone({ supabase, userId });
+      const updatedProgress = await decrementJournalProgress({
+        supabase,
+        userId,
+        noteDate,
+        timezone,
+        eventTimestamp: new Date().toISOString()
+      });
+
+      return buildProgressSummary(updatedProgress, timezone);
+    } catch (error) {
+      console.error('Weekly progress update failed after journal deletion:', error);
+      return null;
+    }
+  }
+
+  function toUnixSeconds(isoDate) {
+    if (!isoDate) return undefined;
+    const timestamp = new Date(isoDate).getTime();
+    if (Number.isNaN(timestamp)) return undefined;
+    return Math.floor(timestamp / 1000);
+  }
+
+  async function syncJournalTags({ userId, weeklyProgress, noteDate }) {
+    if (!onesignalEnabled()) {
+      return;
+    }
+
+    const tags = {};
+
+    if (noteDate === null) {
+      tags.last_note_ts = '';
+    } else if (noteDate) {
+      const timestampSeconds = toUnixSeconds(noteDate);
+      if (timestampSeconds !== undefined) {
+        tags.last_note_ts = timestampSeconds;
+      }
+    }
+
+    if (weeklyProgress) {
+      if (typeof weeklyProgress.unlocksRemaining === 'number') {
+        tags.journals_to_unlock = Math.max(weeklyProgress.unlocksRemaining, 0);
+      }
+
+      if (typeof weeklyProgress.meditationsUnlocked === 'boolean') {
+        tags.meditation_unlocked = weeklyProgress.meditationsUnlocked ? 'true' : 'false';
+      }
+    }
+
+    if (Object.keys(tags).length === 0) {
+      return;
+    }
+
+    try {
+      await updateOneSignalUser(userId, tags);
+    } catch (error) {
+      console.error('Failed to update OneSignal journal tags:', error);
+    }
+  }
+
+  async function emitJournalEvent({ userId, eventName, payload }) {
+    if (!onesignalEnabled()) {
+      return;
+    }
+
+    try {
+      await sendOneSignalEvent(userId, eventName, payload);
+    } catch (error) {
+      console.error(`Failed to send OneSignal event ${eventName}:`, error);
+    }
+  }
+
+  async function fetchLatestNoteDate(userId) {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('date')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error('Failed to fetch latest note timestamp:', error);
+      return undefined;
+    }
+
+    if (!data || data.length === 0) {
+      return undefined;
+    }
+
+    return data[0]?.date ?? undefined;
+  }
 
   // ============= NOTES API ROUTES =============
 
@@ -347,7 +477,31 @@ export function registerNotesRoutes(deps) {
         return res.status(500).json({ error: 'Failed to create note' });
       }
 
-      res.status(201).json({ note: noteData });
+      const weeklyProgress = await updateProgressAfterJournal({
+        userId,
+        noteDate: noteData.date
+      });
+
+      await syncJournalTags({
+        userId,
+        weeklyProgress,
+        noteDate: noteData.date,
+      });
+
+      await emitJournalEvent({
+        userId,
+        eventName: 'note_logged',
+        payload: {
+          note_id: noteId,
+          note_type: 'audio',
+          timestamp: noteData.date,
+        },
+      });
+
+      res.status(201).json({
+        note: noteData,
+        weeklyProgress
+      });
     } catch (error) {
       console.error('Audio note creation error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -495,7 +649,31 @@ export function registerNotesRoutes(deps) {
         return res.status(500).json({ error: 'Failed to create photo note' });
       }
 
-      res.status(201).json({ note: noteData });
+      const weeklyProgress = await updateProgressAfterJournal({
+        userId,
+        noteDate: noteData.date
+      });
+
+      await syncJournalTags({
+        userId,
+        weeklyProgress,
+        noteDate: noteData.date,
+      });
+
+      await emitJournalEvent({
+        userId,
+        eventName: 'note_logged',
+        payload: {
+          note_id: noteId,
+          note_type: 'photo',
+          timestamp: noteData.date,
+        },
+      });
+
+      res.status(201).json({
+        note: noteData,
+        weeklyProgress
+      });
     } catch (error) {
       console.error('Photo note creation error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -615,7 +793,31 @@ export function registerNotesRoutes(deps) {
         return res.status(500).json({ error: 'Failed to create text note' });
       }
 
-      res.status(201).json({ note: noteData });
+      const weeklyProgress = await updateProgressAfterJournal({
+        userId,
+        noteDate: noteData.date
+      });
+
+      await syncJournalTags({
+        userId,
+        weeklyProgress,
+        noteDate: noteData.date,
+      });
+
+      await emitJournalEvent({
+        userId,
+        eventName: 'note_logged',
+        payload: {
+          note_id: noteId,
+          note_type: 'text',
+          timestamp: noteData.date,
+        },
+      });
+
+      res.status(201).json({
+        note: noteData,
+        weeklyProgress
+      });
     } catch (error) {
       console.error('Text note creation error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -668,7 +870,33 @@ export function registerNotesRoutes(deps) {
         return res.status(500).json({ error: 'Failed to delete note' });
       }
 
-      res.json({ message: 'Note deleted successfully' });
+      const weeklyProgress = await reduceProgressAfterJournal({
+        userId,
+        noteDate: note.date
+      });
+
+      let latestNoteDate;
+      if (onesignalEnabled()) {
+        latestNoteDate = await fetchLatestNoteDate(userId);
+      }
+
+      await syncJournalTags({
+        userId,
+        weeklyProgress,
+        noteDate: latestNoteDate ?? null,
+      });
+
+      await emitJournalEvent({
+        userId,
+        eventName: 'note_deleted',
+        payload: {
+          note_id: noteId,
+          note_type: note.type,
+          timestamp: note.date,
+        },
+      });
+
+      res.json({ message: 'Note deleted successfully', weeklyProgress });
     } catch (error) {
       console.error('Note deletion error:', error);
       res.status(500).json({ error: 'Internal server error' });

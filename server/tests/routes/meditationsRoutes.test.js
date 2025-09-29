@@ -207,25 +207,63 @@ function stubFsForAudio(t) {
   t.mock.method(fs, 'rmSync', () => {});
 }
 
-test('POST /api/meditate serves pre-recorded day meditation', async (t) => {
+test('POST /api/meditate generates custom day meditation and uploads audio', async (t) => {
   const { app, routes } = createMockApp();
   const supabase = createSupabaseMock({
     notes: [
-      { id: 'note-1', transcript: 'Ref', title: 'Day Note', type: 'text', date: '2025-01-01' }
-    ]
+      { id: 'note-1', transcript: 'Morning gratitude reflection', title: 'Sunrise', type: 'text', date: '2025-01-01' }
+    ],
+    profile: { name: 'Jordan', values: 'Curiosity', mission: 'Grow', thinking_about: 'Momentum' }
   });
+
+  const modelScript = 'Breathe in.[PAUSE=2s]Set your intention.';
+
+  const gemini = {
+    getGenerativeModel: () => ({
+      generateContent: async () => ({ response: { text: () => modelScript } })
+    })
+  };
+
+  const replicateCalls = [];
+  const replicate = {
+    async run(model, input) {
+      replicateCalls.push({ model, input });
+      return {
+        url: () => new URL('https://example.com/day-audio.wav')
+      };
+    }
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+
+  stubFsForAudio(t);
+
+  const transcodeCalls = [];
+  const transcodeAudio = async (buffer) => {
+    transcodeCalls.push(buffer.length);
+    return {
+      buffer,
+      contentType: 'audio/mpeg',
+      extension: 'mp3'
+    };
+  };
 
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
     supabase,
-    uuidv4: () => 'meditation-1',
-    gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
-    replicate: { run: async () => { throw new Error('should not run replicate for day meditation'); } },
+    uuidv4: () => 'meditation-day',
+    gemini,
+    replicate,
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
-    processJobQueue: async () => {}
+    processJobQueue: async () => {},
+    transcodeAudio
   });
 
   const route = routes.post.find((r) => r.path === '/api/meditate');
@@ -234,20 +272,22 @@ test('POST /api/meditate serves pre-recorded day meditation', async (t) => {
   const resWrapper = createMockResponse();
   await runHandlers(route.handlers, {
     auth: null,
-    body: { noteIds: ['note-1'], reflectionType: 'Day', duration: 10 }
+    body: { noteIds: ['note-1'], reflectionType: 'Day', duration: 8, title: 'Morning Momentum' }
   }, resWrapper);
 
-  assert.equal(resWrapper.statusCode, 200);
-  assert.equal(resWrapper.json.success, true);
-  assert.equal(resWrapper.json.meditation.title, 'Daily Reflection');
-  assert.ok(resWrapper.json.expiresAt);
+  assert.equal(resWrapper.statusCode, 201);
+  assert.equal(transcodeCalls.length, 1);
   assert.ok(Array.isArray(resWrapper.json.playlist));
-  assert.equal(resWrapper.json.playlist[0].audioUrl, 'signed://meditations/default/day-meditation.wav');
+  assert.equal(resWrapper.json.playlist[0].audioUrl.startsWith('signed://'), true);
+  assert.equal(supabase.state.uploads.length, 1);
+  assert.ok(replicateCalls.length >= 1);
 
   const storedMeditation = supabase.state.meditations[0];
-  assert.equal(storedMeditation.audio_storage_path, 'default/day-meditation.wav');
+  assert.ok(storedMeditation.audio_storage_path);
+  assert.equal(storedMeditation.audio_storage_path.endsWith('.mp3'), true);
+  assert.equal(storedMeditation.audio_storage_path.endsWith('.mp3'), true);
   assert.ok(storedMeditation.audio_expires_at);
-  assert.equal(storedMeditation.playlist[0].audioUrl, 'default/day-meditation.wav');
+  assert.equal(typeof storedMeditation.summary, 'string');
 });
 
 test('POST /api/meditate generates custom night meditation and uploads audio', async (t) => {
@@ -285,6 +325,16 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
 
   stubFsForAudio(t);
 
+  const transcodeCalls = [];
+  const transcodeAudio = async (buffer) => {
+    transcodeCalls.push(buffer.length);
+    return {
+      buffer,
+      contentType: 'audio/mpeg',
+      extension: 'mp3'
+    };
+  };
+
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
@@ -295,7 +345,8 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
-    processJobQueue: async () => {}
+    processJobQueue: async () => {},
+    transcodeAudio
   });
 
   const route = routes.post.find((r) => r.path === '/api/meditate');
@@ -308,6 +359,7 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   }, resWrapper);
 
   assert.equal(resWrapper.statusCode, 201);
+  assert.equal(transcodeCalls.length, 1);
   assert.equal(supabase.state.uploads.length, 1);
   assert.equal(replicateCalls.length >= 1, true);
 
@@ -316,69 +368,6 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   assert.ok(storedMeditation.audio_expires_at);
   assert.equal(Array.isArray(resWrapper.json.playlist), true);
   assert.equal(typeof resWrapper.json.summary, 'string');
-});
-
-test('POST /api/replay/radio generates show and playlist', async (t) => {
-  const { app, routes } = createMockApp();
-  const supabase = createSupabaseMock({
-    notes: [
-      { id: 'note-1', transcript: 'Idea alpha', title: 'Idea', type: 'text', date: '2025-03-01' }
-    ],
-    profile: { name: 'Jordan', values: 'Curiosity', mission: 'Explore', thinking_about: 'Innovation' }
-  });
-
-  const radioScript = 'Speaker 1: Welcome listeners!\nSpeaker 2: Great to be here!';
-  const gemini = {
-    getGenerativeModel: () => ({
-      generateContent: async () => ({ response: { text: () => radioScript } })
-    })
-  };
-
-  const replicate = {
-    async run() {
-      return { url: () => new URL('https://example.com/segment.wav') };
-    }
-  };
-
-  const originalFetch = global.fetch;
-  global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
-  t.after(() => {
-    global.fetch = originalFetch;
-  });
-
-  stubFsForAudio(t);
-
-  registerMeditationRoutes({
-    app,
-    requireAuth: createRequireAuth(),
-    supabase,
-    uuidv4: () => 'radio-1',
-    gemini,
-    replicate,
-    createSilenceBuffer,
-    mergeAudioBuffers,
-    resolveVoiceSettings,
-    processJobQueue: async () => {}
-  });
-
-  const route = routes.post.find((r) => r.path === '/api/replay/radio');
-  assert.ok(route);
-
-  const resWrapper = createMockResponse();
-  await runHandlers(route.handlers, {
-    auth: null,
-    body: { noteIds: ['note-1'], duration: 5, title: 'Replay Radio' }
-  }, resWrapper);
-
-  assert.equal(resWrapper.statusCode, 200);
-  assert.equal(supabase.state.uploads.length, 1);
-  assert.equal(resWrapper.json.radioShow.user_id, DEFAULT_USER);
-  assert.ok(resWrapper.json.title);
-  assert.ok(resWrapper.json.summary);
-  const storedRadioShow = supabase.state.meditations[0];
-  assert.ok(storedRadioShow.audio_storage_path);
-  assert.ok(storedRadioShow.audio_expires_at);
-  assert.equal(storedRadioShow.playlist[0].audioUrl, `${DEFAULT_USER}/radio_radio-1.wav`);
 });
 
 test('POST /api/meditate/jobs creates background job and triggers queue processing', async (t) => {
@@ -424,3 +413,12 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
   assert.equal(supabase.state.jobs.length, 1);
   assert.deepEqual(processCalls, ['scheduled', 'run']);
 });
+  const transcodeCalls = [];
+  const transcodeAudio = async (buffer) => {
+    transcodeCalls.push(buffer.length);
+    return {
+      buffer,
+      contentType: 'audio/mpeg',
+      extension: 'mp3'
+    };
+  };

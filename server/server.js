@@ -16,7 +16,13 @@ import mime from 'mime';
 import Replicate from 'replicate';
 import { promisify } from 'util';
 import { exec, execSync } from 'child_process';
-import { concatenateAudioBuffers, generateSilenceBuffer } from './utils/audio.js';
+import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer } from './utils/audio.js';
+import {
+  onesignalEnabled,
+  sendOneSignalNotification,
+  updateOneSignalUser,
+  sendOneSignalEvent,
+} from './utils/onesignal.js';
 
 const execAsync = promisify(exec);
 
@@ -44,11 +50,7 @@ function mergeAudioBuffers(buffers = []) {
   return result;
 }
 
-function resolveVoiceSettings(reflectionType) {
-  if (reflectionType === 'Ideas') {
-    return { voice: 'af_bella', speed: 0.81 };
-  }
-
+function resolveVoiceSettings(_reflectionType) {
   return { voice: 'af_nicole', speed: 0.7 };
 }
 
@@ -188,12 +190,41 @@ import { registerFileRoutes } from './routes/files.js';
 import { registerStatsRoutes } from './routes/stats.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
+import { registerProgressRoutes } from './routes/progress.js';
+import { createWeeklyReportWorker } from './workers/weeklyReportWorker.js';
 
 // Initialize AI services
-const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const replicate = new Replicate({
+const gemini = globalThis.__REPLAY_TEST_GEMINI__ ?? new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const replicateClient = globalThis.__REPLAY_TEST_REPLICATE__ ?? new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
+const weeklyReportWorker = createWeeklyReportWorker({
+  supabase,
+  gemini
+});
+
+async function transcodeMeditationAudio(buffer, context = {}) {
+  if (typeof globalThis.__REPLAY_TEST_TRANSCODE__ === 'function') {
+    return globalThis.__REPLAY_TEST_TRANSCODE__(buffer, context);
+  }
+
+  try {
+    const ffmpegPath = getFFmpegPath();
+    const compressed = await transcodeAudioBuffer(buffer, { ffmpegPath, format: 'mp3' });
+    return {
+      buffer: compressed,
+      contentType: 'audio/mpeg',
+      extension: 'mp3'
+    };
+  } catch (error) {
+    console.warn('Audio transcode failed, using WAV fallback:', error.message);
+    return {
+      buffer,
+      contentType: 'audio/wav',
+      extension: 'wav'
+    };
+  }
+}
 
 // Initialize Express app
 const app = express();
@@ -208,6 +239,7 @@ const PORT = process.env.PORT || 3001;
 
 // Background job processing system
 let jobWorkerInterval = null;
+let weeklyReportInterval = null;
 
 // Background worker functions
 async function processMeditationJob(job) {
@@ -249,62 +281,7 @@ async function processMeditationJob(job) {
       .eq('user_id', userId)
       .single();
 
-    // Handle Day meditation with pre-recorded audio
-    if (reflectionType === 'Day') {
-      const storagePath = 'default/day-meditation.wav';
-      const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from('meditations')
-        .createSignedUrl(storagePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
-
-      if (urlError) {
-        throw new Error(`Failed to load day meditation: ${urlError.message}`);
-      }
-
-      const storagePlaylist = [{
-        type: 'speech',
-        audioUrl: storagePath,
-        duration: 146000
-      }];
-
-      // Save meditation to database
-      const { data: savedMeditation, error: saveError } = await supabase
-        .from('meditations')
-        .insert({
-          user_id: userId,
-          title: 'Daily Reflection',
-          playlist: storagePlaylist,
-          note_ids: noteIds,
-          script: 'Pre-recorded daily meditation',
-          duration: 146,
-          summary: 'Daily reflection meditation',
-          time_of_reflection: new Date().toISOString(),
-          audio_storage_path: storagePath,
-          audio_expires_at: audioExpiresAt.toISOString(),
-          audio_removed_at: null
-        })
-        .select()
-        .single();
-
-      if (saveError) {
-        throw new Error(`Failed to save day meditation: ${saveError.message}`);
-      }
-
-      // Mark job as completed
-      await supabase
-        .from('meditation_jobs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          meditation_id: savedMeditation.id
-        })
-        .eq('id', job.id);
-
-      console.log(`✅ Day meditation job ${job.id} completed successfully`);
-      return;
-    }
-
-    // Generate custom meditation for Night/Ideas reflections
+    // Generate custom meditation for Day/Night reflections
     const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     // Build experience text from notes
@@ -329,32 +306,28 @@ async function processMeditationJob(job) {
 
     // Use shared audio helpers for silence generation and concatenation
 
-    // Create meditation script based on reflection type
-    const getScriptPrompt = (type) => {
-      if (type === 'Ideas') {
-        return `You are an experienced facilitator of knowledge. Create a ${duration}-minute reflection session focused on creativity, innovation, and idea development. Use the format [PAUSE=Xs] for pauses.
-        
-        ${profileContext}
-        
-        Experiences:
-        ${experiencesText}
-        
-        Write as plain spoken text only. No markdown formatting.`;
-      }
-      
-      // Default Night meditation
-      return `You are an experienced meditation practitioner. Create a ${duration}-minute meditation session with loving-kindness elements. Use the format [PAUSE=Xs] for pauses.
-      
+    const getScriptPrompt = () => {
+      const baseInstructions = `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. The guided reflection should feel supportive, with pauses noted as [PAUSE=Xs] where X is the number of seconds. Use the listener's personal context to shape the arc of the session.
+
       ${profileContext}
-      
+
       Experiences:
       ${experiencesText}
-      
-      Include metta meditation sending loving-kindness to people and situations from their experiences.
-      Write as plain spoken text only. No markdown formatting.`;
+
+      IMPORTANT: Write the script as plain spoken text only. No markdown formatting or asterisks, and do not include pauses after the final segment.`;
+
+      if (reflectionType === 'Day') {
+        return `${baseInstructions}
+
+        Craft a mindful morning experience that grounds the listener, surfaces gratitude from their recent experiences, and sets clear intentions for the day ahead. Encourage gentle breathing, visualization of upcoming moments, and motivation aligned with their values and mission.`;
+      }
+
+      return `${baseInstructions}
+
+      After weaving insights from their experiences into the narrative, include a loving-kindness (metta) segment. Reference specific people, relationships, places, or challenges from their reflections and guide them through sending phrases such as "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy." Begin with the listener, extend to loved ones, then to neutral or challenging figures, and close with any difficult situations mentioned.`;
     };
 
-    const scriptPrompt = getScriptPrompt(reflectionType);
+    const scriptPrompt = getScriptPrompt();
     const result = await model.generateContent(scriptPrompt);
     const script = result.response.text();
     const fallbackTitle = `${reflectionType} Reflection - ${new Date().toLocaleDateString()}`;
@@ -386,7 +359,7 @@ async function processMeditationJob(job) {
           // Determine voice settings based on reflection type
           const voiceSettings = resolveVoiceSettings(reflectionType);
           
-          const output = await replicate.run(
+          const output = await replicateClient.run(
             "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
             {
               input: {
@@ -430,16 +403,17 @@ async function processMeditationJob(job) {
       }
     }
 
-    // Concatenate all audio files using buffer approach (no ffmpeg needed)
     const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
     const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
-    const finalAudioFileName = `${meditationId}-complete.wav`;
+
+    const audioResult = await transcodeMeditationAudio(finalAudioBuffer, { reflectionType, duration });
+    const finalAudioFileName = `${meditationId}-complete.${audioResult.extension}`;
     const storagePath = `${userId}/${finalAudioFileName}`;
     
-    const { data: audioUpload, error: audioError } = await supabase.storage
+    const { error: audioError } = await supabase.storage
       .from('meditations')
-      .upload(storagePath, finalAudioBuffer, {
-        contentType: 'audio/wav',
+      .upload(storagePath, audioResult.buffer, {
+        contentType: audioResult.contentType,
         upsert: false
       });
 
@@ -521,6 +495,51 @@ async function processMeditationJob(job) {
         meditation_id: meditation.id
       })
       .eq('id', job.id);
+
+    if (onesignalEnabled()) {
+      const notificationTasks = [];
+      const pushData = {
+        meditationId: meditation.id,
+        jobId: job.id,
+        url: `/reflections?meditationId=${meditation.id}`,
+      };
+
+      notificationTasks.push(
+        sendOneSignalNotification({
+          externalId: userId,
+          headings: {
+            en: 'Your meditation is ready',
+          },
+          contents: {
+            en: 'Your personalized meditation is waiting for you. It will be available for the next 24 hours.',
+          },
+          data: pushData,
+          url: pushData.url,
+        })
+      );
+
+      notificationTasks.push(
+        sendOneSignalEvent(userId, 'meditation_generated', {
+          meditation_id: meditation.id,
+          reflection_type: reflectionType,
+          expires_at: audioError ? null : audioExpiresAt.toISOString(),
+        })
+      );
+
+      const tagUpdates = {
+        last_meditation_generated_ts: Math.floor(Date.now() / 1000),
+        meditation_last_generated_id: meditation.id,
+      };
+
+      notificationTasks.push(updateOneSignalUser(userId, tagUpdates));
+
+      const notificationResults = await Promise.allSettled(notificationTasks);
+      notificationResults.forEach((result) => {
+        if (result.status === 'rejected') {
+          console.error('OneSignal notification failed for meditation generation:', result.reason);
+        }
+      });
+    }
 
     console.log(`✅ Background job ${job.id} completed successfully`);
 
@@ -748,17 +767,25 @@ registerStatsRoutes({
   supabase
 });
 
+registerProgressRoutes({
+  app,
+  requireAuth,
+  supabase
+});
+
 registerMeditationRoutes({
   app,
   requireAuth,
   supabase,
   uuidv4,
   gemini,
-  replicate,
+  replicate: replicateClient,
   createSilenceBuffer,
   mergeAudioBuffers,
   resolveVoiceSettings,
-  processJobQueue
+  processJobQueue,
+  transcodeAudio: transcodeMeditationAudio,
+  ffmpegPathResolver: getFFmpegPath
 });
 
 // Error handling middleware
@@ -791,6 +818,27 @@ const startSchedulers = (protocol) => {
   processJobQueue().catch(error => {
     console.error('Initial job queue check failed:', error);
   });
+
+  const canSendWeeklyReports = Boolean(process.env.RESEND_API_KEY && process.env.WEEKLY_REPORT_FROM_EMAIL);
+
+  if (weeklyReportInterval) {
+    clearInterval(weeklyReportInterval);
+  }
+
+  if (canSendWeeklyReports) {
+    console.log('📬 Weekly report worker enabled');
+    weeklyReportInterval = setInterval(() => {
+      weeklyReportWorker.run().catch((error) => {
+        console.error('Weekly report worker execution failed:', error);
+      });
+    }, 60 * 60 * 1000); // hourly
+
+    weeklyReportWorker.run().catch((error) => {
+      console.error('Initial weekly report run failed:', error);
+    });
+  } else {
+    console.warn('📬 Weekly report worker disabled - missing RESEND_API_KEY or WEEKLY_REPORT_FROM_EMAIL');
+  }
 };
 
 const maybeCreateHttpsServer = () => {
@@ -830,6 +878,10 @@ const shutdownSchedulers = () => {
     jobWorkerInterval = null;
   }
 
+  if (weeklyReportInterval) {
+    clearInterval(weeklyReportInterval);
+    weeklyReportInterval = null;
+  }
 };
 
 process.on('SIGTERM', shutdownSchedulers);

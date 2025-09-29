@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const DEFAULT_USER = 'user-1';
+const SIMPLE_AUDIO = Buffer.alloc(64, 1);
 
 function createSupabaseProxy() {
   const proxy = {
@@ -28,6 +29,10 @@ function createSupabaseProxy() {
           async createSignedUrl(path, ttl) {
             proxy.state.storageSigned.push({ bucket, path, ttl });
             return { data: { signedUrl: proxy.scenario.signedUrl }, error: null };
+          },
+          async upload(path, buffer) {
+            proxy.state.uploads.push({ bucket, path, size: buffer?.length ?? 0 });
+            return { data: { path }, error: null };
           }
         };
       }
@@ -129,9 +134,33 @@ test('processMeditationJob completes day reflection jobs', async (t) => {
   const originalStorage = supabase.storage;
   supabase.from = (...args) => supabaseProxy.from(...args);
   supabase.storage = { from: (...args) => supabaseProxy.storage.from(...args) };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
+  const replicateStub = {
+    async run() {
+      return { url: () => new URL('https://example.com/worker-day.wav') };
+    }
+  };
+  const geminiStub = {
+    getGenerativeModel: () => ({
+      generateContent: async () => ({ response: { text: () => 'Center yourself.[PAUSE=2s]Begin your day.' } })
+    })
+  };
+  const transcodeStub = async (buffer) => ({
+    buffer,
+    contentType: 'audio/mpeg',
+    extension: 'mp3'
+  });
+  globalThis.__REPLAY_TEST_REPLICATE__ = replicateStub;
+  globalThis.__REPLAY_TEST_GEMINI__ = geminiStub;
+  globalThis.__REPLAY_TEST_TRANSCODE__ = transcodeStub;
   t.after(() => {
     supabase.from = originalFrom;
     supabase.storage = originalStorage;
+    global.fetch = originalFetch;
+    delete globalThis.__REPLAY_TEST_REPLICATE__;
+    delete globalThis.__REPLAY_TEST_GEMINI__;
+    delete globalThis.__REPLAY_TEST_TRANSCODE__;
   });
 
   supabaseProxy.setScenario(createDayScenario());
@@ -150,7 +179,9 @@ test('processMeditationJob completes day reflection jobs', async (t) => {
 
   assert.equal(supabaseProxy.state.jobUpdates.length, 2);
   assert.equal(supabaseProxy.state.meditations.length, 1);
-  assert.equal(supabaseProxy.state.storageSigned.length, 1);
+  assert.equal(supabaseProxy.state.uploads.length, 1);
+  assert.equal(supabaseProxy.state.uploads[0].path.endsWith('.mp3'), true);
+  assert.equal(supabaseProxy.state.storageSigned.length >= 1, true);
 });
 
 test('processJobQueue claims pending job and delegates to worker', async (t) => {
@@ -178,9 +209,33 @@ test('processJobQueue claims pending job and delegates to worker', async (t) => 
   const originalStorage = supabase.storage;
   supabase.from = (...args) => supabaseProxy.from(...args);
   supabase.storage = { from: (...args) => supabaseProxy.storage.from(...args) };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
+  const replicateStub = {
+    async run() {
+      return { url: () => new URL('https://example.com/worker-day.wav') };
+    }
+  };
+  const geminiStub = {
+    getGenerativeModel: () => ({
+      generateContent: async () => ({ response: { text: () => 'Center yourself.[PAUSE=2s]Begin your day.' } })
+    })
+  };
+  const transcodeStub = async (buffer) => ({
+    buffer,
+    contentType: 'audio/mpeg',
+    extension: 'mp3'
+  });
+  globalThis.__REPLAY_TEST_REPLICATE__ = replicateStub;
+  globalThis.__REPLAY_TEST_GEMINI__ = geminiStub;
+  globalThis.__REPLAY_TEST_TRANSCODE__ = transcodeStub;
   t.after(() => {
     supabase.from = originalFrom;
     supabase.storage = originalStorage;
+    global.fetch = originalFetch;
+    delete globalThis.__REPLAY_TEST_REPLICATE__;
+    delete globalThis.__REPLAY_TEST_GEMINI__;
+    delete globalThis.__REPLAY_TEST_TRANSCODE__;
   });
 
   const moduleSpecifier = `../../server.js?queue=${Date.now()}`;
@@ -191,4 +246,6 @@ test('processJobQueue claims pending job and delegates to worker', async (t) => 
   assert.equal(supabaseProxy.state.jobUpdates[0].values.status, 'processing');
   assert.equal(supabaseProxy.state.jobUpdates[supabaseProxy.state.jobUpdates.length - 1].values.status, 'completed');
   assert.equal(supabaseProxy.state.meditations.length, 1);
+  assert.equal(supabaseProxy.state.uploads.length, 1);
+  assert.equal(supabaseProxy.state.uploads[0].path.endsWith('.mp3'), true);
 });

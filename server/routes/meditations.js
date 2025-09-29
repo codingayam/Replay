@@ -3,12 +3,31 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { calculateStreak } from '../utils/stats.js';
+import { transcodeAudioBuffer } from '../utils/audio.js';
+import {
+  onesignalEnabled,
+  updateOneSignalUser,
+  sendOneSignalEvent,
+} from '../utils/onesignal.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function registerMeditationRoutes(deps) {
-  const { app, requireAuth, supabase, uuidv4, gemini, replicate, createSilenceBuffer, mergeAudioBuffers, resolveVoiceSettings, processJobQueue } = deps;
+  const {
+    app,
+    requireAuth,
+    supabase,
+    uuidv4,
+    gemini,
+    replicate,
+    createSilenceBuffer,
+    mergeAudioBuffers,
+    resolveVoiceSettings,
+    processJobQueue,
+    transcodeAudio: providedTranscodeAudio,
+    ffmpegPathResolver
+  } = deps;
 
   const AUDIO_AVAILABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -37,6 +56,33 @@ export function registerMeditationRoutes(deps) {
     const sentences = cleaned.match(/[^.!?]+[.!?]?/g) || [];
     return sentences.slice(0, maxSentences).join(' ').trim();
   };
+
+  const resolveTranscodeAudio = () => {
+    if (typeof providedTranscodeAudio === 'function') {
+      return providedTranscodeAudio;
+    }
+
+    return async (buffer) => {
+      try {
+        const ffmpegPath = typeof ffmpegPathResolver === 'function' ? ffmpegPathResolver() : 'ffmpeg';
+        const compressedBuffer = await transcodeAudioBuffer(buffer, { ffmpegPath, format: 'mp3' });
+        return {
+          buffer: compressedBuffer,
+          contentType: 'audio/mpeg',
+          extension: 'mp3'
+        };
+      } catch (error) {
+        console.warn('Audio transcode failed, falling back to WAV:', error.message);
+        return {
+          buffer,
+          contentType: 'audio/wav',
+          extension: 'wav'
+        };
+      }
+    };
+  };
+
+  const transcodeAudio = resolveTranscodeAudio();
 
   const computeAudioAvailability = (meditation) => {
     const expiresAtRaw = meditation?.audio_expires_at;
@@ -140,98 +186,6 @@ export function registerMeditationRoutes(deps) {
   };
 
   // ============= REFLECTION & MEDITATION API ROUTES =============
-
-  // POST /api/reflect/suggest - Get suggested experiences for reflection
-  app.post('/api/reflect/suggest', requireAuth(), async (req, res) => {
-    try {
-      const userId = req.auth.userId;
-      const { startDate, endDate, limit = 10 } = req.body;
-
-      if (!startDate || !endDate) {
-        return res.status(400).json({ error: 'startDate and endDate are required' });
-      }
-
-      // Get user's notes within date range
-      const { data: notes, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', userId)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        console.error('Error fetching notes for reflection:', error);
-        return res.status(500).json({ error: 'Failed to fetch experiences' });
-      }
-
-      // Use AI to suggest the most meaningful experiences
-      try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      
-        const notesText = notes.map(note => 
-          `${note.date}: ${note.title} - ${note.transcript}`
-        ).join('\n\n');
-
-        const suggestPrompt = `
-          Based on these personal experiences and reflections, suggest the most meaningful ones for a guided meditation reflection:
-        
-          ${notesText}
-        
-          Return a JSON array of note IDs ranked by significance for reflection, with a brief explanation for each:
-          {
-            "suggestions": [
-              {"noteId": "uuid", "reason": "Brief explanation"},
-              ...
-            ]
-          }
-        `;
-
-        const result = await model.generateContent(suggestPrompt);
-        const aiResponse = result.response.text();
-      
-        // Try to parse AI response, fallback to all notes if parsing fails
-        let suggestions;
-        try {
-          const parsed = JSON.parse(aiResponse);
-          suggestions = parsed.suggestions || [];
-        } catch (parseError) {
-          suggestions = notes.map(note => ({
-            noteId: note.id,
-            reason: "Selected for reflection"
-          }));
-        }
-
-        // Filter notes to match suggestions
-        const suggestedNotes = notes.filter(note => 
-          suggestions.some(s => s.noteId === note.id)
-        );
-
-        res.json({ 
-          notes: suggestedNotes,
-          suggestions,
-          totalAvailable: notes.length
-        });
-
-      } catch (aiError) {
-        console.error('AI suggestion error:', aiError);
-        // Fallback: return all notes without AI suggestions
-        res.json({ 
-          notes,
-          suggestions: notes.map(note => ({
-            noteId: note.id,
-            reason: "Available for reflection"
-          })),
-          totalAvailable: notes.length
-        });
-      }
-
-    } catch (error) {
-      console.error('Reflection suggestion error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
 
   // POST /api/reflect/summary - Generate reflection summary
   app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
@@ -338,77 +292,6 @@ export function registerMeditationRoutes(deps) {
 
       // Use shared audio helpers for silence generation and concatenation
 
-      // Handle Day meditation - use pre-recorded audio file
-      if (reflectionType === 'Day') {
-        try {
-          const storagePath = 'default/day-meditation.wav';
-          const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
-
-          // Generate signed URL for the default day meditation file
-          const { data: urlData, error: urlError } = await supabase.storage
-            .from('meditations')
-            .createSignedUrl(storagePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
-
-          if (urlError) {
-            console.error('Error generating signed URL for day meditation:', urlError);
-            return res.status(500).json({ error: 'Failed to load day meditation' });
-          }
-
-          // Create playlist with the real audio file
-          const playbackPlaylist = [
-            {
-              type: 'speech',
-              audioUrl: urlData.signedUrl,
-              duration: 146000 // 2:26 duration in milliseconds
-            }
-          ];
-
-          const storedPlaylist = [
-            {
-              type: 'speech',
-              audioUrl: storagePath,
-              duration: 146000
-            }
-          ];
-
-          // Save to database
-          const { data: savedMeditation, error: saveError } = await supabase
-            .from('meditations')
-            .insert({
-              user_id: userId,
-              title: title || 'Daily Reflection',
-              playlist: storedPlaylist,
-              note_ids: noteIds,
-              script: 'Pre-recorded daily meditation',
-              duration: 146,
-              summary: 'Daily reflection meditation',
-              time_of_reflection: new Date().toISOString(),
-              audio_storage_path: storagePath,
-              audio_expires_at: audioExpiresAt.toISOString(),
-              audio_removed_at: null
-            })
-            .select()
-            .single();
-
-          if (saveError) {
-            console.error('Error saving day meditation:', saveError);
-            return res.status(500).json({ error: 'Failed to save meditation' });
-          }
-
-          console.log('Day meditation created successfully');
-          return res.json({
-            success: true,
-            meditation: savedMeditation,
-            playlist: playbackPlaylist,
-            expiresAt: audioExpiresAt.toISOString()
-          });
-
-        } catch (error) {
-          console.error('Error in day meditation generation:', error);
-          return res.status(500).json({ error: 'Failed to generate day meditation' });
-        }
-      }
-
       const meditationId = uuidv4();
 
       // Get selected notes and user profile
@@ -468,38 +351,15 @@ export function registerMeditationRoutes(deps) {
             IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
           `;
 
-          if (type === 'Ideas') {
-            return `You are an experienced insights synthesizer and facilitator of knowledge. You are great at taking the user's raw experiences and converting them into a ${duration}-minute reflection session. Your role is to provide a focused reflective space for ideas, thoughts and strokes of inspiration. The guided reflection should be thoughtful, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses whenever appropriate. There should be a structure to the session - similar ideas should be grouped and explored first before moving on to ideas which might seem disparate. 
-          
-            ${profileContext}
-          
-            Experiences:
-            ${experiencesText}
+          if (type === 'Day') {
+            return `${baseInstructions}
 
-            Create a guided reflection which can revolve around the thems of creativity, innovation, idea development and consolidation/crystallization. You don't have to focus on all of them - focus on whichever is appropriate. This session should:         
-
-            1. Help connect similar and disparate concepts and insights and facilitate idea synthesis whenever possible. You don't have to feel the need to force connections that are not there.
-
-            2. Encourage visualization of certain ideas if there are possible notes or hints of implementation in them.
-
-            3. Connect ideas to values and mission if possible and also link them to the user's what am I thinking about, or other domains or life in general if possible 
-
-            4. Consolidate and crystallize strands of thoughts, ideas, and inspirations in an open-ended, divergent way and not be overly restrictive or too convergent or too presumptive in tone or direction.          
-
-            The tone should be encouraging, nurturing and facilitative.
-
-            Make sure that the opening and closing of the reflection is appropriate and eases them into the session and also at the closing, leaves them energized and ready to go back to their lives with a sense of having digested/internalized the raw thoughts, ideas and inspirations.  
-
-            IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
+            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead.`;
           }
-        
-          // Default prompt for Night meditations
-          return `${baseInstructions};
 
-          After incorporating insights from their experiences and connecting to their values and mission, include a metta (loving-kindness) meditation section. Identify specific people, relationships, 
-          places, or challenging situations from their selected experiences and guide them through sending loving-kindness to these subjects. Use traditional metta phrases like "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy" while focusing on the actual people and circumstances from their reflections. Start with sending metta to themselves, then extend
-          to loved ones mentioned in their experiences, then to neutral people or challenging relationships from their notes, and finally to any difficult situations or places that came up. This should 
-          feel personal and connected to their recent experiences rather than generic metta practice.`;
+          return `${baseInstructions}
+
+          After incorporating insights from their experiences and connecting to their values and mission, include a loving-kindness (metta) meditation section. Identify specific people, relationships, places, or challenging situations from their notes and guide them through sending loving-kindness using phrases like "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy." Start with the listener, extend to loved ones, then to neutral or challenging relationships, and close with any difficult circumstances that surfaced. Keep it personal and grounded in their reflections.`;
         };
 
         const scriptPrompt = getScriptPrompt(reflectionType);
@@ -655,15 +515,26 @@ export function registerMeditationRoutes(deps) {
           const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
           const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
           console.log('✅ Audio concatenation complete');
-        
-          // Upload the final continuous audio file to Supabase
-          const finalAudioFileName = `${meditationId}-complete.wav`;
+
+          let audioResult;
+          try {
+            audioResult = await transcodeAudio(finalAudioBuffer, { reflectionType, duration });
+          } catch (transcodeError) {
+            console.warn('Audio transcode threw unexpectedly, using WAV fallback:', transcodeError.message);
+            audioResult = {
+              buffer: finalAudioBuffer,
+              contentType: 'audio/wav',
+              extension: 'wav'
+            };
+          }
+
+          const finalAudioFileName = `${meditationId}-complete.${audioResult.extension}`;
           const finalAudioStoragePath = `${userId}/${finalAudioFileName}`;
 
-          const { data: audioUpload, error: audioError } = await supabase.storage
+          const { error: audioError } = await supabase.storage
             .from('meditations')
-            .upload(finalAudioStoragePath, finalAudioBuffer, {
-              contentType: 'audio/wav',
+            .upload(finalAudioStoragePath, audioResult.buffer, {
+              contentType: audioResult.contentType,
               upsert: false
             });
 
@@ -1019,39 +890,6 @@ export function registerMeditationRoutes(deps) {
     }
   });
 
-  // GET day reflection default meditation
-  app.get('/api/meditations/day/default', requireAuth(), async (req, res) => {
-    try {
-      // Generate signed URL for the default day meditation file
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from('meditations')
-        .createSignedUrl('default/day-meditation.wav', 3600 * 24); // 24 hours expiry
-
-      if (urlError) {
-        console.error('Error generating signed URL for day meditation:', urlError);
-        return res.status(500).json({ error: 'Failed to load day meditation' });
-      }
-
-      // Create playlist with the real audio file
-      const defaultPlaylist = [
-        {
-          type: 'speech',
-          audioUrl: urlData.signedUrl,
-          duration: 146000 // 2:26 duration in milliseconds
-        }
-      ];
-
-      res.json({ 
-        playlist: defaultPlaylist,
-        title: 'Daily Reflection',
-        duration: 146 // Duration in seconds
-      });
-    } catch (error) {
-      console.error('Day reflection error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
   // POST /api/meditations/:id/complete - Mark meditation as completed
   app.post('/api/meditations/:id/complete', requireAuth(), async (req, res) => {
     try {
@@ -1122,12 +960,44 @@ export function registerMeditationRoutes(deps) {
           .not('completed_at', 'is', null)
           .order('completed_at', { ascending: false });
 
+        let completionsCount = 0;
+
         if (!streakError && completedMeditations) {
           // Get previous streak (before this completion) by filtering out current meditation
           const previousCompletions = completedMeditations.slice(1); // Skip the first one (current meditation)
           previousStreak = calculateStreak(previousCompletions);
           newStreak = calculateStreak(completedMeditations);
           streakUpdated = newStreak !== previousStreak;
+          completionsCount = completedMeditations.length;
+        }
+
+        if (onesignalEnabled()) {
+          const completionTimestamp = updateData.completed_at || completedAt || new Date().toISOString();
+          const tags = {
+            last_meditation_completed_ts: Math.floor(new Date(completionTimestamp).getTime() / 1000),
+            meditation_streak: Math.max(newStreak || 0, 0),
+          };
+
+          if (completionsCount <= 1 && completionsCount >= 0) {
+            tags.first_meditation_completed = 'true';
+          }
+
+          const onesignalTasks = [
+            updateOneSignalUser(userId, tags),
+            sendOneSignalEvent(userId, 'meditation_completed', {
+              meditation_id: meditationId,
+              completion_percentage: completionPercentage,
+              streak: newStreak,
+              completed_at: completionTimestamp,
+            }),
+          ];
+
+          const completionResults = await Promise.allSettled(onesignalTasks);
+          completionResults.forEach((result) => {
+            if (result.status === 'rejected') {
+              console.error('Failed to sync OneSignal after meditation completion:', result.reason);
+            }
+          });
         }
       }
 
@@ -1434,348 +1304,4 @@ export function registerMeditationRoutes(deps) {
     }
   });
 
-  // POST /api/replay/radio - Generate radio talk show from experiences
-  app.post('/api/replay/radio', requireAuth(), async (req, res) => {
-    try {
-      const userId = req.auth.userId;
-      const { noteIds, duration = 10, title } = req.body;
-
-      if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
-        return res.status(400).json({ error: 'noteIds array is required' });
-      }
-
-      const radioId = uuidv4();
-      const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
-      let storagePlaylist = [];
-      let playbackPlaylist = [];
-      let audioStoragePath = null;
-
-      // Get selected notes and user profile
-      const { data: notes, error: notesError } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', userId)
-        .in('id', noteIds);
-
-      if (notesError) {
-        console.error('Error fetching notes for radio show:', notesError);
-        return res.status(500).json({ error: 'Failed to fetch selected experiences' });
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('name, values, mission, thinking_about')
-        .eq('user_id', userId)
-        .single();
-
-      try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      
-        const experiencesText = notes.map(note => {
-          // Handle different note types for radio content
-          let noteContent = note.transcript;
-          if (note.type === 'photo' && note.original_caption && note.ai_image_description) {
-            noteContent = `${note.original_caption} [AI_ANALYSIS: ${note.ai_image_description}]`;
-          } else if (note.type === 'photo' && note.original_caption && !note.ai_image_description) {
-            noteContent = note.original_caption;
-          } else if (note.type === 'photo' && !note.original_caption && note.ai_image_description) {
-            noteContent = `[AI_ANALYSIS: ${note.ai_image_description}]`;
-          }
-          return `${note.date}: ${note.title}\n${noteContent}`;
-        }).join('\n\n---\n\n');
-
-        const profileContext = profile ? `
-          Host Information - You are hosting a radio show for: ${profile.name || 'the listener'}
-          Their personal values: ${profile.values || 'Not specified'}
-          Their life mission: ${profile.mission || 'Not specified'}
-          What they're currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
-        ` : '';
-
-        const radioScriptPrompt = `
-          Create a personalized ${duration}-minute radio show revolving around the user's ideas and experiences. Both user information, ideas/experiences will be provided below. There will be two hosts (Speaker 1 and Speaker 2) who will host the show in a casual and light manner. Speaker 1's name will be Jessica, and Speaker 2's name will be Alex. The hosts should interact with each other naturally and have a good chemistry.
-
-          ${profileContext}
-
-          Experiences to cover:
-          ${experiencesText}
-
-          CRITICAL FORMATTING REQUIREMENTS:
-          - You MUST format the script exactly like this:
-          Speaker 1: [Jessica's dialogue here]
-          Speaker 2: [Alex's dialogue here] 
-          Speaker 1: [Jessica's next dialogue]
-          Speaker 2: [Alex's next dialogue]
-        
-          - Each line must start with exactly "Speaker 1:" or "Speaker 2:" followed by their dialogue
-          - Do not use names like "Jessica:" or "Alex:" - only use "Speaker 1:" and "Speaker 2:"
-          - Write natural spoken radio content with good back-and-forth conversation
-          - No markdown, no section headers, no asterisks
-        
-          Example format:
-          Speaker 1: Good morning everyone and welcome back to The Thought Bubble! I'm Jessica.
-          Speaker 2: And I'm Alex! Today we're diving into some fascinating personal reflections.
-          Speaker 1: That's right Alex, we have some really interesting experiences to explore today.
-        `;
-
-        console.log('🎙️ Generating radio show script...');
-        const result = await model.generateContent(radioScriptPrompt);
-        const script = result.response.text();
-
-        const fallbackTitle = title || 'Radio Show Replay';
-        const { title: generatedTitle, summary: generatedSummary } = await generateTitleAndSummary(
-          script,
-          'radio reflection',
-          fallbackTitle
-        );
-
-        console.log('📄 Generated script preview:');
-        console.log('=' .repeat(80));
-        console.log(script.substring(0, 500) + (script.length > 500 ? '...' : ''));
-        console.log('=' .repeat(80));
-
-        console.log('🎧 Converting script to audio using Replicate TTS...');
-
-        // Parse script to extract speaker segments
-        function parseRadioScript(script) {
-          console.log('📝 Parsing radio script for speaker segments...');
-          console.log('🔍 Script content to parse:');
-          console.log(script.substring(0, 200) + '...');
-        
-          const segments = [];
-          const lines = script.split('\n');
-        
-          for (let i = 0; i < lines.length; i++) {
-            const trimmedLine = lines[i].trim();
-            if (!trimmedLine) continue;
-          
-            console.log(`🔎 Line ${i + 1}: "${trimmedLine}"`);
-          
-            // Try multiple patterns to match speaker format
-            let speakerMatch = null;
-            let speaker = null;
-            let text = null;
-          
-            // Pattern 1: "Speaker 1:" or "Speaker 2:"
-            speakerMatch = trimmedLine.match(/^(Speaker [12]):\s*(.+)$/);
-            if (speakerMatch) {
-              speaker = speakerMatch[1];
-              text = speakerMatch[2].trim();
-            } else {
-              // Pattern 2: Names like "Jessica:" or "Alex:"
-              const nameMatch = trimmedLine.match(/^(Jessica|Alex):\s*(.+)$/i);
-              if (nameMatch) {
-                speaker = nameMatch[1].toLowerCase() === 'jessica' ? 'Speaker 1' : 'Speaker 2';
-                text = nameMatch[2].trim();
-              } else {
-                // Pattern 3: Just text without speaker prefix (assign alternating)
-                if (trimmedLine.length > 10) { // Only consider substantial text
-                  speaker = segments.length % 2 === 0 ? 'Speaker 1' : 'Speaker 2';
-                  text = trimmedLine;
-                  console.log(`🔄 No speaker prefix found, assigning to ${speaker}`);
-                }
-              }
-            }
-          
-            if (speaker && text && text.length > 0) {
-              segments.push({
-                speaker,
-                text,
-                voice: speaker === 'Speaker 1' ? 'af_jessica' : 'am_puck'
-              });
-              console.log(`✅ Found ${speaker}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-            } else {
-              console.log(`❌ Line ${i + 1}: No valid speaker segment found`);
-            }
-          }
-        
-          console.log(`📊 Parsed ${segments.length} speaker segments`);
-          return segments;
-        }
-
-        // Generate TTS for individual segments using Replicate (same as meditation TTS)
-        async function generateTTSSegment(text, voice, segmentIndex, totalSegments) {
-          console.log(`🎙️ [${segmentIndex + 1}/${totalSegments}] Starting Replicate TTS for voice ${voice}`);
-          console.log(`📝 Text (${text.length} chars): "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
-        
-          const startTime = Date.now();
-          console.log(`⏱️ API call started at: ${new Date().toISOString()}`);
-        
-          try {
-            // Use the same Replicate model and approach as the meditation TTS
-            const output = await replicate.run(
-              "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
-              {
-                input: {
-                  text: text,
-                  voice: voice,
-                  speed: 1.0
-                }
-              }
-            );
-
-            // Get the audio URL from the response
-            const audioUrl = output.url().toString();
-            console.log(`📥 [${segmentIndex + 1}/${totalSegments}] Replicate response: ${audioUrl}`);
-          
-            // Download the audio file
-            const audioResponse = await fetch(audioUrl);
-            if (!audioResponse.ok) {
-              throw new Error(`Failed to download audio: ${audioResponse.status}`);
-            }
-          
-            const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-          
-            const totalTime = Date.now() - startTime;
-            console.log(`✅ [${segmentIndex + 1}/${totalSegments}] Replicate TTS completed for ${voice}`);
-            console.log(`📊 Buffer size: ${audioBuffer.length} bytes`);
-            console.log(`⏱️ Total processing time: ${totalTime}ms`);
-            console.log(`🎯 Progress: ${segmentIndex + 1}/${totalSegments} segments completed (${Math.round((segmentIndex + 1) / totalSegments * 100)}%)`);
-          
-            return audioBuffer;
-          
-          } catch (error) {
-            const totalTime = Date.now() - startTime;
-            console.error(`❌ [${segmentIndex + 1}/${totalSegments}] Replicate TTS generation failed after ${totalTime}ms`);
-            console.error(`❌ Error details:`, error.message);
-            throw error;
-          }
-        }
-
-        let playlist = [];
-
-        try {
-          // Step 1: Parse script into segments
-          const segments = parseRadioScript(script);
-        
-          if (segments.length === 0) {
-            throw new Error('No speaker segments found in script');
-          }
-
-          // Step 2: Generate TTS for each segment
-          console.log('🎙️ Generating TTS for all segments...');
-          const audioBuffers = [];
-          const silenceBuffer = createSilenceBuffer(0.35);
-        
-          for (let i = 0; i < segments.length; i++) {
-            const segment = segments[i];
-          
-            // Generate TTS for this segment
-            const segmentBuffer = await generateTTSSegment(segment.text, segment.voice, i, segments.length);
-            audioBuffers.push(segmentBuffer);
-          
-            // Add pause after each segment except the last one
-            if (i < segments.length - 1) {
-              audioBuffers.push(silenceBuffer);
-              console.log(`🔇 Added 0.35s silence buffer after segment ${i + 1}`);
-            }
-          }
-
-          // Step 3: Concatenate all audio buffers
-          console.log('🔧 Concatenating all audio segments...');
-          audioBuffers.forEach((buffer, index) => {
-            const isWav = buffer.length > 44 && buffer.toString('ascii', 0, 4) === 'RIFF';
-            console.log(`📦 Buffer ${index + 1}: ${buffer.length} bytes ${isWav ? '(WAV)' : '(unknown format)'}`);
-          });
-          const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
-
-          console.log('🔧 [TTS] Uploading final audio to Supabase...');
-          // Upload the concatenated audio file to Supabase
-          const fileName = `radio_${radioId}.wav`;
-          const filePath = `${userId}/${fileName}`;
-          console.log('📁 [TTS] Upload path:', filePath);
-
-          const { error: uploadError } = await supabase.storage
-            .from('meditations')
-            .upload(filePath, finalAudioBuffer, {
-              contentType: 'audio/wav'
-            });
-
-          if (uploadError) {
-            console.error('❌ [TTS] Error uploading radio audio:', uploadError);
-            throw uploadError;
-          }
-          console.log('✅ [TTS] Audio uploaded successfully to Supabase storage');
-
-          // Generate signed URL for the uploaded file
-          const { data: urlData, error: urlError } = await supabase.storage
-            .from('meditations')
-            .createSignedUrl(filePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
-
-          if (urlError) {
-            console.error('❌ [TTS] Error generating signed URL:', urlError);
-            throw urlError;
-          }
-          console.log('✅ [TTS] Signed URL generated:', urlData.signedUrl);
-
-          // Create playlist with the concatenated audio file
-          playlist = [
-            {
-              type: 'speech',
-              audioUrl: urlData.signedUrl,
-              duration: duration * 60 * 1000 // Convert minutes to milliseconds
-            }
-          ];
-          storagePlaylist = [
-            {
-              type: 'speech',
-              audioUrl: filePath,
-              duration: duration * 60 * 1000
-            }
-          ];
-          playbackPlaylist = playlist;
-          audioStoragePath = filePath;
-          console.log('✅ [TTS] Playlist created with duration:', duration * 60 * 1000, 'ms');
-          console.log('🎉 [TTS] Deep Infra TTS process completed successfully!');
-
-        } catch (ttsError) {
-          console.error('❌ [TTS] CRITICAL ERROR in TTS process:', ttsError);
-          console.error('❌ [TTS] Error stack:', ttsError.stack);
-          throw new Error(`Failed to generate radio show audio: ${ttsError.message}`);
-        }
-
-        // Save radio show to database
-        const { data: savedRadioShow, error: saveError } = await supabase
-          .from('meditations') // Reuse meditations table for radio shows
-          .insert({
-            id: radioId, // Add the missing radioId
-            user_id: userId,
-            title: generatedTitle,
-            playlist: storagePlaylist,
-            note_ids: noteIds,
-            script: script,
-            duration: duration,
-            summary: generatedSummary,
-            time_of_reflection: new Date().toISOString(),
-            audio_storage_path: audioStoragePath,
-            audio_expires_at: audioStoragePath ? audioExpiresAt.toISOString() : null,
-            audio_removed_at: null
-          })
-          .select()
-          .single();
-
-        if (saveError) {
-          console.error('Error saving radio show:', saveError);
-          return res.status(500).json({ error: 'Failed to save radio show' });
-        }
-
-        console.log(`🎙️ Radio show generated successfully: ${savedRadioShow.id}`);
-
-        res.json({
-          radioShow: savedRadioShow,
-          playlist: playbackPlaylist,
-          summary: generatedSummary,
-          title: generatedTitle,
-          expiresAt: audioStoragePath ? audioExpiresAt.toISOString() : null
-        });
-
-      } catch (aiError) {
-        console.error('AI processing error:', aiError);
-        res.status(500).json({ error: 'Failed to generate radio show content' });
-      }
-
-    } catch (error) {
-      console.error('Radio show generation error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
 }

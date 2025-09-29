@@ -1,5 +1,7 @@
+import { spawn } from 'child_process';
+
 /**
- * Audio buffer helpers shared across meditation and radio generation flows.
+ * Audio buffer helpers shared across meditation generation flows.
  */
 
 const WAV_HEADER_SIZE = 44;
@@ -87,3 +89,60 @@ export const __TEST_ONLY__ = {
   WAV_HEADER_SIZE
 };
 
+/**
+ * Transcode a WAV PCM buffer into a compressed audio buffer using ffmpeg.
+ * Falls back to returning the original buffer when transcoding fails.
+ *
+ * @param {Buffer} buffer - Source PCM WAV buffer to transcode.
+ * @param {object} options
+ * @param {string} [options.ffmpegPath='ffmpeg'] - Path to ffmpeg executable.
+ * @param {string} [options.format='mp3'] - Target audio container/format.
+ * @param {string} [options.bitrate='128k'] - Audio bitrate for encoding.
+ * @returns {Promise<Buffer>} Transcoded audio buffer.
+ */
+export async function transcodeAudioBuffer(buffer, { ffmpegPath = 'ffmpeg', format = 'mp3', bitrate = '128k' } = {}) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return buffer;
+  }
+
+  return new Promise((resolve, reject) => {
+    const args = ['-f', 'wav', '-i', 'pipe:0'];
+
+    if (format === 'mp3') {
+      args.push('-acodec', 'libmp3lame', '-b:a', bitrate);
+    }
+
+    args.push('-f', format, 'pipe:1');
+
+    const ffmpeg = spawn(ffmpegPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const chunks = [];
+    let stderr = '';
+
+    ffmpeg.stdout.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+
+    ffmpeg.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    ffmpeg.on('error', (error) => {
+      reject(error);
+    });
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        resolve(Buffer.concat(chunks));
+      } else {
+        const error = new Error(`ffmpeg exited with code ${code}${stderr ? `: ${stderr}` : ''}`);
+        reject(error);
+      }
+    });
+
+    ffmpeg.stdin.on('error', (error) => {
+      reject(error);
+    });
+
+    ffmpeg.stdin.end(buffer);
+  });
+}

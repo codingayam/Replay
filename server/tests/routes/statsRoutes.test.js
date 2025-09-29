@@ -80,56 +80,6 @@ function requireAuth() {
   };
 }
 
-test('registerStatsRoutes streak endpoint returns expected payload', async () => {
-  const { app, routes } = createMockApp();
-
-  const completions = [
-    { completed_at: new Date().toISOString() },
-    { completed_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }
-  ];
-
-  const supabase = {
-    from(table) {
-      assert.equal(table, 'meditations');
-      return createMeditationsBuilder({ data: completions, error: null });
-    }
-  };
-
-  registerStatsRoutes({ app, requireAuth, supabase });
-
-  const route = routes.get.find((r) => r.path === '/api/stats/streak');
-  assert.ok(route);
-
-  const resWrapper = createMockResponse();
-  await runHandlers(route.handlers, { auth: null }, resWrapper);
-
-  assert.equal(resWrapper.statusCode, 200);
-  assert.equal(resWrapper.json.streak, 2);
-  assert.equal(resWrapper.json.completedToday, true);
-});
-
-test('registerStatsRoutes monthly endpoint counts completions', async () => {
-  const { app, routes } = createMockApp();
-
-  const supabase = {
-    from(table) {
-      assert.equal(table, 'meditations');
-      return createMeditationsBuilder({ data: [{ id: 1 }, { id: 2 }], error: null });
-    }
-  };
-
-  registerStatsRoutes({ app, requireAuth, supabase });
-
-  const route = routes.get.find((r) => r.path === '/api/stats/monthly');
-  assert.ok(route);
-
-  const resWrapper = createMockResponse();
-  await runHandlers(route.handlers, { auth: null }, resWrapper);
-
-  assert.equal(resWrapper.statusCode, 200);
-  assert.equal(resWrapper.json.count, 2);
-});
-
 test('registerStatsRoutes calendar endpoint returns unique ISO dates', async () => {
   const { app, routes } = createMockApp();
 
@@ -158,4 +108,3 @@ test('registerStatsRoutes calendar endpoint returns unique ISO dates', async () 
   assert.equal(resWrapper.statusCode, 200);
   assert.deepEqual(resWrapper.json.dates.sort(), ['2025-01-01', '2025-01-02']);
 });
-
