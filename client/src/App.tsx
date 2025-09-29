@@ -15,11 +15,13 @@ import DesktopLayout from './components/DesktopLayout';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
 import { useResponsive } from './hooks/useResponsive';
 import AuthCallbackPage from './pages/AuthCallbackPage';
+import { WeeklyProgressProvider } from './contexts/WeeklyProgressContext';
 
 function App() {
   return (
     <AuthProvider>
-      <JobProvider>
+      <WeeklyProgressProvider>
+        <JobProvider>
           <Router>
         <Routes>
           {/* Public Routes - Authentication */}
@@ -141,6 +143,7 @@ function App() {
             </Routes>
           </Router>
         </JobProvider>
+      </WeeklyProgressProvider>
     </AuthProvider>
   );
 }

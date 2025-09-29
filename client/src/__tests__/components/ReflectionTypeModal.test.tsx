@@ -22,34 +22,24 @@ describe('ReflectionTypeModal', () => {
     );
   };
 
-  it('renders meditation and ideas options with expected copy', () => {
+  it('renders meditation option with expected copy', () => {
     renderModal();
 
     expect(screen.getByRole('heading', { name: 'Choose Your Reflection Type' })).toBeInTheDocument();
 
     expect(screen.getByRole('heading', { level: 3, name: 'Meditation' })).toBeInTheDocument();
     expect(screen.getByText('Guided mindfulness sessions')).toBeInTheDocument();
-
-    expect(screen.getByRole('heading', { level: 3, name: 'Ideas' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 4, name: 'Reflection' })).toBeInTheDocument();
-    expect(screen.getByText('Creative inspiration')).toBeInTheDocument();
   });
 
-  it('invokes onSelectType with "Meditation" and "Ideas"', async () => {
+  it('invokes onSelectType with "Meditation"', async () => {
     renderModal();
 
     const meditationButton = screen.getByRole('button', { name: /Meditation/i });
-    const ideasButton = screen.getByRole('button', { name: /Ideas/i });
 
     await act(async () => {
       fireEvent.click(meditationButton);
     });
     expect(handleSelect).toHaveBeenCalledWith('Meditation');
-
-    await act(async () => {
-      fireEvent.click(ideasButton);
-    });
-    expect(handleSelect).toHaveBeenCalledWith('Ideas');
   });
 
   it('closes when the overlay close button is clicked', () => {

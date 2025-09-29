@@ -5,7 +5,6 @@ import SupabaseImage from '../components/SupabaseImage';
 import Header from '../components/Header';
 import SearchResults from '../components/SearchResults';
 import SearchResultModal from '../components/SearchResultModal';
-import ReplayModeSelectionModal from '../components/ReplayModeSelectionModal';
 import DurationSelectorModal from '../components/DurationSelectorModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
@@ -18,11 +17,12 @@ interface PlaylistItem {
     audioUrl?: string;
     duration?: number;
 }
-import { useAuthenticatedApi, getFileUrl } from '../utils/api';
+import { useAuthenticatedApi } from '../utils/api';
 import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
+import useWeeklyProgress from '../hooks/useWeeklyProgress';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -50,7 +50,6 @@ const ExperiencesPage: React.FC = () => {
     // Multi-select state
     const [selectionMode, setSelectionMode] = useState<boolean>(false);
     const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
-    const [showReplayModal, setShowReplayModal] = useState<boolean>(false);
     
     // Meditative replay state
     const [showDurationModal, setShowDurationModal] = useState(false);
@@ -63,15 +62,10 @@ const ExperiencesPage: React.FC = () => {
     const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
     const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     const [generatedSummary, setGeneratedSummary] = useState('');
-    
-    // Radio state
-    const [radioPlaylist, setRadioPlaylist] = useState<PlaylistItem[] | null>(null);
-    const [isGeneratingRadio, setIsGeneratingRadio] = useState(false);
-    const [isRadioApiComplete, setIsRadioApiComplete] = useState(false);
-    
     const api = useAuthenticatedApi();
     const { user } = useAuth();
     const { isDesktop } = useResponsive();
+    const { summary: weeklyProgress, thresholds: progressThresholds, refresh: refreshWeeklyProgress } = useWeeklyProgress();
     
     // Calculate recommended duration based on number of experiences
     const calculateRecommendedDuration = (experienceCount: number): number => {
@@ -107,6 +101,7 @@ const ExperiencesPage: React.FC = () => {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             fetchNotes();
+            await refreshWeeklyProgress();
         } catch (err) {
             console.error("Error saving audio note:", err);
             alert('Failed to save audio note. See console for details.');
@@ -125,6 +120,7 @@ const ExperiencesPage: React.FC = () => {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             fetchNotes();
+            await refreshWeeklyProgress();
         } catch (err) {
             console.error("Error saving photo note:", err);
             alert('Failed to save photo note. See console for details.');
@@ -149,6 +145,7 @@ const ExperiencesPage: React.FC = () => {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             fetchNotes();
+            await refreshWeeklyProgress();
         } catch (err) {
             console.error("Error saving text note:", err);
             alert('Failed to save text note. See console for details.');
@@ -162,6 +159,7 @@ const ExperiencesPage: React.FC = () => {
             try {
                 await api.delete(`/notes/${id}`);
                 fetchNotes();
+                await refreshWeeklyProgress();
             } catch (err) {
                 console.error("Error deleting note:", err);
             }
@@ -337,84 +335,26 @@ const ExperiencesPage: React.FC = () => {
         setSelectionMode(false);
     };
 
+    const showProgressNotice = (customMessage?: string) => {
+        const remaining = weeklyProgress?.unlocksRemaining ?? (progressThresholds?.unlockMeditations ?? 3);
+        const defaultMessage = `Meditations unlock after ${progressThresholds?.unlockMeditations ?? 3} journals this week. ${remaining > 0 ? `You're ${remaining} away.` : ''}`;
+        window.alert(customMessage ?? defaultMessage.trim());
+    };
+
     const handleGenerateFromSelection = () => {
-        if (selectedNoteIds.size > 0) {
-            setShowReplayModal(true);
+        if (selectedNoteIds.size === 0) {
+            return;
         }
-    };
 
-    const handleReplayModeSelection = (mode: 'Casual' | 'Meditative') => {
-        setShowReplayModal(false);
-        
-        if (mode === 'Meditative') {
-            // Calculate recommended duration for selected experiences
-            const calculatedDuration = calculateRecommendedDuration(selectedNoteIds.size);
-            setRecommendedDuration(calculatedDuration);
-            setSelectedDuration(calculatedDuration);
-            setShowDurationModal(true);
-        } else {
-            // Radio mode (Casual) - skip duration selection and generate directly
-            handleRadioGeneration();
+        if (!(weeklyProgress?.meditationsUnlocked)) {
+            showProgressNotice();
+            return;
         }
-    };
 
-    // Radio generation handler
-    const handleRadioGeneration = async () => {
-        setIsGeneratingRadio(true);
-        setIsRadioApiComplete(false);
-        setShowMeditationGeneratingModal(true); // Reuse the same loading modal
-
-        try {
-            console.log('📻 Generating radio show from selected experiences...');
-            const response = await api.post('/replay/radio', {
-                noteIds: Array.from(selectedNoteIds),
-                duration: 5, // Fixed 5 minutes for radio
-                title: `Radio Show - ${new Date().toLocaleDateString()}`
-            });
-
-            setRadioPlaylist(response.data.radioShow.playlist);
-            
-            // Mark API as complete - loading modal will handle the transition
-            console.log('✅ Radio API Success - setting isRadioApiComplete to true');
-            setIsRadioApiComplete(true);
-        } catch (err) {
-            console.error('Error generating radio show:', err);
-            alert('Failed to generate radio show. Please try again.');
-            setIsGeneratingRadio(false);
-            setIsRadioApiComplete(false);
-            setShowMeditationGeneratingModal(false);
-            handleClearSelection();
-        }
-    };
-
-    const handleRadioReady = () => {
-        console.log('🎯 handleRadioReady called');
-        console.log('📊 radioPlaylist:', radioPlaylist);
-        
-        // Called when the loading animation completes
-        setIsGeneratingRadio(false);
-        setIsRadioApiComplete(false);
-        setShowMeditationGeneratingModal(false);
-        
-        // Only proceed if we actually have a playlist
-        if (radioPlaylist && radioPlaylist.length > 0) {
-            console.log('✅ Valid radio playlist found, starting playback');
-            // Playlist will be used by MeditationPlayer component
-        } else {
-            console.log('❌ No valid radio playlist found');
-            alert('Radio generation failed. Please try again when the server is running.');
-            // Reset state
-            setRadioPlaylist(null);
-            handleClearSelection();
-        }
-    };
-
-    const handleRadioFinish = (completed: boolean) => {
-        console.log(`🎯 Radio finished - completed: ${completed}`);
-        setRadioPlaylist(null);
-        
-        // Clear selection and exit selection mode
-        handleClearSelection();
+        const calculatedDuration = calculateRecommendedDuration(selectedNoteIds.size);
+        setRecommendedDuration(calculatedDuration);
+        setSelectedDuration(calculatedDuration);
+        setShowDurationModal(true);
     };
 
     // Meditative replay modal handlers
@@ -482,7 +422,7 @@ const ExperiencesPage: React.FC = () => {
         }
     };
 
-    const handleMeditationFinish = (completed: boolean) => {
+    const handleMeditationFinish = async (completed: boolean) => {
         console.log(`🎯 Meditation finished - completed: ${completed}`);
         setMeditationPlaylist(null);
         setCurrentMeditationId(null);
@@ -490,20 +430,19 @@ const ExperiencesPage: React.FC = () => {
         
         // Clear selection and exit selection mode
         handleClearSelection();
+        await refreshWeeklyProgress();
     };
 
     // Group notes by date categories
     const groupedNotes = groupNotesByDate(notes);
     const sortedDateGroups = sortDateGroups(Object.keys(groupedNotes));
 
-    // Show meditation player if we have a playlist (meditation or radio)
+    const journalGoal = progressThresholds?.unlockMeditations ?? 3;
+    const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
+
+    // Show meditation player if we have a playlist
     if (meditationPlaylist) {
         return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} meditationId={currentMeditationId || undefined} />;
-    }
-    
-    // Show radio player if we have a radio playlist
-    if (radioPlaylist) {
-        return <MeditationPlayer playlist={radioPlaylist} onFinish={handleRadioFinish} />;
     }
 
     return (
@@ -801,7 +740,7 @@ const ExperiencesPage: React.FC = () => {
             )}
 
             {/* Selection Bar */}
-            {selectionMode && !showReplayModal && !showDurationModal && !showReadyToBeginModal && !showMeditationGeneratingModal && (
+            {selectionMode && !showDurationModal && !showReadyToBeginModal && !showMeditationGeneratingModal && (
                 <div style={styles.selectionBar}>
                     <div style={styles.selectionBarContent}>
                         <span style={styles.selectionCount}>{selectedNoteIds.size} selected</span>
@@ -830,14 +769,6 @@ const ExperiencesPage: React.FC = () => {
                     </button>
                 </div>
             )}
-
-            {/* Replay Mode Selection Modal */}
-            <ReplayModeSelectionModal
-                isOpen={showReplayModal}
-                onClose={() => setShowReplayModal(false)}
-                onSelectMode={handleReplayModeSelection}
-            />
-
             {/* Duration Selection Modal */}
             <DurationSelectorModal
                 isOpen={showDurationModal}
@@ -858,17 +789,15 @@ const ExperiencesPage: React.FC = () => {
                 duration={selectedDuration}
             />
 
-            {/* Meditation/Radio Generating Modal */}
+            {/* Meditation Generating Modal */}
             <MeditationGeneratingModal
                 isOpen={showMeditationGeneratingModal}
                 onClose={() => setShowMeditationGeneratingModal(false)}
-                isGenerating={isGeneratingMeditation || isGeneratingRadio}
-                isApiComplete={isMeditationApiComplete || isRadioApiComplete}
-                onMeditationReady={isGeneratingRadio ? handleRadioReady : handleMeditationReady}
+                onComplete={handleMeditationReady}
+                isApiComplete={isMeditationApiComplete}
                 onRunInBackground={() => {
                     setShowMeditationGeneratingModal(false);
                     setIsGeneratingMeditation(false);
-                    setIsGeneratingRadio(false);
                     handleClearSelection();
                 }}
             />

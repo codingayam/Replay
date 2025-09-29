@@ -10,7 +10,6 @@ interface ExperienceSelectionModalProps {
     startDate: string;
     endDate: string;
     calculateRecommendedDuration: (experienceCount: number) => number;
-    reflectionType?: 'Day' | 'Night' | 'Ideas';
 }
 
 interface NotesResponse {
@@ -24,7 +23,6 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     startDate,
     endDate,
     calculateRecommendedDuration,
-    reflectionType,
 }) => {
     const [notesData, setNotesData] = useState<NotesResponse | null>(null);
     const api = useAuthenticatedApi();
@@ -76,14 +74,7 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
             const filteredAvailableNotes = notes.filter(note => {
                 const noteDate = new Date(note.date);
                 const noteDateString = getLocalDateString(noteDate);
-                const dateInRange = noteDateString >= startDate && noteDateString <= endDate;
-                
-                // For Ideas reflection, show all notes (category filtering removed)
-                if (reflectionType === 'Ideas') {
-                    return dateInRange;
-                }
-                
-                return dateInRange;
+                return noteDateString >= startDate && noteDateString <= endDate;
             });
             
             setNotesData({
@@ -98,7 +89,7 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
         } finally {
             setIsLoading(false);
         }
-    }, [startDate, endDate, reflectionType]);
+    }, [startDate, endDate]);
 
     useEffect(() => {
         if (isOpen && startDate && endDate) {
@@ -192,17 +183,10 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
 
                             {notesData.availableNotes.length === 0 ? (
                                 <div style={styles.emptyState}>
-                                    <div style={styles.emptyIcon}>
-                                        {reflectionType === 'Ideas' ? '💡' : '📅'}
-                                    </div>
-                                    <h3 style={styles.emptyTitle}>
-                                        {reflectionType === 'Ideas' ? 'No ideas found' : 'No experiences found'}
-                                    </h3>
+                                    <div style={styles.emptyIcon}>📅</div>
+                                    <h3 style={styles.emptyTitle}>No experiences found</h3>
                                     <p style={styles.emptyText}>
-                                        {reflectionType === 'Ideas' 
-                                            ? 'You don\'t have any ideas-categorized experiences for the selected date range. Try selecting a different time period or record some creative thoughts first.'
-                                            : 'You don\'t have any recorded experiences for the selected date range.'
-                                        }
+                                        You don't have any recorded experiences for the selected date range. Try selecting a different period or add a new experience first.
                                     </p>
                                 </div>
                             ) : (

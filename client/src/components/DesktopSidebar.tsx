@@ -1,17 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Calendar, Brain, User, Flame, Target } from 'lucide-react';
+import { Calendar, Brain, User } from 'lucide-react';
 import RecentActivityCalendar from './RecentActivityCalendar';
 import CalendarModal from './CalendarModal';
+import WeeklyProgressCard from './WeeklyProgressCard';
 import { useAuthenticatedApi } from '../utils/api';
+import useWeeklyProgress from '../hooks/useWeeklyProgress';
 
 const DesktopSidebar: React.FC = () => {
   const location = useLocation();
   const api = useAuthenticatedApi();
+  const {
+    summary: weeklyProgress,
+    thresholds: progressThresholds,
+    isLoading: isProgressLoading,
+    error: progressError,
+    weekStart,
+    timezone
+  } = useWeeklyProgress();
+  const journalGoal = progressThresholds?.unlockMeditations ?? 3;
+  const meditationGoal = progressThresholds?.reportMeditations ?? 2;
+  const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
 
-  // Stats state
-  const [dayStreak, setDayStreak] = useState(0);
-  const [monthlyCount, setMonthlyCount] = useState(0);
   const [reflectionDates, setReflectionDates] = useState<string[]>([]);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
 
@@ -21,25 +31,18 @@ const DesktopSidebar: React.FC = () => {
     { path: '/profile', icon: User, label: 'Profile' },
   ];
 
-  // Fetch stats data
+  // Fetch calendar data for recent activity
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchCalendar = async () => {
       try {
-        const [streakRes, monthlyRes, calendarRes] = await Promise.all([
-          api.get('/stats/streak'),
-          api.get('/stats/monthly'),
-          api.get('/stats/calendar')
-        ]);
-
-        setDayStreak(streakRes.data.streak);
-        setMonthlyCount(monthlyRes.data.count);
+        const calendarRes = await api.get('/stats/calendar');
         setReflectionDates(calendarRes.data.dates || []);
       } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Error fetching calendar stats:', error);
       }
     };
 
-    fetchStats();
+    fetchCalendar();
   }, [api]);
 
   const handleCalendarExpand = () => {
@@ -81,29 +84,17 @@ const DesktopSidebar: React.FC = () => {
         })}
       </nav>
 
-      {/* Stats Cards */}
-      <div style={styles.statsSection}>
-        {/* Day Streak Card */}
-        <div style={{...styles.statCard, ...styles.streakCard}}>
-          <div style={styles.statCardContent}>
-            <div style={styles.statNumber}>{dayStreak}</div>
-            <div style={styles.statLabel}>Day Streak</div>
-          </div>
-          <div style={styles.statIcon}>
-            <Flame size={24} style={{ color: '#fff' }} />
-          </div>
-        </div>
-
-        {/* Monthly Count Card */}
-        <div style={{...styles.statCard, ...styles.monthlyCard}}>
-          <div style={styles.statCardContent}>
-            <div style={styles.statNumber}>{monthlyCount}</div>
-            <div style={styles.statLabel}>This Month</div>
-          </div>
-          <div style={styles.statIcon}>
-            <Target size={24} style={{ color: '#fff' }} />
-          </div>
-        </div>
+      <div style={styles.progressWrapper}>
+        <WeeklyProgressCard
+          summary={weeklyProgress}
+          journalGoal={journalGoal}
+          meditationGoal={meditationGoal}
+          isLoading={isProgressLoading}
+          isLocked={!meditationsUnlocked}
+          error={progressError}
+          weekLabel={weekStart ? `Week of ${weekStart}` : null}
+          timezoneLabel={timezone ?? null}
+        />
       </div>
 
       {/* Recent Activity Calendar */}
@@ -124,7 +115,7 @@ const DesktopSidebar: React.FC = () => {
 
 const styles = {
   sidebar: {
-    width: '280px',
+    width: '320px',
     height: '100vh',
     backgroundColor: '#ffffff',
     borderRight: '1px solid #e5e7eb',
@@ -174,13 +165,14 @@ const styles = {
   navigation: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '0.5rem',
+    gap: '0.25rem',
+    marginBottom: '0.5rem',
   },
   navItem: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.75rem',
-    padding: '0.75rem 1rem',
+    padding: '0.625rem 1rem',
     borderRadius: '8px',
     textDecoration: 'none',
     color: '#6b7280',
@@ -198,44 +190,8 @@ const styles = {
     fontSize: '0.9rem',
     fontWeight: '500',
   },
-  statsSection: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '1rem',
-  },
-  statCard: {
-    borderRadius: '12px',
-    padding: '1.25rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    color: 'white',
-    position: 'relative' as const,
-    overflow: 'hidden',
-  },
-  streakCard: {
-    background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-  },
-  monthlyCard: {
-    background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
-  },
-  statCardContent: {
-    zIndex: 2,
-  },
-  statNumber: {
-    fontSize: '2rem',
-    fontWeight: '700',
-    lineHeight: 1,
-    marginBottom: '0.25rem',
-  },
-  statLabel: {
-    fontSize: '0.875rem',
-    fontWeight: '500',
-    opacity: 0.9,
-  },
-  statIcon: {
-    opacity: 0.3,
-    zIndex: 1,
+  progressWrapper: {
+    margin: '0.5rem 0',
   },
 };
 

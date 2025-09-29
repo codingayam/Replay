@@ -24,6 +24,31 @@
     
     <!-- Theme Color -->
     <meta name="theme-color" content="#000000" />
+
+    <!-- OneSignal Web SDK -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      (function () {
+        const allowedOrigins = ['https://replay.agrix.ai'];
+        const currentOrigin = window.location.origin;
+
+        if (!allowedOrigins.includes(currentOrigin)) {
+          console.info('[OneSignal] Initialization skipped for origin:', currentOrigin);
+          return;
+        }
+
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        window.OneSignalDeferred.push(async function (OneSignal) {
+          await OneSignal.init({
+            appId: 'ecceb7b1-6964-4c15-96ce-5b64aaee1f16',
+            safari_web_id: 'web.onesignal.auto.03c56528-3ec2-4727-882a-5ccb48032a98',
+            notifyButton: {
+              enable: true,
+            },
+          });
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

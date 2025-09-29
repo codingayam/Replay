@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { validatePasswordStrength } from '../utils/passwordPolicy';
 
@@ -36,6 +36,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<any | null>(null);
   const [session, setSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasRequestedPushPermission = useRef(false);
 
   useEffect(() => {
     // Get initial session
@@ -56,6 +57,57 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const allowedOrigins = ['https://replay.agrix.ai'];
+    const currentOrigin = window.location.origin;
+
+    if (!allowedOrigins.includes(currentOrigin)) {
+      return;
+    }
+
+    const synchronizeOneSignal = async (oneSignal: any) => {
+      try {
+        if (user?.id) {
+          if (typeof oneSignal.login === 'function') {
+            await oneSignal.login(user.id);
+          }
+
+          const permissionState = oneSignal?.Notifications?.permissionNative ?? oneSignal?.Notifications?.permission;
+          const shouldPrompt = permissionState === 'default' || permissionState === undefined;
+
+          if (!hasRequestedPushPermission.current && shouldPrompt) {
+            hasRequestedPushPermission.current = true;
+
+            if (oneSignal?.Slidedown?.promptPush) {
+              await oneSignal.Slidedown.promptPush();
+            } else if (oneSignal?.Notifications?.requestPermission) {
+              await oneSignal.Notifications.requestPermission();
+            }
+          }
+        } else {
+          hasRequestedPushPermission.current = false;
+          if (typeof oneSignal.logout === 'function') {
+            await oneSignal.logout();
+          }
+        }
+      } catch (error) {
+        console.error('Failed to synchronize OneSignal session:', error);
+      }
+    };
+
+    const deferredQueue = (window as any).OneSignalDeferred;
+    if (Array.isArray(deferredQueue)) {
+      deferredQueue.push(synchronizeOneSignal);
+    } else {
+      (window as any).OneSignalDeferred = [synchronizeOneSignal];
+    }
+
+  }, [user?.id]);
 
   const signUp = async (email: string, password: string) => {
     const { isValid, failedRuleLabels } = validatePasswordStrength(password);

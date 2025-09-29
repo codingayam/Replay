@@ -1,0 +1,396 @@
+import React from 'react';
+import { Target, FileText, Brain, Flame } from 'lucide-react';
+import type { WeeklyProgressSummary } from '../hooks/useWeeklyProgress';
+
+interface WeeklyProgressCardProps {
+  summary: WeeklyProgressSummary | null;
+  journalGoal: number;
+  meditationGoal: number;
+  isLoading?: boolean;
+  isLocked?: boolean;
+  error?: string | null;
+  weekLabel?: string | null;
+  timezoneLabel?: string | null;
+  showReportStatus?: boolean;
+  className?: string;
+}
+
+const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
+  summary,
+  journalGoal,
+  meditationGoal,
+  isLoading = false,
+  isLocked = false,
+  error = null,
+  weekLabel,
+  timezoneLabel,
+  showReportStatus = false,
+  className
+}) => {
+  const journalCount = summary?.journalCount ?? 0;
+  const meditationCount = summary?.meditationCount ?? 0;
+
+  const journalGoalSafe = Math.max(journalGoal, 0);
+  const meditationGoalSafe = Math.max(meditationGoal, 0);
+
+  const metJournalGoal = journalGoalSafe === 0 ? true : journalCount >= journalGoalSafe;
+  const metMeditationGoal = meditationGoalSafe === 0 ? true : meditationCount >= meditationGoalSafe;
+
+  const goalsMet = [metJournalGoal, metMeditationGoal].filter(Boolean).length;
+  const totalGoals = 2;
+
+  const journalProgress = journalGoalSafe > 0 ? Math.min(journalCount / journalGoalSafe, 1) : 1;
+  const meditationProgress = meditationGoalSafe > 0 ? Math.min(meditationCount / meditationGoalSafe, 1) : 1;
+
+  const reportStatusLabel = summary?.reportSent
+    ? 'Sent'
+    : summary?.reportReady
+      ? 'Ready'
+      : 'Pending';
+
+  return (
+    <div style={styles.wrapper} className={className}>
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <div style={styles.headerContent}>
+            <h3 style={styles.title}>Weekly Goals</h3>
+            <div style={styles.subtitle}>This week</div>
+          </div>
+          {isLocked && (
+            <div style={styles.lockedBadge}>
+              Locked
+            </div>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div style={styles.loadingState}>
+            <div style={styles.shimmer} />
+            <p style={styles.loadingText}>Loading stats...</p>
+          </div>
+        ) : (
+          <>
+            <div style={styles.progressOverview}>
+              <div style={styles.progressStats}>
+                <div style={styles.progressNumber}>{goalsMet}</div>
+                <div style={styles.progressLabel}>of {totalGoals} completed</div>
+              </div>
+              <div style={{
+                ...styles.progressRing,
+                background: `conic-gradient(${isLocked ? '#dc2626' : goalsMet === totalGoals ? '#059669' : '#6366f1'} ${(goalsMet / totalGoals) * 360}deg, #f1f5f9 0deg)`
+              }}>
+                <div style={styles.progressRingInner}>
+                  {goalsMet === totalGoals && !isLocked && (
+                    <Flame size={16} style={{ color: '#059669' }} />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.goalsContainer}>
+              <div style={styles.goalRow}>
+                <div style={styles.goalInfo}>
+                  <FileText size={16} style={{ color: '#6366f1' }} />
+                  <span style={styles.goalName}>Journal</span>
+                </div>
+                <div style={styles.goalProgress}>
+                  <div style={styles.miniProgressBar}>
+                    <div style={{
+                      ...styles.miniProgressFill,
+                      width: `${journalProgress * 100}%`,
+                      background: metJournalGoal
+                        ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+                        : 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)'
+                    }} />
+                  </div>
+                  <span style={{
+                    ...styles.goalCount,
+                    color: metJournalGoal ? '#059669' : '#1e293b'
+                  }}>
+                    {journalCount}/{journalGoalSafe}
+                  </span>
+                </div>
+              </div>
+
+              <div style={styles.goalRow}>
+                <div style={styles.goalInfo}>
+                  <Brain size={16} style={{ color: '#8b5cf6' }} />
+                  <span style={styles.goalName}>Meditation</span>
+                </div>
+                <div style={styles.goalProgress}>
+                  <div style={styles.miniProgressBar}>
+                    <div style={{
+                      ...styles.miniProgressFill,
+                      width: `${meditationProgress * 100}%`,
+                      background: metMeditationGoal
+                        ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+                        : 'linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%)'
+                    }} />
+                  </div>
+                  <span style={{
+                    ...styles.goalCount,
+                    color: metMeditationGoal ? '#059669' : '#1e293b'
+                  }}>
+                    {meditationCount}/{meditationGoalSafe}
+                  </span>
+                </div>
+              </div>
+
+              {showReportStatus && (
+                <div style={styles.goalRow}>
+                  <div style={styles.goalInfo}>
+                    <FileText size={16} style={{ color: '#f59e0b' }} />
+                    <span style={styles.goalName}>Weekly Report</span>
+                  </div>
+                  <div style={styles.reportStatus}>
+                    <span style={{
+                      ...styles.statusChip,
+                      backgroundColor: summary?.reportSent ? '#dcfce7' : summary?.reportReady ? '#fef3c7' : '#f1f5f9',
+                      color: summary?.reportSent ? '#059669' : summary?.reportReady ? '#d97706' : '#64748b'
+                    }}>
+                      {reportStatusLabel}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {error && !isLoading && (
+          <div style={styles.errorBox}>{error}</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+function statusText(isLocked: boolean, isComplete: boolean): string {
+  if (isLocked) {
+    return 'Locked';
+  }
+  return isComplete ? 'Complete' : 'In progress';
+}
+
+const styles = {
+  wrapper: {
+    width: '100%'
+  } as React.CSSProperties,
+  card: {
+    background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+    border: '1px solid rgba(226, 232, 240, 0.6)',
+    borderRadius: '16px',
+    padding: '1.5rem',
+    boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.1)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1.25rem',
+    position: 'relative' as const,
+    overflow: 'hidden'
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.75rem'
+  } as React.CSSProperties,
+  headerContent: {
+    flex: 1,
+    minWidth: 0
+  } as React.CSSProperties,
+  title: {
+    fontSize: '1rem',
+    fontWeight: 700,
+    color: '#1e293b',
+    margin: 0,
+    lineHeight: 1.3,
+    letterSpacing: '-0.01em'
+  } as React.CSSProperties,
+  subtitle: {
+    fontSize: '0.8rem',
+    color: '#64748b',
+    marginTop: '0.25rem',
+    fontWeight: 500
+  } as React.CSSProperties,
+  lockedBadge: {
+    marginLeft: 'auto',
+    padding: '0.3rem 0.65rem',
+    background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
+    color: '#dc2626',
+    borderRadius: '8px',
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.025em',
+    flexShrink: 0,
+    alignSelf: 'center',
+    border: '1px solid rgba(220, 38, 38, 0.2)',
+    boxShadow: '0 1px 3px 0 rgba(220, 38, 38, 0.1)'
+  } as React.CSSProperties,
+  loadingState: {
+    padding: '1rem 0',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: '0.5rem'
+  } as React.CSSProperties,
+  shimmer: {
+    width: '60px',
+    height: '60px',
+    borderRadius: '50%',
+    background: 'linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s ease-in-out infinite'
+  } as React.CSSProperties,
+  loadingText: {
+    fontSize: '0.8rem',
+    color: '#94a3b8'
+  } as React.CSSProperties,
+  progressOverview: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '1.25rem',
+    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+    borderRadius: '12px',
+    marginTop: '0.5rem',
+    border: '1px solid rgba(226, 232, 240, 0.5)',
+    position: 'relative' as const
+  } as React.CSSProperties,
+  progressStats: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.125rem'
+  } as React.CSSProperties,
+  progressNumber: {
+    fontSize: '2rem',
+    fontWeight: 800,
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text',
+    lineHeight: 1
+  } as React.CSSProperties,
+  progressLabel: {
+    fontSize: '0.8rem',
+    color: '#64748b',
+    fontWeight: 600,
+    letterSpacing: '0.01em'
+  } as React.CSSProperties,
+  progressRing: {
+    width: '56px',
+    height: '56px',
+    borderRadius: '50%',
+    padding: '3px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative' as const,
+    filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))'
+  } as React.CSSProperties,
+  progressRingInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: '50%',
+    backgroundColor: '#ffffff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '2px solid rgba(255, 255, 255, 0.9)',
+    boxShadow: 'inset 0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+  } as React.CSSProperties,
+  goalsContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1.25rem',
+    marginTop: '0.75rem'
+  } as React.CSSProperties,
+  goalRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    padding: '0.875rem 1rem',
+    background: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: '12px',
+    border: '1px solid rgba(226, 232, 240, 0.4)',
+    transition: 'all 0.2s ease',
+    backdropFilter: 'blur(10px)',
+    minHeight: '50px'
+  } as React.CSSProperties,
+  goalInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    minWidth: '100px',
+    flex: '1 1 auto'
+  } as React.CSSProperties,
+  goalName: {
+    fontSize: '0.9rem',
+    color: '#475569',
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+    whiteSpace: 'nowrap' as const,
+    overflow: 'visible',
+    textOverflow: 'clip'
+  } as React.CSSProperties,
+  goalProgress: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    minWidth: '120px',
+    flex: '0 0 auto'
+  } as React.CSSProperties,
+  goalCount: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    minWidth: '2.5rem',
+    textAlign: 'center' as const,
+    letterSpacing: '-0.01em',
+    flexShrink: 0,
+    whiteSpace: 'nowrap' as const
+  } as React.CSSProperties,
+  miniProgressBar: {
+    width: '60px',
+    height: '5px',
+    backgroundColor: '#f1f5f9',
+    borderRadius: '999px',
+    overflow: 'hidden',
+    border: '1px solid rgba(226, 232, 240, 0.6)',
+    boxShadow: 'inset 0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    flexShrink: 0
+  } as React.CSSProperties,
+  miniProgressFill: {
+    height: '100%',
+    borderRadius: '999px',
+    transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+    position: 'relative' as const
+  } as React.CSSProperties,
+  reportStatus: {
+    display: 'flex',
+    alignItems: 'center'
+  } as React.CSSProperties,
+  statusChip: {
+    padding: '0.3rem 0.75rem',
+    borderRadius: '999px',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.025em',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
+    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+    backdropFilter: 'blur(4px)'
+  } as React.CSSProperties,
+  errorBox: {
+    marginTop: '0.75rem',
+    padding: '0.75rem 1rem',
+    borderRadius: '10px',
+    background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
+    border: '1px solid rgba(220, 38, 38, 0.2)',
+    color: '#dc2626',
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    boxShadow: '0 2px 4px 0 rgba(220, 38, 38, 0.1)'
+  } as React.CSSProperties
+};
+
+export default WeeklyProgressCard;

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { AxiosError } from 'axios';
 import Header from '../components/Header';
 import MeditationPlayer from '../components/MeditationPlayer';
-import ReplayModeSelectionModal from '../components/ReplayModeSelectionModal';
 import MeditationSubTypeModal from '../components/MeditationSubTypeModal';
 import TimePeriodModal from '../components/TimePeriodModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
@@ -10,13 +9,14 @@ import DurationSelectorModal from '../components/DurationSelectorModal';
 import ExperienceSelectionModal from '../components/ExperienceSelectionModal';
 import MeditationGenerationModal from '../components/MeditationGenerationModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
-import StatsCards from '../components/StatsCards';
 import RecentActivityCalendar from '../components/RecentActivityCalendar';
 import CalendarModal from '../components/CalendarModal';
+import WeeklyProgressCard from '../components/WeeklyProgressCard';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthenticatedApi } from '../utils/api';
 import { useJobs } from '../contexts/JobContext';
 import { useResponsive } from '../hooks/useResponsive';
+import useWeeklyProgress from '../hooks/useWeeklyProgress';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -55,15 +55,23 @@ const ReflectionsPage: React.FC = () => {
     const api = useAuthenticatedApi();
     const { createJob } = useJobs();
     const { isDesktop } = useResponsive();
+    const {
+        summary: weeklyProgress,
+        thresholds: progressThresholds,
+        weekStart: progressWeekStart,
+        timezone: progressTimezone,
+        isLoading: isProgressLoading,
+        error: progressError,
+        refresh: refreshWeeklyProgress
+    } = useWeeklyProgress();
+    const journalGoal = progressThresholds?.unlockMeditations ?? 3;
+    const meditationGoal = progressThresholds?.reportMeditations ?? 2;
+    const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
     
-    // Stats state
-    const [dayStreak, setDayStreak] = useState(0);
-    const [monthlyCount, setMonthlyCount] = useState(0);
     const [reflectionDates, setReflectionDates] = useState<string[]>([]);
     const [showCalendarModal, setShowCalendarModal] = useState(false);
     
     // New reflection flow state
-    const [showReplayModeModal, setShowReplayModeModal] = useState(false);
     const [showMeditationSubTypeModal, setShowMeditationSubTypeModal] = useState(false);
     const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
     const [showExperienceModal, setShowExperienceModal] = useState(false);
@@ -74,7 +82,7 @@ const ReflectionsPage: React.FC = () => {
     const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     
     // Reflection session data
-    const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night' | 'Ideas'>('Day');
+    const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night'>('Day');
     const [selectedStartDate, setSelectedStartDate] = useState('');
     const [selectedEndDate, setSelectedEndDate] = useState('');
     const [selectedDuration, setSelectedDuration] = useState(5);
@@ -82,6 +90,8 @@ const ReflectionsPage: React.FC = () => {
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
     const [generatedPlaylist, setGeneratedPlaylist] = useState<PlaylistItem[] | null>(null);
+    const [progressMessage, setProgressMessage] = useState<string | null>(null);
+    const progressMessageTimeoutRef = useRef<number | null>(null);
     
 
     const fetchSavedMeditations = async () => {
@@ -119,25 +129,26 @@ const ReflectionsPage: React.FC = () => {
         }
     };
 
-    const fetchStats = async () => {
+    const fetchCalendar = async () => {
         try {
-            const [streakRes, monthlyRes, calendarRes] = await Promise.all([
-                api.get('/stats/streak'),
-                api.get('/stats/monthly'),
-                api.get('/stats/calendar')
-            ]);
-            
-            setDayStreak(streakRes.data.streak);
-            setMonthlyCount(monthlyRes.data.count);
-            setReflectionDates(calendarRes.data.dates);
+            const calendarRes = await api.get('/stats/calendar');
+            setReflectionDates(calendarRes.data.dates || []);
         } catch (err) {
-            console.error("Error fetching stats:", err);
+            console.error("Error fetching calendar stats:", err);
         }
     };
 
     useEffect(() => {
         fetchSavedMeditations();
-        fetchStats();
+        fetchCalendar();
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (progressMessageTimeoutRef.current) {
+                window.clearTimeout(progressMessageTimeoutRef.current);
+            }
+        };
     }, []);
 
     const handlePlaySavedMeditation = async (meditationId: string) => {
@@ -192,35 +203,47 @@ const ReflectionsPage: React.FC = () => {
         });
     };
 
-    // New reflection flow handlers
-    const handleStartReflection = () => {
-        setShowReplayModeModal(true);
+    const showProgressNotice = (customMessage?: string) => {
+        const remaining = weeklyProgress?.unlocksRemaining ?? journalGoal;
+        const defaultMessage = `Meditations unlock after ${journalGoal} journals this week. ${remaining > 0 ? `You're ${remaining} away.` : ''}`;
+        const message = customMessage ?? defaultMessage.trim();
+
+        if (isDesktop) {
+            window.alert(message);
+            return;
+        }
+
+        if (progressMessageTimeoutRef.current) {
+            window.clearTimeout(progressMessageTimeoutRef.current);
+        }
+
+        setProgressMessage(message);
+
+        progressMessageTimeoutRef.current = window.setTimeout(() => {
+            setProgressMessage(null);
+            progressMessageTimeoutRef.current = null;
+        }, 5000);
     };
 
-    const handleReplayModeSelection = (mode: 'Casual' | 'Meditative') => {
-        setShowReplayModeModal(false);
-        
-        if (mode === 'Meditative') {
-            // Show meditation sub-type modal for meditative mode
-            setShowMeditationSubTypeModal(true);
-        } else {
-            // For Casual mode, set type and continue with time period selection
-            setSelectedReflectionType('Casual');
-            setShowTimePeriodModal(true);
+    // New reflection flow handlers
+    const handleStartReflection = () => {
+        if (!meditationsUnlocked) {
+            showProgressNotice();
+            return;
         }
+
+        setShowMeditationSubTypeModal(true);
     };
 
     const handleMeditationSubTypeSelection = (type: 'Day' | 'Night') => {
+        if (!meditationsUnlocked) {
+            showProgressNotice();
+            setShowMeditationSubTypeModal(false);
+            return;
+        }
         setSelectedReflectionType(type);
         setShowMeditationSubTypeModal(false);
-        
-        if (type === 'Day') {
-            // For Day meditation, go straight to playback
-            handlePlayDayReflection();
-        } else {
-            // For Night reflection, continue with time period selection
-            setShowTimePeriodModal(true);
-        }
+        setShowTimePeriodModal(true);
     };
 
     const handleTimePeriodSelection = (startDate: string, endDate: string) => {
@@ -265,48 +288,42 @@ const ReflectionsPage: React.FC = () => {
         setIsGeneratingMeditation(true);
         setIsMeditationApiComplete(false);
 
+        if (!meditationsUnlocked) {
+            showProgressNotice();
+            setIsGeneratingMeditation(false);
+            setIsMeditationApiComplete(false);
+            return;
+        }
+
         try {
-            let response;
-            
-            if (selectedReflectionType === 'Casual') {
-                // Generate radio show for casual mode
-                console.log('🎙️ Generating radio show...');
-                response = await api.post('/replay/radio', {
-                    noteIds: selectedNoteIds,
-                    duration: selectedDuration,
-                    title: `Radio Show - ${new Date().toLocaleDateString()}`
-                });
-                
-                setGeneratedPlaylist(response.data.playlist);
-                setGeneratedSummary(response.data.radioShow?.summary || 'Radio talk show replay');
-            } else {
-                // Generate meditation for meditative mode
-                console.log('🧘 Generating meditation...');
-                response = await api.post('/meditate', {
-                    noteIds: selectedNoteIds,
-                    duration: selectedDuration,
-                    timeOfReflection: selectedReflectionType,
-                    reflectionType: selectedReflectionType
-                });
-                
-                setGeneratedPlaylist(response.data.playlist);
-                setGeneratedSummary(response.data.summary || '');
-            }
-            
+            console.log('🧘 Generating meditation...');
+            const response = await api.post('/meditate', {
+                noteIds: selectedNoteIds,
+                duration: selectedDuration,
+                timeOfReflection: selectedReflectionType,
+                reflectionType: selectedReflectionType
+            });
+
+            setGeneratedPlaylist(response.data.playlist);
+            setGeneratedSummary(response.data.summary || '');
+
             // Mark API as complete - loading modal will handle the transition
             console.log('✅ API Success - setting isMeditationApiComplete to true');
             setIsMeditationApiComplete(true);
 
         } catch (err) {
-            const errorType = selectedReflectionType === 'Casual' ? 'radio show' : 'meditation';
-            console.error(`Error generating ${errorType}:`, err);
-            alert(`Failed to generate ${errorType}. Please try again.`);
+            console.error('Error generating meditation:', err);
+            alert('Failed to generate meditation. Please try again.');
             setIsGeneratingMeditation(false);
             setIsMeditationApiComplete(false);
         }
     };
 
     const handleRunInBackground = async () => {
+        if (!meditationsUnlocked) {
+            showProgressNotice();
+            return;
+        }
         try {
             console.log('🔄 Starting background meditation generation...');
             
@@ -367,10 +384,11 @@ const ReflectionsPage: React.FC = () => {
         setMeditationPlaylist(generatedPlaylist);
     };
 
-    const handleSaveLater = () => {
+    const handleSaveLater = async () => {
         setShowGenerationModal(false);
         fetchSavedMeditations(); // Refresh the saved meditations list
         fetchStats(); // Refresh stats since a new meditation was created
+        await refreshWeeklyProgress();
         // Reset state
         setSelectedReflectionType('Day');
         setSelectedStartDate('');
@@ -382,7 +400,7 @@ const ReflectionsPage: React.FC = () => {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const handleMeditationFinish = (_completed: boolean) => {
+    const handleMeditationFinish = async (_completed: boolean) => {
         // Ignore completed parameter since we no longer show completion modal
         setMeditationPlaylist(null);
         setCurrentMeditationId(null);
@@ -395,19 +413,7 @@ const ReflectionsPage: React.FC = () => {
         setGeneratedSummary('');
         fetchSavedMeditations(); // Refresh the saved meditations list
         fetchStats(); // Refresh stats since meditation was completed
-    };
-
-    const handlePlayDayReflection = async () => {
-        setIsLoadingMeditation(true);
-        try {
-            const res = await api.get('/meditations/day/default');
-            setMeditationPlaylist(res.data.playlist);
-        } catch (err) {
-            console.error("Error loading day reflection:", err);
-            alert('Failed to load day reflection. Please try again.');
-        } finally {
-            setIsLoadingMeditation(false);
-        }
+        await refreshWeeklyProgress();
     };
 
     const formatDateRange = () => {
@@ -488,14 +494,39 @@ const ReflectionsPage: React.FC = () => {
             )}
 
             <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
-                {/* Stats Cards and Calendar - only show on mobile */}
+                {/* Recent activity calendar - mobile only */}
                 {!isDesktop && (
                     <>
-                        <StatsCards streak={dayStreak} monthlyCount={monthlyCount} />
                         <RecentActivityCalendar
                             reflectionDates={reflectionDates || []}
                             onExpandClick={() => setShowCalendarModal(true)}
                         />
+
+                        <div style={styles.progressSection}>
+                            {progressMessage && (
+                                <div style={styles.progressBanner}>{progressMessage}</div>
+                            )}
+                            <WeeklyProgressCard
+                                summary={weeklyProgress}
+                                journalGoal={journalGoal}
+                                meditationGoal={meditationGoal}
+                                isLoading={isProgressLoading}
+                                isLocked={!meditationsUnlocked}
+                                error={progressError}
+                                weekLabel={progressWeekStart ? `Week of ${progressWeekStart}` : 'This week'}
+                                timezoneLabel={progressTimezone ?? null}
+                                showReportStatus
+                            />
+                            {!meditationsUnlocked && !isProgressLoading && (
+                                <p style={styles.progressHint}>
+                                    Add {weeklyProgress ? weeklyProgress.unlocksRemaining : journalGoal} more journal
+                                    {((weeklyProgress?.unlocksRemaining ?? journalGoal) === 1) ? '' : 's'} to unlock guided meditations this week.
+                                </p>
+                            )}
+                            {weeklyProgress?.reportReady && !weeklyProgress?.reportSent && (
+                                <p style={styles.progressHint}>Weekly report will send Monday at midnight.</p>
+                            )}
+                        </div>
                     </>
                 )}
             
@@ -589,14 +620,7 @@ const ReflectionsPage: React.FC = () => {
                     </div>
                 )}
             </div>
-
             {/* Modals */}
-            <ReplayModeSelectionModal
-                isOpen={showReplayModeModal}
-                onClose={() => setShowReplayModeModal(false)}
-                onSelectMode={handleReplayModeSelection}
-            />
-            
             <MeditationSubTypeModal
                 isOpen={showMeditationSubTypeModal}
                 onClose={() => setShowMeditationSubTypeModal(false)}
@@ -616,7 +640,6 @@ const ReflectionsPage: React.FC = () => {
                 startDate={selectedStartDate}
                 endDate={selectedEndDate}
                 calculateRecommendedDuration={calculateRecommendedDuration}
-                reflectionType={selectedReflectionType}
             />
             
             <DurationSelectorModal
@@ -737,6 +760,30 @@ const styles = {
         maxWidth: '100%',
         margin: '0',
         boxSizing: 'border-box',
+    },
+    progressSection: {
+        margin: '1.5rem 0',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '0.75rem',
+    },
+    progressHint: {
+        margin: 0,
+        fontSize: '0.85rem',
+        color: '#475569',
+    },
+    progressBanner: {
+        backgroundColor: 'rgba(251,191,36,0.15)',
+        border: '1px solid rgba(217,119,6,0.3)',
+        color: '#92400e',
+        padding: '0.5rem 0.75rem',
+        borderRadius: '8px',
+        fontSize: '0.85rem',
+    },
+    progressLoading: {
+        margin: 0,
+        fontSize: '0.85rem',
+        color: '#475569',
     },
     replayButton: {
         width: '100%',

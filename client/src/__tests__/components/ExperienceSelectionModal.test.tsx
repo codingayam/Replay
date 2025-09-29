@@ -40,7 +40,6 @@ describe('ExperienceSelectionModal', () => {
     onSelectExperiences: jest.fn(),
     startDate: '2025-09-01',
     endDate: '2025-09-01',
-    reflectionType: 'Ideas' as const,
     calculateRecommendedDuration: jest.fn(() => 5),
   };
 
