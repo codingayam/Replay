@@ -81,8 +81,16 @@ export async function sendOneSignalNotification({
   url,
   channel = 'push',
 }) {
+  console.log('[OneSignal] sendOneSignalNotification called:', {
+    externalId,
+    subscriptionId,
+    headings,
+    channel
+  });
+
   if (!isConfigured()) {
-    return { skipped: true };
+    console.log('[OneSignal] Not configured, skipping notification');
+    return { skipped: true, reason: 'not_configured' };
   }
 
   const payload = {
@@ -95,25 +103,53 @@ export async function sendOneSignalNotification({
 
   if (externalId) {
     payload.include_aliases = { external_id: [externalId] };
+    console.log('[OneSignal] Targeting by external_id:', externalId);
   } else if (subscriptionId) {
     payload.include_player_ids = [subscriptionId];
+    console.log('[OneSignal] Targeting by subscription_id:', subscriptionId);
   } else {
-    return { skipped: true };
+    console.log('[OneSignal] No target specified (no externalId or subscriptionId)');
+    return { skipped: true, reason: 'no_target' };
   }
 
   if (url) {
     payload.url = url;
   }
 
-  return callOneSignal('/notifications', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  console.log('[OneSignal] Sending notification with payload:', payload);
+
+  try {
+    const result = await callOneSignal('/notifications', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    console.log('[OneSignal] Notification sent successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('[OneSignal] Notification send failed:', {
+      payload,
+      error: error instanceof Error ? error.message : error
+    });
+    throw error;
+  }
 }
 
 export async function updateOneSignalUser(externalId, tags = {}) {
-  if (!isConfigured() || !externalId || !tags || Object.keys(tags).length === 0) {
-    return { skipped: true };
+  console.log('[OneSignal] updateOneSignalUser called:', { externalId, tags });
+
+  if (!isConfigured()) {
+    console.log('[OneSignal] Not configured, skipping tag update');
+    return { skipped: true, reason: 'not_configured' };
+  }
+
+  if (!externalId) {
+    console.log('[OneSignal] No externalId provided');
+    return { skipped: true, reason: 'no_external_id' };
+  }
+
+  if (!tags || Object.keys(tags).length === 0) {
+    console.log('[OneSignal] No tags provided');
+    return { skipped: true, reason: 'no_tags' };
   }
 
   const cleanedTags = Object.entries(tags).reduce((acc, [key, value]) => {
@@ -125,13 +161,33 @@ export async function updateOneSignalUser(externalId, tags = {}) {
   }, {});
 
   if (Object.keys(cleanedTags).length === 0) {
-    return { skipped: true };
+    console.log('[OneSignal] All tags filtered out (null/undefined)');
+    return { skipped: true, reason: 'all_tags_filtered' };
   }
 
-  return callOneSignal(`/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${encodeURIComponent(externalId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ tags: cleanedTags }),
+  console.log('[OneSignal] Sending tags to OneSignal:', {
+    externalId,
+    cleanedTags,
+    endpoint: `/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${encodeURIComponent(externalId)}`
   });
+
+  try {
+    const result = await callOneSignal(`/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${encodeURIComponent(externalId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tags: cleanedTags }),
+    });
+
+    console.log('[OneSignal] Tag update successful:', result);
+    return result;
+  } catch (error) {
+    console.error('[OneSignal] Tag update failed:', {
+      externalId,
+      tags: cleanedTags,
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
+  }
 }
 
 export async function sendOneSignalEvent(externalId, name, payload = {}) {
@@ -175,19 +231,38 @@ export async function sendOneSignalEvents(events = []) {
 }
 
 export async function attachExternalIdToSubscription(subscriptionId, externalId) {
-  if (!isConfigured() || !subscriptionId || !externalId) {
-    return { skipped: true };
+  console.log('[OneSignal] attachExternalIdToSubscription called:', {
+    subscriptionId,
+    externalId
+  });
+
+  if (!isConfigured()) {
+    console.log('[OneSignal] Not configured, skipping alias attachment');
+    return { skipped: true, reason: 'not_configured' };
+  }
+
+  if (!subscriptionId || !externalId) {
+    console.log('[OneSignal] Missing subscriptionId or externalId');
+    return { skipped: true, reason: 'missing_parameters' };
   }
 
   try {
-    return await callOneSignal(`/apps/${ONESIGNAL_APP_ID}/subscriptions/${subscriptionId}/user/identity`, {
+    const result = await callOneSignal(`/apps/${ONESIGNAL_APP_ID}/subscriptions/${subscriptionId}/user/identity`, {
       method: 'PATCH',
       body: JSON.stringify({ identity: { external_id: externalId } }),
     });
+    console.log('[OneSignal] Alias attachment successful:', result);
+    return result;
   } catch (error) {
     if (error instanceof Error && error.message.includes('409')) {
+      console.log('[OneSignal] Alias already exists (409 conflict) - this is expected');
       return { skipped: true, reason: 'alias_exists' };
     }
+    console.error('[OneSignal] Alias attachment failed:', {
+      subscriptionId,
+      externalId,
+      error: error instanceof Error ? error.message : error
+    });
     throw error;
   }
 }

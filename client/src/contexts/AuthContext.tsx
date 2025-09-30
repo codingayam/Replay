@@ -89,6 +89,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const registerWithOneSignal = async (oneSignal: any) => {
       try {
         if (user?.id) {
+          // Login to OneSignal with the user's external ID (Supabase UUID)
+          // This creates/identifies the user in OneSignal's system
+          console.log('[OneSignal] Logging in user:', user.id);
+          try {
+            await oneSignal.login(user.id);
+            console.log('[OneSignal] User login successful');
+          } catch (loginError) {
+            console.error('[OneSignal] Login failed:', loginError);
+          }
+
           const permissionState = oneSignal?.Notifications?.permissionNative ?? oneSignal?.Notifications?.permission;
           const shouldPrompt = permissionState === 'default' || permissionState === undefined;
 
@@ -102,6 +112,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
           }
         } else {
+          // Logout from OneSignal when user signs out
+          console.log('[OneSignal] Logging out user');
+          try {
+            await oneSignal.logout();
+            console.log('[OneSignal] User logout successful');
+          } catch (logoutError) {
+            console.error('[OneSignal] Logout failed:', logoutError);
+          }
           hasRequestedPushPermission.current = false;
           storeSubscriptionId(null);
         }

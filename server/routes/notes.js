@@ -35,17 +35,30 @@ export function registerNotesRoutes(deps) {
   };
 
   const syncOneSignalAlias = async (req, userId) => {
+    console.log('[OneSignal] syncOneSignalAlias called for userId:', userId);
+
     if (!onesignalEnabled()) {
+      console.log('[OneSignal] Disabled, skipping alias sync');
       return;
     }
+
     const subscriptionId = getOneSignalSubscriptionId(req);
+    console.log('[OneSignal] Subscription ID from header:', subscriptionId);
+
     if (!subscriptionId) {
+      console.log('[OneSignal] No subscription ID in request header, skipping alias sync');
       return;
     }
+
     try {
-      await attachExternalIdToSubscription(subscriptionId, userId);
+      const result = await attachExternalIdToSubscription(subscriptionId, userId);
+      console.log('[OneSignal] Alias sync result:', result);
     } catch (error) {
-      console.warn('OneSignal alias sync failed:', error instanceof Error ? error.message : error);
+      console.warn('[OneSignal] Alias sync failed:', {
+        userId,
+        subscriptionId,
+        error: error instanceof Error ? error.message : error
+      });
     }
   };
 
@@ -93,7 +106,10 @@ export function registerNotesRoutes(deps) {
   }
 
   async function syncJournalTags({ userId, weeklyProgress, noteDate }) {
+    console.log('[OneSignal] syncJournalTags called:', { userId, weeklyProgress, noteDate });
+
     if (!onesignalEnabled()) {
+      console.log('[OneSignal] Disabled, skipping journal tags sync');
       return;
     }
 
@@ -118,26 +134,44 @@ export function registerNotesRoutes(deps) {
       }
     }
 
+    console.log('[OneSignal] Constructed journal tags:', { userId, tags, weeklyProgress });
+
     if (Object.keys(tags).length === 0) {
+      console.log('[OneSignal] No tags to sync');
       return;
     }
 
     try {
-      await updateOneSignalUser(userId, tags);
+      const result = await updateOneSignalUser(userId, tags);
+      console.log('[OneSignal] Journal tags synced successfully:', result);
     } catch (error) {
-      console.error('Failed to update OneSignal journal tags:', error);
+      console.error('[OneSignal] Failed to update journal tags:', {
+        userId,
+        tags,
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
     }
   }
 
   async function emitJournalEvent({ userId, eventName, payload }) {
+    console.log('[OneSignal] emitJournalEvent called:', { userId, eventName, payload });
+
     if (!onesignalEnabled()) {
+      console.log('[OneSignal] Disabled, skipping event emission');
       return;
     }
 
     try {
-      await sendOneSignalEvent(userId, eventName, payload);
+      const result = await sendOneSignalEvent(userId, eventName, payload);
+      console.log('[OneSignal] Event emitted successfully:', { eventName, result });
     } catch (error) {
-      console.error(`Failed to send OneSignal event ${eventName}:`, error);
+      console.error('[OneSignal] Failed to send event:', {
+        userId,
+        eventName,
+        payload,
+        error: error instanceof Error ? error.message : error
+      });
     }
   }
 
@@ -513,21 +547,35 @@ export function registerNotesRoutes(deps) {
         noteDate: noteData.date
       });
 
-      await syncJournalTags({
-        userId,
-        weeklyProgress,
-        noteDate: noteData.date,
-      });
+      // Sync OneSignal operations in sequence to ensure user identity is established
+      // before sending tags and events
+      if (onesignalEnabled()) {
+        console.log('[OneSignal] Starting sync sequence for audio note creation');
 
-      await emitJournalEvent({
-        userId,
-        eventName: 'note_logged',
-        payload: {
-          note_id: noteId,
-          note_type: 'audio',
-          timestamp: noteData.date,
-        },
-      });
+        // First, sync alias to link subscription to external_id
+        // (already called at line 419, but ensure it completes)
+
+        // Small delay to allow alias attachment to propagate in OneSignal's system
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Then sync tags
+        await syncJournalTags({
+          userId,
+          weeklyProgress,
+          noteDate: noteData.date,
+        });
+
+        // Finally emit event
+        await emitJournalEvent({
+          userId,
+          eventName: 'note_logged',
+          payload: {
+            note_id: noteId,
+            note_type: 'audio',
+            timestamp: noteData.date,
+          },
+        });
+      }
 
       res.status(201).json({
         note: noteData,
@@ -686,21 +734,27 @@ export function registerNotesRoutes(deps) {
         noteDate: noteData.date
       });
 
-      await syncJournalTags({
-        userId,
-        weeklyProgress,
-        noteDate: noteData.date,
-      });
+      // Sync OneSignal operations in sequence
+      if (onesignalEnabled()) {
+        console.log('[OneSignal] Starting sync sequence for photo note creation');
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-      await emitJournalEvent({
-        userId,
-        eventName: 'note_logged',
-        payload: {
-          note_id: noteId,
-          note_type: 'photo',
-          timestamp: noteData.date,
-        },
-      });
+        await syncJournalTags({
+          userId,
+          weeklyProgress,
+          noteDate: noteData.date,
+        });
+
+        await emitJournalEvent({
+          userId,
+          eventName: 'note_logged',
+          payload: {
+            note_id: noteId,
+            note_type: 'photo',
+            timestamp: noteData.date,
+          },
+        });
+      }
 
       res.status(201).json({
         note: noteData,
@@ -831,21 +885,27 @@ export function registerNotesRoutes(deps) {
         noteDate: noteData.date
       });
 
-      await syncJournalTags({
-        userId,
-        weeklyProgress,
-        noteDate: noteData.date,
-      });
+      // Sync OneSignal operations in sequence
+      if (onesignalEnabled()) {
+        console.log('[OneSignal] Starting sync sequence for text note creation');
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-      await emitJournalEvent({
-        userId,
-        eventName: 'note_logged',
-        payload: {
-          note_id: noteId,
-          note_type: 'text',
-          timestamp: noteData.date,
-        },
-      });
+        await syncJournalTags({
+          userId,
+          weeklyProgress,
+          noteDate: noteData.date,
+        });
+
+        await emitJournalEvent({
+          userId,
+          eventName: 'note_logged',
+          payload: {
+            note_id: noteId,
+            note_type: 'text',
+            timestamp: noteData.date,
+          },
+        });
+      }
 
       res.status(201).json({
         note: noteData,
