@@ -60,17 +60,30 @@ export function registerMeditationRoutes(deps) {
   };
 
   const syncOneSignalAlias = async (req, userId) => {
+    console.log('[OneSignal] (Meditations) syncOneSignalAlias called for userId:', userId);
+
     if (!onesignalEnabled()) {
+      console.log('[OneSignal] (Meditations) Disabled, skipping alias sync');
       return;
     }
+
     const subscriptionId = getOneSignalSubscriptionId(req);
+    console.log('[OneSignal] (Meditations) Subscription ID from header:', subscriptionId);
+
     if (!subscriptionId) {
+      console.log('[OneSignal] (Meditations) No subscription ID in request header, skipping alias sync');
       return;
     }
+
     try {
-      await attachExternalIdToSubscription(subscriptionId, userId);
+      const result = await attachExternalIdToSubscription(subscriptionId, userId);
+      console.log('[OneSignal] (Meditations) Alias sync result:', result);
     } catch (error) {
-      console.warn('OneSignal alias sync failed:', error instanceof Error ? error.message : error);
+      console.warn('[OneSignal] (Meditations) Alias sync failed:', {
+        userId,
+        subscriptionId,
+        error: error instanceof Error ? error.message : error,
+      });
     }
   };
 

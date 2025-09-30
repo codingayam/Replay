@@ -29,6 +29,13 @@ async function callOneSignal(path, { method = 'GET', body, headers = {} } = {}) 
     throw new Error('Global fetch API is not available; OneSignal call aborted');
   }
 
+  const requestStartedAt = Date.now();
+  console.log('[OneSignal] API request:', {
+    method,
+    path,
+    hasBody: Boolean(body),
+  });
+
   const url = `${ONESIGNAL_API_BASE}${path}`;
 
   const response = await fetch(url, {
@@ -44,6 +51,15 @@ async function callOneSignal(path, { method = 'GET', body, headers = {} } = {}) 
   if (!response || typeof response.ok !== 'boolean') {
     throw new Error('Invalid response object returned from fetch');
   }
+
+  const durationMs = Date.now() - requestStartedAt;
+  console.log('[OneSignal] API response:', {
+    method,
+    path,
+    status: response.status,
+    ok: response.ok,
+    durationMs,
+  });
 
   if (!response.ok) {
     let errorText = response.statusText;
