@@ -2,6 +2,7 @@ const ONESIGNAL_API_BASE = process.env.ONESIGNAL_API_BASE || 'https://api.onesig
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 const ONESIGNAL_ENABLED_FLAG = process.env.ONESIGNAL_ENABLED;
+const ONESIGNAL_CUSTOM_EVENTS_FLAG = process.env.ONESIGNAL_CUSTOM_EVENTS;
 
 function isTestEnvironment() {
   return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.env.JEST_WORKER_ID !== undefined;
@@ -67,26 +68,38 @@ export function onesignalEnabled() {
   return isConfigured();
 }
 
+export function onesignalCustomEventsEnabled() {
+  return isConfigured() && ONESIGNAL_CUSTOM_EVENTS_FLAG === 'true';
+}
+
 export async function sendOneSignalNotification({
   externalId,
+  subscriptionId,
   headings,
   contents,
   data,
   url,
   channel = 'push',
 }) {
-  if (!isConfigured() || !externalId) {
+  if (!isConfigured()) {
     return { skipped: true };
   }
 
   const payload = {
     app_id: ONESIGNAL_APP_ID,
-    include_aliases: { external_id: [externalId] },
     target_channel: channel,
     headings,
     contents,
     data,
   };
+
+  if (externalId) {
+    payload.include_aliases = { external_id: [externalId] };
+  } else if (subscriptionId) {
+    payload.include_player_ids = [subscriptionId];
+  } else {
+    return { skipped: true };
+  }
 
   if (url) {
     payload.url = url;
@@ -122,7 +135,7 @@ export async function updateOneSignalUser(externalId, tags = {}) {
 }
 
 export async function sendOneSignalEvent(externalId, name, payload = {}) {
-  if (!isConfigured() || !externalId || !name) {
+  if (!onesignalCustomEventsEnabled() || !externalId || !name) {
     return { skipped: true };
   }
 
@@ -143,7 +156,7 @@ export async function sendOneSignalEvent(externalId, name, payload = {}) {
 }
 
 export async function sendOneSignalEvents(events = []) {
-  if (!isConfigured()) {
+  if (!onesignalCustomEventsEnabled()) {
     return { skipped: true };
   }
 
@@ -161,10 +174,30 @@ export async function sendOneSignalEvents(events = []) {
   });
 }
 
+export async function attachExternalIdToSubscription(subscriptionId, externalId) {
+  if (!isConfigured() || !subscriptionId || !externalId) {
+    return { skipped: true };
+  }
+
+  try {
+    return await callOneSignal(`/apps/${ONESIGNAL_APP_ID}/subscriptions/${subscriptionId}/user/identity`, {
+      method: 'PATCH',
+      body: JSON.stringify({ identity: { external_id: externalId } }),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('409')) {
+      return { skipped: true, reason: 'alias_exists' };
+    }
+    throw error;
+  }
+}
+
 export default {
   onesignalEnabled,
+  onesignalCustomEventsEnabled,
   sendOneSignalNotification,
   updateOneSignalUser,
   sendOneSignalEvent,
   sendOneSignalEvents,
+  attachExternalIdToSubscription,
 };

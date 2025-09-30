@@ -8,6 +8,8 @@ import {
   onesignalEnabled,
   updateOneSignalUser,
   sendOneSignalEvent,
+  sendOneSignalNotification,
+  attachExternalIdToSubscription
 } from '../utils/onesignal.js';
 import {
   incrementMeditationProgress as incrementMeditationProgressDefault,
@@ -42,6 +44,35 @@ export function registerMeditationRoutes(deps) {
   const loadUserTimezone = weeklyProgressOverrides.loadUserTimezone ?? loadUserTimezoneDefault;
   const incrementMeditationProgress = weeklyProgressOverrides.incrementMeditationProgress ?? incrementMeditationProgressDefault;
   const buildProgressSummary = weeklyProgressOverrides.buildProgressSummary ?? buildProgressSummaryDefault;
+
+  const getOneSignalSubscriptionId = (req) => {
+    const header = req.headers['x-onesignal-subscription-id'];
+    if (!header) {
+      return null;
+    }
+    if (Array.isArray(header)) {
+      return header[0]?.trim() || null;
+    }
+    if (typeof header === 'string') {
+      return header.trim() || null;
+    }
+    return null;
+  };
+
+  const syncOneSignalAlias = async (req, userId) => {
+    if (!onesignalEnabled()) {
+      return;
+    }
+    const subscriptionId = getOneSignalSubscriptionId(req);
+    if (!subscriptionId) {
+      return;
+    }
+    try {
+      await attachExternalIdToSubscription(subscriptionId, userId);
+    } catch (error) {
+      console.warn('OneSignal alias sync failed:', error instanceof Error ? error.message : error);
+    }
+  };
 
   const extractJson = (rawText) => {
     if (!rawText) return null;
@@ -203,6 +234,7 @@ export function registerMeditationRoutes(deps) {
   app.post('/api/reflect/summary', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { noteIds, timeOfReflection } = req.body;
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
@@ -296,6 +328,7 @@ export function registerMeditationRoutes(deps) {
   app.post('/api/meditate', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { noteIds, duration = 10, title, reflectionType } = req.body;
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
@@ -732,6 +765,7 @@ export function registerMeditationRoutes(deps) {
   app.get('/api/meditations', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { limit = 20, offset = 0 } = req.query;
 
       const { data: meditations, error } = await supabase
@@ -768,6 +802,7 @@ export function registerMeditationRoutes(deps) {
   app.delete('/api/meditations/:id', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const meditationId = req.params.id;
 
       // First get the meditation to check ownership and get audio URLs
@@ -815,6 +850,7 @@ export function registerMeditationRoutes(deps) {
   app.put('/api/meditations/:id/mark-viewed', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const meditationId = req.params.id;
 
       // Update the is_viewed field
@@ -845,6 +881,7 @@ export function registerMeditationRoutes(deps) {
   app.get('/api/meditations/:id', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const meditationId = req.params.id;
 
       const { data: meditation, error } = await supabase
@@ -906,6 +943,7 @@ export function registerMeditationRoutes(deps) {
   app.post('/api/meditations/:id/complete', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const meditationId = req.params.id;
       const { completionPercentage, completedAt } = req.body;
 
@@ -1067,6 +1105,7 @@ export function registerMeditationRoutes(deps) {
   app.post('/api/meditate/jobs', jobCreationLimiter, requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { noteIds, duration, reflectionType, startDate, endDate } = req.body;
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
@@ -1125,6 +1164,7 @@ export function registerMeditationRoutes(deps) {
   app.get('/api/meditate/jobs/:id', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const jobId = req.params.id;
 
       const { data: job, error } = await supabase
@@ -1193,6 +1233,7 @@ export function registerMeditationRoutes(deps) {
   app.get('/api/meditate/jobs', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { status, limit = 20 } = req.query;
 
       let query = supabase
@@ -1237,6 +1278,7 @@ export function registerMeditationRoutes(deps) {
   app.post('/api/meditate/jobs/:id/retry', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const jobId = req.params.id;
 
       // Get the failed job
@@ -1298,6 +1340,7 @@ export function registerMeditationRoutes(deps) {
   app.delete('/api/meditate/jobs/:id', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const jobId = req.params.id;
 
       // Get the job first

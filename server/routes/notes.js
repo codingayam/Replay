@@ -8,6 +8,7 @@ import {
   onesignalEnabled,
   updateOneSignalUser,
   sendOneSignalEvent,
+  attachExternalIdToSubscription
 } from '../utils/onesignal.js';
 
 export function registerNotesRoutes(deps) {
@@ -18,6 +19,35 @@ export function registerNotesRoutes(deps) {
   const incrementJournalProgress = weeklyProgressOverrides.incrementJournalProgress ?? incrementJournalProgressDefault;
   const decrementJournalProgress = weeklyProgressOverrides.decrementJournalProgress ?? decrementJournalProgressDefault;
   const buildProgressSummary = weeklyProgressOverrides.buildProgressSummary ?? buildProgressSummaryDefault;
+
+  const getOneSignalSubscriptionId = (req) => {
+    const header = req.headers['x-onesignal-subscription-id'];
+    if (!header) {
+      return null;
+    }
+    if (Array.isArray(header)) {
+      return header[0]?.trim() || null;
+    }
+    if (typeof header === 'string') {
+      return header.trim() || null;
+    }
+    return null;
+  };
+
+  const syncOneSignalAlias = async (req, userId) => {
+    if (!onesignalEnabled()) {
+      return;
+    }
+    const subscriptionId = getOneSignalSubscriptionId(req);
+    if (!subscriptionId) {
+      return;
+    }
+    try {
+      await attachExternalIdToSubscription(subscriptionId, userId);
+    } catch (error) {
+      console.warn('OneSignal alias sync failed:', error instanceof Error ? error.message : error);
+    }
+  };
 
   async function updateProgressAfterJournal({ userId, noteDate }) {
     try {
@@ -386,6 +416,7 @@ export function registerNotesRoutes(deps) {
   app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { date } = req.body;
 
       if (!req.file) {
@@ -512,6 +543,7 @@ export function registerNotesRoutes(deps) {
   app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { caption, date } = req.body;
 
       if (!req.file) {
@@ -684,6 +716,7 @@ export function registerNotesRoutes(deps) {
   app.post('/api/notes/text', requireAuth(), upload.single('image'), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const { title: userTitle, content, date } = req.body;
 
       // Validation
@@ -828,6 +861,7 @@ export function registerNotesRoutes(deps) {
   app.delete('/api/notes/:id', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const noteId = req.params.id;
 
       // First get the note to check ownership and get file URLs
@@ -907,6 +941,7 @@ export function registerNotesRoutes(deps) {
   app.put('/api/notes/:id', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
+      await syncOneSignalAlias(req, userId);
       const noteId = req.params.id;
       const { title, transcript } = req.body;
 

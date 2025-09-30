@@ -14,6 +14,18 @@ const resolveEnvValue = (key: string, fallback?: string) => {
   return importMetaEnv[key] ?? process.env[key] ?? fallback;
 };
 
+const getStoredOneSignalSubscriptionId = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem('onesignal_subscription_id');
+  } catch (error) {
+    console.warn('[OneSignal] Failed to read subscription id:', error);
+    return null;
+  }
+};
+
 // Get API base URL from environment or use default
 const getApiBaseUrl = () => {
   const base = resolveEnvValue('VITE_API_URL', '');
@@ -29,6 +41,17 @@ const api = (testApiClient as any) ?? axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+api.interceptors.request.use((config) => {
+  const subscriptionId = getStoredOneSignalSubscriptionId();
+  if (subscriptionId) {
+    config.headers = config.headers ?? {};
+    config.headers['X-OneSignal-Subscription-Id'] = subscriptionId;
+  } else if (config.headers) {
+    delete config.headers['X-OneSignal-Subscription-Id'];
+  }
+  return config;
 });
 
 if (isTestEnv) {
@@ -61,10 +84,19 @@ export const useAuthenticatedApi = () => {
         try {
           const token = await getToken();
           if (token) {
+            config.headers = config.headers ?? {};
             config.headers.Authorization = `Bearer ${token}`;
           }
         } catch (error) {
           console.error('Failed to get auth token:', error);
+        }
+
+        const subscriptionId = getStoredOneSignalSubscriptionId();
+        if (subscriptionId) {
+          config.headers = config.headers ?? {};
+          config.headers['X-OneSignal-Subscription-Id'] = subscriptionId;
+        } else if (config.headers) {
+          delete config.headers['X-OneSignal-Subscription-Id'];
         }
         return config;
       },

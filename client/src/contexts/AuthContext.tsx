@@ -74,18 +74,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return;
     }
 
-    const synchronizeOneSignal = async (oneSignal: any) => {
+    const storeSubscriptionId = (subscriptionId: string | null | undefined) => {
+      try {
+        if (!subscriptionId) {
+          window.localStorage.removeItem('onesignal_subscription_id');
+        } else {
+          window.localStorage.setItem('onesignal_subscription_id', subscriptionId);
+        }
+      } catch (storageError) {
+        console.warn('[OneSignal] Failed to store subscription id:', storageError);
+      }
+    };
+
+    const registerWithOneSignal = async (oneSignal: any) => {
       try {
         if (user?.id) {
-          const login = oneSignal?.login;
-          if (typeof login === 'function') {
-            try {
-              await login(user.id);
-            } catch (loginError) {
-              console.warn('[OneSignal] login failed:', loginError);
-            }
-          }
-
           const permissionState = oneSignal?.Notifications?.permissionNative ?? oneSignal?.Notifications?.permission;
           const shouldPrompt = permissionState === 'default' || permissionState === undefined;
 
@@ -100,28 +103,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         } else {
           hasRequestedPushPermission.current = false;
-          const logout = oneSignal?.logout;
-          if (typeof logout === 'function') {
-            try {
-              await logout();
-            } catch (logoutError) {
-              console.warn('[OneSignal] logout failed:', logoutError);
-            }
-          }
+          storeSubscriptionId(null);
+        }
+
+        const existingId = await oneSignal?.User?.PushSubscription?.getId?.();
+        if (existingId) {
+          storeSubscriptionId(existingId);
+        }
+
+        if (typeof oneSignal?.User?.PushSubscription?.addEventListener === 'function') {
+          oneSignal.User.PushSubscription.addEventListener('change', (event: any) => {
+            const newId = event?.current?.id ?? null;
+            storeSubscriptionId(newId);
+          });
         }
       } catch (error) {
         console.error('Failed to synchronize OneSignal session:', error);
       }
     };
 
-    const deferredQueue = (window as any).OneSignalDeferred;
-    if (Array.isArray(deferredQueue)) {
-      deferredQueue.push(synchronizeOneSignal);
-    } else {
-      (window as any).OneSignalDeferred = [synchronizeOneSignal];
-    }
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push((oneSignal: any) => {
+      registerWithOneSignal(oneSignal);
+    });
 
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user && typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('onesignal_subscription_id');
+      } catch (error) {
+        console.warn('[OneSignal] Failed to clear subscription id:', error);
+      }
+    }
+  }, [user]);
 
   const signUp = async (email: string, password: string) => {
     const { isValid, failedRuleLabels } = validatePasswordStrength(password);
