@@ -422,3 +422,146 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
       extension: 'mp3'
     };
   };
+
+
+test('POST /api/meditations/:id/complete updates weekly progress after completion', async () => {
+  const { app, routes } = createMockApp();
+
+  const state = {
+    meditations: [
+      { id: 'meditation-1', user_id: DEFAULT_USER, completed_at: null, completion_percentage: 0 }
+    ],
+    updatedValues: null
+  };
+
+  const supabase = {
+    from(table) {
+      if (table !== 'meditations') {
+        throw new Error(`Unexpected table ${table}`);
+      }
+
+      return {
+        select: (fields) => {
+          if (fields === 'id, completed_at') {
+            return {
+              eq: (column, value) => ({
+                eq: (column2, value2) => ({
+                  single: () => {
+                    const record = state.meditations.find((entry) => entry[column] === value && entry[column2] === value2);
+                    return Promise.resolve({ data: record ? { id: record.id, completed_at: record.completed_at } : null, error: null });
+                  }
+                })
+              })
+            };
+          }
+
+          if (fields === 'completed_at') {
+            return {
+              eq: (column, value) => ({
+                not: () => ({
+                  order: () => {
+                    const data = state.meditations
+                      .filter((entry) => entry[column] === value && entry.completed_at !== null)
+                      .map(({ completed_at }) => ({ completed_at }));
+                    return Promise.resolve({ data, error: null });
+                  }
+                })
+              })
+            };
+          }
+
+          return this;
+        },
+        update: (values) => ({
+          eq: (column, value) => ({
+            eq: (column2, value2) => {
+              state.meditations = state.meditations.map((entry) => {
+                if (entry[column] === value && entry[column2] === value2) {
+                  state.updatedValues = values;
+                  return { ...entry, ...values };
+                }
+                return entry;
+              });
+              return { error: null };
+            }
+          })
+        })
+      };
+    }
+  };
+
+  let incrementArgs = null;
+  const progressRow = {
+    week_start: '2025-05-19',
+    journal_count: 4,
+    meditation_count: 1,
+    meditations_unlocked_at: '2025-05-20T00:00:00Z',
+    eligible: true,
+    next_report_at_utc: '2025-05-27T04:00:00Z'
+  };
+
+  const weeklyProgressOverrides = {
+    loadUserTimezone: async ({ userId }) => {
+      assert.equal(userId, DEFAULT_USER);
+      return 'America/New_York';
+    },
+    incrementMeditationProgress: async (args) => {
+      incrementArgs = args;
+      return progressRow;
+    },
+    buildProgressSummary: (row, timezone) => ({
+      weekStart: row.week_start,
+      journalCount: row.journal_count ?? 0,
+      meditationCount: row.meditation_count ?? 0,
+      timezone,
+      meditationsUnlocked: Boolean(row.meditations_unlocked_at),
+      reportReady: true,
+      reportSent: false,
+      unlocksRemaining: Math.max(3 - (row.journal_count ?? 0), 0),
+      reportJournalRemaining: 0,
+      reportMeditationRemaining: Math.max(2 - (row.meditation_count ?? 0), 0),
+      nextReportDate: '2025-05-26',
+      eligible: Boolean(row.eligible),
+      nextReportAtUtc: row.next_report_at_utc ?? null
+    })
+  };
+
+  registerMeditationRoutes({
+    app,
+    requireAuth: createRequireAuth(),
+    supabase,
+    uuidv4: () => 'meditation-1',
+    gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
+    replicate: { run: async () => ({ url: () => new URL('https://example.com/audio.wav') }) },
+    createSilenceBuffer,
+    mergeAudioBuffers,
+    resolveVoiceSettings,
+    processJobQueue: async () => {},
+    transcodeAudio: async (buffer) => ({ buffer, contentType: 'audio/mpeg', extension: 'mp3' }),
+    ffmpegPathResolver: () => 'ffmpeg',
+    weeklyProgressOverrides
+  });
+
+  const route = routes.post.find((r) => r.path === '/api/meditations/:id/complete');
+  assert.ok(route);
+
+  const resWrapper = createMockResponse();
+  await runHandlers(route.handlers, {
+    auth: null,
+    params: { id: 'meditation-1' },
+    body: { completionPercentage: 100, completedAt: '2025-05-20T12:00:00.000Z' }
+  }, resWrapper);
+
+  assert.equal(resWrapper.statusCode, 200);
+  assert.equal(resWrapper.json.completed, true);
+  assert.ok(resWrapper.json.weeklyProgress);
+  assert.equal(resWrapper.json.weeklyProgress.weekStart, '2025-05-19');
+  assert.equal(resWrapper.json.weeklyProgress.meditationCount, 1);
+  assert.equal(resWrapper.json.weeklyProgress.timezone, 'America/New_York');
+  assert.ok(state.updatedValues);
+  assert.equal(state.updatedValues.completed_at, '2025-05-20T12:00:00.000Z');
+  assert.ok(incrementArgs);
+  assert.equal(incrementArgs.userId, DEFAULT_USER);
+  assert.equal(incrementArgs.referenceDate, '2025-05-20T12:00:00.000Z');
+  assert.equal(incrementArgs.eventTimestamp, '2025-05-20T12:00:00.000Z');
+});

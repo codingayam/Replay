@@ -296,37 +296,7 @@ const ReflectionsPage: React.FC = () => {
         }
 
         try {
-            console.log('🧘 Generating meditation...');
-            const response = await api.post('/meditate', {
-                noteIds: selectedNoteIds,
-                duration: selectedDuration,
-                timeOfReflection: selectedReflectionType,
-                reflectionType: selectedReflectionType
-            });
-
-            setGeneratedPlaylist(response.data.playlist);
-            setGeneratedSummary(response.data.summary || '');
-
-            // Mark API as complete - loading modal will handle the transition
-            console.log('✅ API Success - setting isMeditationApiComplete to true');
-            setIsMeditationApiComplete(true);
-
-        } catch (err) {
-            console.error('Error generating meditation:', err);
-            alert('Failed to generate meditation. Please try again.');
-            setIsGeneratingMeditation(false);
-            setIsMeditationApiComplete(false);
-        }
-    };
-
-    const handleRunInBackground = async () => {
-        if (!meditationsUnlocked) {
-            showProgressNotice();
-            return;
-        }
-        try {
-            console.log('🔄 Starting background meditation generation...');
-            
+            console.log('🧘 Queuing background meditation job...');
             const jobResponse = await createJob({
                 noteIds: selectedNoteIds,
                 duration: selectedDuration,
@@ -335,48 +305,41 @@ const ReflectionsPage: React.FC = () => {
                 endDate: selectedEndDate
             });
 
-            console.log('✅ Background job created:', jobResponse);
+            console.log('✅ Background job queued:', jobResponse);
 
-
-            // Reset state after starting background job
+            // Reset UI state since generation continues in the background
+            setIsGeneratingMeditation(false);
+            setShowMeditationGeneratingModal(false);
+            setIsMeditationApiComplete(false);
+            setGeneratedPlaylist(null);
+            setMeditationPlaylist(null);
+            setGeneratedSummary('');
             setSelectedReflectionType('Day');
             setSelectedStartDate('');
             setSelectedEndDate('');
             setSelectedDuration(5);
             setSelectedNoteIds([]);
-            setGeneratedSummary('');
-            setGeneratedPlaylist(null);
 
-        } catch (error) {
-            console.error('❌ Failed to start background job:', error);
+            alert('Your meditation is being generated in the background. We’ll notify you when it is ready.');
+        } catch (err) {
+            console.error('Error queuing meditation job:', err);
+            alert('Failed to start meditation generation. Please try again.');
+            setIsGeneratingMeditation(false);
+            setIsMeditationApiComplete(false);
         }
     };
 
-    const handleMeditationReady = () => {
-        console.log('🎯 handleMeditationReady called');
-        console.log('📊 generatedPlaylist:', generatedPlaylist);
-        
-        // Called when the loading animation completes
+    const handleRunInBackground = () => {
+        console.log('ℹ️ Meditation generation is already running in the background.');
         setIsGeneratingMeditation(false);
-        setIsMeditationApiComplete(false); // Reset for next time
-        
-        // Only proceed if we actually have a playlist
-        if (generatedPlaylist && generatedPlaylist.length > 0) {
-            console.log('✅ Valid playlist found, starting meditation');
-            setMeditationPlaylist(generatedPlaylist);
-        } else {
-            console.log('❌ No valid playlist found');
-            // If no playlist (API failed), show error and reset
-            alert('Meditation generation failed. Please try again when the server is running.');
-            // Reset all state
-            setSelectedReflectionType('Day');
-            setSelectedStartDate('');
-            setSelectedEndDate('');
-            setSelectedDuration(5);
-            setSelectedNoteIds([]);
-            setGeneratedSummary('');
-            setGeneratedPlaylist(null);
-        }
+        setShowMeditationGeneratingModal(false);
+    };
+
+    const handleMeditationReady = () => {
+        console.log('🎯 handleMeditationReady called – generation continues in background.');
+        setIsGeneratingMeditation(false);
+        setIsMeditationApiComplete(false);
+        setShowMeditationGeneratingModal(false);
     };
 
     const handlePlayNow = () => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Target, FileText, Brain, Flame } from 'lucide-react';
 import type { WeeklyProgressSummary } from '../hooks/useWeeklyProgress';
 
@@ -48,10 +48,197 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
       ? 'Ready'
       : 'Pending';
 
+  // Animation state
+  const [animatingJournal, setAnimatingJournal] = useState(false);
+  const [animatingMeditation, setAnimatingMeditation] = useState(false);
+
+  // Track previous values
+  const prevJournalCount = useRef<number | null>(null);
+  const prevMeditationCount = useRef<number | null>(null);
+
+  // Animated display values for count-up effect
+  const [displayJournalCount, setDisplayJournalCount] = useState(journalCount);
+  const [displayMeditationCount, setDisplayMeditationCount] = useState(meditationCount);
+
+  // Audio reference
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize audio
+  useEffect(() => {
+    audioRef.current = new Audio('/sounds/rise.mp3');
+    audioRef.current.volume = 0.5; // 50% volume
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Detect count increases and trigger animations
+  useEffect(() => {
+    // Skip on initial mount (when prev values are null)
+    if (prevJournalCount.current === null || prevMeditationCount.current === null) {
+      prevJournalCount.current = journalCount;
+      prevMeditationCount.current = meditationCount;
+      setDisplayJournalCount(journalCount);
+      setDisplayMeditationCount(meditationCount);
+      return;
+    }
+
+    // Check if journal count increased
+    if (journalCount > prevJournalCount.current) {
+      setAnimatingJournal(true);
+
+      // Play sound
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0; // Reset to start
+        audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+      }
+
+      // Animate count-up
+      animateCountUp(prevJournalCount.current, journalCount, setDisplayJournalCount);
+
+      // Clear animation after duration
+      setTimeout(() => setAnimatingJournal(false), 800);
+    }
+
+    // Check if meditation count increased
+    if (meditationCount > prevMeditationCount.current) {
+      setAnimatingMeditation(true);
+
+      // Play sound
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0; // Reset to start
+        audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+      }
+
+      // Animate count-up
+      animateCountUp(prevMeditationCount.current, meditationCount, setDisplayMeditationCount);
+
+      // Clear animation after duration
+      setTimeout(() => setAnimatingMeditation(false), 800);
+    }
+
+    // Update prev values
+    prevJournalCount.current = journalCount;
+    prevMeditationCount.current = meditationCount;
+  }, [journalCount, meditationCount]);
+
+  // Helper function to animate number counting up
+  const animateCountUp = (start: number, end: number, setter: (value: number) => void) => {
+    const duration = 600; // ms
+    const steps = Math.abs(end - start);
+    const stepDuration = duration / steps;
+
+    let current = start;
+    const timer = setInterval(() => {
+      current++;
+      setter(current);
+      if (current >= end) {
+        clearInterval(timer);
+      }
+    }, stepDuration);
+  };
+
   return (
-    <div style={styles.wrapper} className={className}>
-      <div style={styles.card}>
-        <div style={styles.header}>
+    <>
+      <style>{`
+        @keyframes progress-pulse {
+          0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+          }
+          50% {
+            transform: scale(1.05);
+            box-shadow: 0 0 12px 4px rgba(251, 191, 36, 0.5);
+          }
+          100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+          }
+        }
+
+        @keyframes count-flourish {
+          0% {
+            transform: scale(1);
+            color: inherit;
+          }
+          30% {
+            transform: scale(1.3);
+            color: #10b981;
+            font-weight: 800;
+          }
+          60% {
+            transform: scale(1.15);
+            color: #059669;
+          }
+          100% {
+            transform: scale(1);
+            color: inherit;
+          }
+        }
+
+        @keyframes sparkle-burst {
+          0% {
+            transform: translate(0, 0) scale(0) rotate(0deg);
+            opacity: 1;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            transform: translate(var(--tx), var(--ty)) scale(1) rotate(180deg);
+            opacity: 0;
+          }
+        }
+
+        .progress-pulse {
+          animation: progress-pulse 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .count-flourish {
+          animation: count-flourish 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+          display: inline-block;
+        }
+
+        .sparkle-container {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 0;
+          height: 0;
+          pointer-events: none;
+          z-index: 10;
+        }
+
+        .sparkle {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #fbbf24 100%);
+          border-radius: 50%;
+          animation: sparkle-burst 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          box-shadow: 0 0 4px 1px rgba(251, 191, 36, 0.8);
+        }
+
+        .sparkle:nth-child(1) { --tx: -30px; --ty: -30px; animation-delay: 0ms; }
+        .sparkle:nth-child(2) { --tx: 30px; --ty: -30px; animation-delay: 50ms; }
+        .sparkle:nth-child(3) { --tx: -35px; --ty: 10px; animation-delay: 100ms; }
+        .sparkle:nth-child(4) { --tx: 35px; --ty: 10px; animation-delay: 150ms; }
+        .sparkle:nth-child(5) { --tx: 0px; --ty: -40px; animation-delay: 75ms; }
+
+        @media (prefers-reduced-motion: reduce) {
+          .progress-pulse,
+          .count-flourish,
+          .sparkle {
+            animation: none;
+          }
+        }
+      `}</style>
+      <div style={styles.wrapper} className={className}>
+        <div style={styles.card}>
+          <div style={styles.header}>
           <div style={styles.headerContent}>
             <h3 style={styles.title}>Weekly Goals</h3>
             <div style={styles.subtitle}>This week</div>
@@ -94,20 +281,35 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
                   <span style={styles.goalName}>Journal</span>
                 </div>
                 <div style={styles.goalProgress}>
-                  <div style={styles.miniProgressBar}>
-                    <div style={{
-                      ...styles.miniProgressFill,
-                      width: `${journalProgress * 100}%`,
-                      background: metJournalGoal
-                        ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
-                        : 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)'
-                    }} />
+                  <div style={{ ...styles.miniProgressBar, position: 'relative' }}>
+                    <div
+                      className={animatingJournal ? 'progress-pulse' : ''}
+                      style={{
+                        ...styles.miniProgressFill,
+                        width: `${journalProgress * 100}%`,
+                        background: metJournalGoal
+                          ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+                          : 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)'
+                      }}
+                    />
+                    {animatingJournal && (
+                      <div className="sparkle-container">
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                      </div>
+                    )}
                   </div>
-                  <span style={{
-                    ...styles.goalCount,
-                    color: metJournalGoal ? '#059669' : '#1e293b'
-                  }}>
-                    {journalCount}/{journalGoalSafe}
+                  <span
+                    className={animatingJournal ? 'count-flourish' : ''}
+                    style={{
+                      ...styles.goalCount,
+                      color: metJournalGoal ? '#059669' : '#1e293b'
+                    }}
+                  >
+                    {displayJournalCount}/{journalGoalSafe}
                   </span>
                 </div>
               </div>
@@ -118,20 +320,35 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
                   <span style={styles.goalName}>Meditation</span>
                 </div>
                 <div style={styles.goalProgress}>
-                  <div style={styles.miniProgressBar}>
-                    <div style={{
-                      ...styles.miniProgressFill,
-                      width: `${meditationProgress * 100}%`,
-                      background: metMeditationGoal
-                        ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
-                        : 'linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%)'
-                    }} />
+                  <div style={{ ...styles.miniProgressBar, position: 'relative' }}>
+                    <div
+                      className={animatingMeditation ? 'progress-pulse' : ''}
+                      style={{
+                        ...styles.miniProgressFill,
+                        width: `${meditationProgress * 100}%`,
+                        background: metMeditationGoal
+                          ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+                          : 'linear-gradient(90deg, #8b5cf6 0%, #a855f7 100%)'
+                      }}
+                    />
+                    {animatingMeditation && (
+                      <div className="sparkle-container">
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                        <div className="sparkle" />
+                      </div>
+                    )}
                   </div>
-                  <span style={{
-                    ...styles.goalCount,
-                    color: metMeditationGoal ? '#059669' : '#1e293b'
-                  }}>
-                    {meditationCount}/{meditationGoalSafe}
+                  <span
+                    className={animatingMeditation ? 'count-flourish' : ''}
+                    style={{
+                      ...styles.goalCount,
+                      color: metMeditationGoal ? '#059669' : '#1e293b'
+                    }}
+                  >
+                    {displayMeditationCount}/{meditationGoalSafe}
                   </span>
                 </div>
               </div>
@@ -162,15 +379,9 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
         )}
       </div>
     </div>
+    </>
   );
 };
-
-function statusText(isLocked: boolean, isComplete: boolean): string {
-  if (isLocked) {
-    return 'Locked';
-  }
-  return isComplete ? 'Complete' : 'In progress';
-}
 
 const styles = {
   wrapper: {
@@ -354,16 +565,18 @@ const styles = {
     height: '5px',
     backgroundColor: '#f1f5f9',
     borderRadius: '999px',
-    overflow: 'hidden',
+    overflow: 'visible',
     border: '1px solid rgba(226, 232, 240, 0.6)',
     boxShadow: 'inset 0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-    flexShrink: 0
+    flexShrink: 0,
+    position: 'relative' as const
   } as React.CSSProperties,
   miniProgressFill: {
     height: '100%',
     borderRadius: '999px',
     transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-    position: 'relative' as const
+    position: 'relative' as const,
+    overflow: 'hidden'
   } as React.CSSProperties,
   reportStatus: {
     display: 'flex',

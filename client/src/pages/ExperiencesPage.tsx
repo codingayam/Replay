@@ -23,6 +23,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import useWeeklyProgress from '../hooks/useWeeklyProgress';
+import { useJobs } from '../contexts/JobContext';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -59,13 +60,11 @@ const ExperiencesPage: React.FC = () => {
     const [currentMeditationId, setCurrentMeditationId] = useState<string | null>(null);
     const [selectedDuration, setSelectedDuration] = useState(5);
     const [recommendedDuration, setRecommendedDuration] = useState(5);
-    const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
-    const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
-    const [generatedSummary, setGeneratedSummary] = useState('');
     const api = useAuthenticatedApi();
     const { user } = useAuth();
     const { isDesktop } = useResponsive();
     const { summary: weeklyProgress, thresholds: progressThresholds, refresh: refreshWeeklyProgress } = useWeeklyProgress();
+    const { createJob } = useJobs();
     
     // Calculate recommended duration based on number of experiences
     const calculateRecommendedDuration = (experienceCount: number): number => {
@@ -371,62 +370,46 @@ const ExperiencesPage: React.FC = () => {
 
     const handleReadyToBeginStart = async () => {
         setShowReadyToBeginModal(false);
-        setIsGeneratingMeditation(true);
-        setIsMeditationApiComplete(false);
         setShowMeditationGeneratingModal(true);
 
+        if (!(weeklyProgress?.meditationsUnlocked)) {
+            showProgressNotice();
+            setShowMeditationGeneratingModal(false);
+            return;
+        }
+
         try {
-            console.log('🧘 Generating meditation from selected experiences...');
-            const response = await api.post('/meditate', {
+            console.log('🧘 Queuing background meditation job from selected experiences...');
+            const jobResponse = await createJob({
                 noteIds: Array.from(selectedNoteIds),
                 duration: selectedDuration,
-                reflectionType: 'Night',
-                title: `Night Meditation - ${new Date().toLocaleDateString()}`
+                reflectionType: 'Night'
             });
 
-            setMeditationPlaylist(response.data.playlist);
-            setCurrentMeditationId(response.data.meditationId || response.data.id);
-            setGeneratedSummary(response.data.summary || '');
-            
-            // Mark API as complete - loading modal will handle the transition
-            console.log('✅ Meditation API Success - setting isMeditationApiComplete to true');
-            setIsMeditationApiComplete(true);
+            console.log('✅ Background job queued:', jobResponse);
+
+            setShowMeditationGeneratingModal(false);
+            setMeditationPlaylist(null);
+            setCurrentMeditationId(null);
+            handleClearSelection();
+
+            alert('Your meditation is being generated in the background. We’ll notify you when it is ready.');
         } catch (err) {
-            console.error('Error generating meditation:', err);
-            alert('Failed to generate meditation. Please try again.');
-            setIsGeneratingMeditation(false);
-            setIsMeditationApiComplete(false);
+            console.error('Error queuing meditation job:', err);
+            alert('Failed to start meditation generation. Please try again.');
             setShowMeditationGeneratingModal(false);
         }
     };
 
     const handleMeditationReady = () => {
-        console.log('🎯 handleMeditationReady called');
-        console.log('📊 meditationPlaylist:', meditationPlaylist);
-        
-        // Called when the loading animation completes
-        setIsGeneratingMeditation(false);
-        setIsMeditationApiComplete(false);
+        console.log('🎯 handleMeditationReady called – background job still in progress.');
         setShowMeditationGeneratingModal(false);
-        
-        // Only proceed if we actually have a playlist
-        if (meditationPlaylist && meditationPlaylist.length > 0) {
-            console.log('✅ Valid playlist found, starting meditation');
-            // Playlist will be used by MeditationPlayer component
-        } else {
-            console.log('❌ No valid playlist found');
-            alert('Meditation generation failed. Please try again when the server is running.');
-            // Reset state
-            setMeditationPlaylist(null);
-            setGeneratedSummary('');
-        }
     };
 
     const handleMeditationFinish = async (completed: boolean) => {
         console.log(`🎯 Meditation finished - completed: ${completed}`);
         setMeditationPlaylist(null);
         setCurrentMeditationId(null);
-        setGeneratedSummary('');
         
         // Clear selection and exit selection mode
         handleClearSelection();
@@ -436,9 +419,6 @@ const ExperiencesPage: React.FC = () => {
     // Group notes by date categories
     const groupedNotes = groupNotesByDate(notes);
     const sortedDateGroups = sortDateGroups(Object.keys(groupedNotes));
-
-    const journalGoal = progressThresholds?.unlockMeditations ?? 3;
-    const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
 
     // Show meditation player if we have a playlist
     if (meditationPlaylist) {
@@ -794,11 +774,9 @@ const ExperiencesPage: React.FC = () => {
                 isOpen={showMeditationGeneratingModal}
                 onClose={() => setShowMeditationGeneratingModal(false)}
                 onComplete={handleMeditationReady}
-                isApiComplete={isMeditationApiComplete}
                 onRunInBackground={() => {
                     setShowMeditationGeneratingModal(false);
-                    setIsGeneratingMeditation(false);
-                    handleClearSelection();
+                    alert('Your meditation will keep generating in the background.');
                 }}
             />
 

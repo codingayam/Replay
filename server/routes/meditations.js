@@ -9,6 +9,13 @@ import {
   updateOneSignalUser,
   sendOneSignalEvent,
 } from '../utils/onesignal.js';
+import {
+  incrementMeditationProgress as incrementMeditationProgressDefault,
+  loadUserTimezone as loadUserTimezoneDefault,
+  buildProgressSummary as buildProgressSummaryDefault
+} from '../utils/weeklyProgress.js';
+import { DEFAULT_TIMEZONE } from '../utils/week.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,10 +33,15 @@ export function registerMeditationRoutes(deps) {
     resolveVoiceSettings,
     processJobQueue,
     transcodeAudio: providedTranscodeAudio,
-    ffmpegPathResolver
+    ffmpegPathResolver,
+    weeklyProgressOverrides = {}
   } = deps;
 
   const AUDIO_AVAILABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+  const loadUserTimezone = weeklyProgressOverrides.loadUserTimezone ?? loadUserTimezoneDefault;
+  const incrementMeditationProgress = weeklyProgressOverrides.incrementMeditationProgress ?? incrementMeditationProgressDefault;
+  const buildProgressSummary = weeklyProgressOverrides.buildProgressSummary ?? buildProgressSummaryDefault;
 
   const extractJson = (rawText) => {
     if (!rawText) return null;
@@ -931,8 +943,11 @@ export function registerMeditationRoutes(deps) {
         completion_percentage: completionPercentage
       };
 
+      let completionTimestamp = null;
+
       if (isCompleted) {
-        updateData.completed_at = completedAt || new Date().toISOString();
+        completionTimestamp = completedAt || new Date().toISOString();
+        updateData.completed_at = completionTimestamp;
       }
 
       const { error: updateError } = await supabase
@@ -972,7 +987,7 @@ export function registerMeditationRoutes(deps) {
         }
 
         if (onesignalEnabled()) {
-          const completionTimestamp = updateData.completed_at || completedAt || new Date().toISOString();
+          completionTimestamp = completionTimestamp || new Date().toISOString();
           const tags = {
             last_meditation_completed_ts: Math.floor(new Date(completionTimestamp).getTime() / 1000),
             meditation_streak: Math.max(newStreak || 0, 0),
@@ -1001,12 +1016,31 @@ export function registerMeditationRoutes(deps) {
         }
       }
 
+      let weeklyProgress = null;
+
+      if (isCompleted) {
+        try {
+          const timezone = await loadUserTimezone({ supabase, userId }) ?? DEFAULT_TIMEZONE;
+          const progressRow = await incrementMeditationProgress({
+            supabase,
+            userId,
+            referenceDate: completionTimestamp,
+            eventTimestamp: completionTimestamp,
+            timezone
+          });
+          weeklyProgress = buildProgressSummary(progressRow, timezone);
+        } catch (progressError) {
+          console.error('Weekly progress update failed after meditation completion:', progressError);
+        }
+      }
+
       res.json({
         message: isCompleted ? 'Meditation completed successfully' : 'Meditation progress saved',
         streakUpdated,
         newStreak,
         previousStreak,
-        completed: isCompleted
+        completed: isCompleted,
+        weeklyProgress
       });
 
     } catch (error) {
