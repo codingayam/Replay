@@ -117,12 +117,12 @@ export async function sendOneSignalNotification({
     data,
   };
 
-  if (externalId) {
+  if (subscriptionId) {
+    payload.include_subscription_ids = [subscriptionId];
+    console.log('[OneSignal] Targeting by subscription_id:', subscriptionId);
+  } else if (externalId) {
     payload.include_aliases = { external_id: [externalId] };
     console.log('[OneSignal] Targeting by external_id:', externalId);
-  } else if (subscriptionId) {
-    payload.include_player_ids = [subscriptionId];
-    console.log('[OneSignal] Targeting by subscription_id:', subscriptionId);
   } else {
     console.log('[OneSignal] No target specified (no externalId or subscriptionId)');
     return { skipped: true, reason: 'no_target' };
@@ -190,7 +190,7 @@ export async function updateOneSignalUser(externalId, tags = {}) {
   try {
     const result = await callOneSignal(`/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${encodeURIComponent(externalId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ tags: cleanedTags }),
+      body: JSON.stringify({ properties: { tags: cleanedTags } }),
     });
 
     console.log('[OneSignal] Tag update successful:', result);
@@ -283,6 +283,22 @@ export async function attachExternalIdToSubscription(subscriptionId, externalId)
   }
 }
 
+export async function fetchOneSignalUserByExternalId(externalId) {
+  console.log('[OneSignal] fetchOneSignalUserByExternalId called:', { externalId });
+
+  if (!isConfigured()) {
+    console.log('[OneSignal] Not configured, skipping user fetch');
+    return { skipped: true, reason: 'not_configured' };
+  }
+
+  if (!externalId) {
+    console.log('[OneSignal] No externalId provided for user fetch');
+    return { skipped: true, reason: 'no_external_id' };
+  }
+
+  return callOneSignal(`/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${encodeURIComponent(externalId)}`);
+}
+
 export default {
   onesignalEnabled,
   onesignalCustomEventsEnabled,
@@ -291,4 +307,5 @@ export default {
   sendOneSignalEvent,
   sendOneSignalEvents,
   attachExternalIdToSubscription,
+  fetchOneSignalUserByExternalId,
 };

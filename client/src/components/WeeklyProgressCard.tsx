@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Target, FileText, Brain, Flame } from 'lucide-react';
 import type { WeeklyProgressSummary } from '../hooks/useWeeklyProgress';
 
@@ -62,6 +62,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
 
   // Audio reference
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 
   // Initialize audio
   useEffect(() => {
@@ -74,6 +75,32 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
       }
     };
   }, []);
+
+  const enableAudio = useCallback(() => {
+    if (isAudioEnabled) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    audio.muted = true;
+    audio.currentTime = 0;
+    audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+        setIsAudioEnabled(true);
+      })
+      .catch(err => {
+        audio.muted = false;
+        console.log('Audio unlock failed:', err);
+      });
+  }, [isAudioEnabled]);
 
   // Detect count increases and trigger animations
   useEffect(() => {
@@ -91,7 +118,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
       setAnimatingJournal(true);
 
       // Play sound
-      if (audioRef.current) {
+      if (audioRef.current && isAudioEnabled) {
         audioRef.current.currentTime = 0; // Reset to start
         audioRef.current.play().catch(err => console.log('Audio play failed:', err));
       }
@@ -108,7 +135,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
       setAnimatingMeditation(true);
 
       // Play sound
-      if (audioRef.current) {
+      if (audioRef.current && isAudioEnabled) {
         audioRef.current.currentTime = 0; // Reset to start
         audioRef.current.play().catch(err => console.log('Audio play failed:', err));
       }
@@ -123,7 +150,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
     // Update prev values
     prevJournalCount.current = journalCount;
     prevMeditationCount.current = meditationCount;
-  }, [journalCount, meditationCount]);
+  }, [journalCount, meditationCount, isAudioEnabled]);
 
   // Helper function to animate number counting up
   const animateCountUp = (start: number, end: number, setter: (value: number) => void) => {
@@ -237,7 +264,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
         }
       `}</style>
       <div style={styles.wrapper} className={className}>
-        <div style={styles.card}>
+        <div style={styles.card} onPointerDown={enableAudio}>
           <div style={styles.header}>
           <div style={styles.headerContent}>
             <h3 style={styles.title}>Weekly Goals</h3>

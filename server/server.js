@@ -22,6 +22,7 @@ import {
   sendOneSignalNotification,
   updateOneSignalUser,
   sendOneSignalEvent,
+  fetchOneSignalUserByExternalId,
 } from './utils/onesignal.js';
 
 const execAsync = promisify(exec);
@@ -504,9 +505,40 @@ async function processMeditationJob(job) {
         url: `/reflections?meditationId=${meditation.id}`,
       };
 
+      let resolvedSubscriptionId = null;
+      try {
+        const profile = await fetchOneSignalUserByExternalId(userId);
+        if (profile && !profile.skipped) {
+          const subscriptions = Array.isArray(profile.subscriptions) ? profile.subscriptions : [];
+          const primarySubscription = subscriptions.find((sub) => {
+            if (!sub || !sub.id) {
+              return false;
+            }
+            if (typeof sub.enabled === 'boolean' && sub.enabled === false) {
+              return false;
+            }
+            if (typeof sub.opted_out === 'boolean' && sub.opted_out === true) {
+              return false;
+            }
+            if (typeof sub.status === 'string') {
+              const statusLower = sub.status.toLowerCase();
+              if (statusLower === 'inactive' || statusLower === 'revoked' || statusLower === 'unsubscribed') {
+                return false;
+              }
+            }
+            return true;
+          });
+          resolvedSubscriptionId = primarySubscription?.id ?? subscriptions[0]?.id ?? null;
+          console.log('[OneSignal] Resolved subscription for notification:', { resolvedSubscriptionId, subscriptionCount: subscriptions.length });
+        }
+      } catch (error) {
+        console.warn('[OneSignal] Failed to fetch user before notification:', error instanceof Error ? error.message : error);
+      }
+
       notificationTasks.push(
         sendOneSignalNotification({
           externalId: userId,
+          subscriptionId: resolvedSubscriptionId ?? undefined,
           headings: {
             en: 'Your meditation is ready',
           },
