@@ -4,18 +4,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import multer from 'multer';
 import fs from 'fs';
-import http from 'http';
 import https from 'https';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname } from 'path';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GoogleGenAI } from '@google/genai';
-import mime from 'mime';
 import Replicate from 'replicate';
-import { promisify } from 'util';
-import { exec, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer, getWavDurationSeconds } from './utils/audio.js';
 import {
   onesignalEnabled,
@@ -25,8 +21,6 @@ import {
   fetchOneSignalUserByExternalId,
 } from './utils/onesignal.js';
 import { recomputeWeeklyProgress } from './utils/weeklyTagSync.js';
-
-const execAsync = promisify(exec);
 
 function createSilenceBuffer(durationSeconds = 0.35) {
   const buffer = generateSilenceBuffer(durationSeconds);
@@ -164,7 +158,7 @@ function getFFmpegPath() {
             execSync(`test -f ${testPath}`, { timeout: 1000 });
             console.log(`🔧 Found ffmpeg at alternative path: ${testPath}`);
             return testPath;
-          } catch (testError) {
+          } catch (_testError) {
             // Path doesn't exist, continue
           }
         }
@@ -184,7 +178,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Import middleware
-import { requireAuth, optionalAuth, supabase } from './middleware/auth.js';
+import { requireAuth, supabase } from './middleware/auth.js';
 import { registerNotesRoutes } from './routes/notes.js';
 import { registerMeditationRoutes } from './routes/meditations.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -429,16 +423,16 @@ async function processMeditationJob(job) {
 
     let signedAudioUrl = null;
     if (!audioError) {
-      const { data: urlData } = await supabase.storage
+      const { data: signedUrlData } = await supabase.storage
         .from('meditations')
         .createSignedUrl(storagePath, Math.min(3600 * 24, AUDIO_AVAILABILITY_WINDOW_MS / 1000));
-      signedAudioUrl = urlData?.signedUrl || null;
+      signedAudioUrl = signedUrlData?.signedUrl ?? null;
     }
-    
+
     // Create playlist and calculate duration
     const storagePlaylist = [{
       type: 'continuous',
-      audioUrl: audioError ? null : storagePath,
+      audioUrl: audioError ? null : (signedAudioUrl ?? storagePath),
       duration: 0
     }];
 

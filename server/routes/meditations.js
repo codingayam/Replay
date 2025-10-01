@@ -8,7 +8,6 @@ import {
   onesignalEnabled,
   updateOneSignalUser,
   sendOneSignalEvent,
-  sendOneSignalNotification,
   attachExternalIdToSubscription
 } from '../utils/onesignal.js';
 import {

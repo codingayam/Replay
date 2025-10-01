@@ -208,7 +208,7 @@ function formatProfileValue(value) {
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value);
-    } catch (error) {
+    } catch (_error) {
       return String(value);
     }
   }

@@ -13,18 +13,6 @@ function parseDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function shouldProcessRow(row, now) {
-  const timezone = normalizeTimezone(row.timezone ?? DEFAULT_TIMEZONE);
-  const currentWeekKey = getIsoWeekKeyForDate(now, timezone);
-  const lastSyncedWeek = row.last_tag_week_key ?? null;
-
-  if (currentWeekKey !== lastSyncedWeek) {
-    return true;
-  }
-
-  const lastSyncDate = parseDate(row.last_tag_sync_at);
-  return hoursSince(lastSyncDate, now) >= DEFAULT_STALE_HOURS;
-}
 
 export function createWeeklyTagSyncWorker({
   supabase,

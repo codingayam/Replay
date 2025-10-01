@@ -205,7 +205,7 @@ const stubGemini = {
   })
 };
 
-test('weekly report worker sends summary when thresholds met', async (t) => {
+test('weekly report worker sends summary when thresholds met', async () => {
   const supabase = createSupabaseStub();
   const sentEmails = [];
   const resendClient = {
@@ -234,7 +234,7 @@ test('weekly report worker sends summary when thresholds met', async (t) => {
   assert.equal(supabase.state.progressRows[0].retry_attempts, 0);
 });
 
-test('weekly report worker skips before Monday midnight', async (t) => {
+test('weekly report worker skips before Monday midnight', async () => {
   const supabase = createSupabaseStub();
   const resendClient = {
     async sendEmail() {
@@ -257,7 +257,7 @@ test('weekly report worker skips before Monday midnight', async (t) => {
   assert.equal(supabase.state.progressRows[0].retry_attempts, 0);
 });
 
-test('weekly report worker schedules retry on send failure', async (t) => {
+test('weekly report worker schedules retry on send failure', async () => {
   const supabase = createSupabaseStub();
   const resendClient = {
     async sendEmail() {

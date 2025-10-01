@@ -4,7 +4,6 @@ import {
   getNextWeekStart,
   getUserTimezone,
   getWeekStart,
-  hasReachedLocalMoment,
   normalizeTimezone
 } from './week.js';
 
@@ -280,7 +279,7 @@ function canAccessMeditations(progress) {
   return journalCount >= JOURNAL_UNLOCK_THRESHOLD;
 }
 
-function shouldQueueWeeklyReport(progress, timezone = DEFAULT_TIMEZONE, now = new Date()) {
+function shouldQueueWeeklyReport(progress, _timezone = DEFAULT_TIMEZONE, now = new Date()) {
   if (!progress) {
     return false;
   }

@@ -472,7 +472,7 @@ export function registerNotesRoutes(deps) {
       const fileName = `${noteId}.${fileExtension}`;
 
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('audio')
         .upload(`${userId}/${fileName}`, req.file.buffer, {
           contentType: req.file.mimetype,
@@ -613,7 +613,7 @@ export function registerNotesRoutes(deps) {
       const fileName = `${noteId}.${fileExtension}`;
 
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('images')
         .upload(`${userId}/${fileName}`, req.file.buffer, {
           contentType: req.file.mimetype,
@@ -812,7 +812,7 @@ export function registerNotesRoutes(deps) {
         const fileName = `${noteId}.${fileExtension}`;
 
         // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('images')
           .upload(`${userId}/${fileName}`, req.file.buffer, {
             contentType: req.file.mimetype,

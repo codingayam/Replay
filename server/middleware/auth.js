@@ -70,7 +70,7 @@ const optionalAuth = () => {
             }
             
             next();
-        } catch (error) {
+        } catch (_error) {
             // Continue without auth if there's an error
             next();
         }

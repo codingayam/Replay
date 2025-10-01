@@ -129,7 +129,7 @@ export function registerProfileRoutes(deps) {
       }
 
       // Upload new profile image to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('profiles')
         .upload(`${userId}/${fileName}`, req.file.buffer, {
           contentType: req.file.mimetype,

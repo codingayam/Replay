@@ -413,16 +413,6 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
   assert.equal(supabase.state.jobs.length, 1);
   assert.deepEqual(processCalls, ['scheduled', 'run']);
 });
-  const transcodeCalls = [];
-  const transcodeAudio = async (buffer) => {
-    transcodeCalls.push(buffer.length);
-    return {
-      buffer,
-      contentType: 'audio/mpeg',
-      extension: 'mp3'
-    };
-  };
-
 
 test('POST /api/meditations/:id/complete updates weekly progress after completion', async () => {
   const { app, routes } = createMockApp();
