@@ -309,7 +309,6 @@ const ReflectionsPage: React.FC = () => {
 
             // Reset UI state since generation continues in the background
             setIsGeneratingMeditation(false);
-            setShowMeditationGeneratingModal(false);
             setIsMeditationApiComplete(false);
             setGeneratedPlaylist(null);
             setMeditationPlaylist(null);
@@ -332,14 +331,12 @@ const ReflectionsPage: React.FC = () => {
     const handleRunInBackground = () => {
         console.log('ℹ️ Meditation generation is already running in the background.');
         setIsGeneratingMeditation(false);
-        setShowMeditationGeneratingModal(false);
     };
 
     const handleMeditationReady = () => {
         console.log('🎯 handleMeditationReady called – generation continues in background.');
         setIsGeneratingMeditation(false);
         setIsMeditationApiComplete(false);
-        setShowMeditationGeneratingModal(false);
     };
 
     const handlePlayNow = () => {
