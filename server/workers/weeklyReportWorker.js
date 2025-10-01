@@ -6,6 +6,11 @@ import {
 } from '../utils/weeklyProgress.js';
 
 import {
+  onesignalEnabled,
+  updateOneSignalUser
+} from '../utils/onesignal.js';
+
+import {
   getLocalDateTimeParts,
   getNextWeekStart,
   normalizeTimezone
@@ -424,6 +429,18 @@ async function releaseClaim({ supabase, row, updates = {}, logger }) {
   if (error && logger) {
     logger.error(`Failed to release claim for user ${row.user_id}`, error);
   }
+
+  if (!error && Object.prototype.hasOwnProperty.call(payload, 'eligible') && onesignalEnabled()) {
+    try {
+      await updateOneSignalUser(row.user_id, {
+        weekly_report_eligible: payload.eligible ? 'true' : 'false'
+      });
+    } catch (tagError) {
+      if (logger) {
+        logger.warn(`Failed to sync weekly_report_eligible tag for ${row.user_id}:`, tagError instanceof Error ? tagError.message : tagError);
+      }
+    }
+  }
 }
 
 async function scheduleRetry({ supabase, row, delayMs, logger }) {
@@ -537,6 +554,16 @@ export function createWeeklyReportWorker({
       messageId: sendResult?.id ?? null,
       subject: payload.subject
     });
+
+    if (onesignalEnabled()) {
+      try {
+        await updateOneSignalUser(userId, {
+          weekly_report_eligible: 'false'
+        });
+      } catch (tagError) {
+        logger.warn(`Failed to sync weekly_report_eligible tag after report send for ${userId}:`, tagError instanceof Error ? tagError.message : tagError);
+      }
+    }
 
     logger.info(`Weekly report sent to ${contact.email} for week ${row.week_start}`);
     return true;

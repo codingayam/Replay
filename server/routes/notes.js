@@ -132,6 +132,14 @@ export function registerNotesRoutes(deps) {
       if (typeof weeklyProgress.meditationsUnlocked === 'boolean') {
         tags.meditation_unlocked = weeklyProgress.meditationsUnlocked ? 'true' : 'false';
       }
+
+      if (typeof weeklyProgress.eligible === 'boolean') {
+        tags.weekly_report_eligible = weeklyProgress.eligible ? 'true' : 'false';
+      }
+    }
+
+    if (tags.weekly_report_eligible === undefined) {
+      tags.weekly_report_eligible = 'false';
     }
 
     console.log('[OneSignal] Constructed journal tags:', { userId, tags, weeklyProgress });

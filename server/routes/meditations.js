@@ -1069,7 +1069,23 @@ export function registerMeditationRoutes(deps) {
       let previousStreak = 0;
       let streakUpdated = false;
 
+      let weeklyProgress = null;
+
       if (isCompleted) {
+        try {
+          const timezone = await loadUserTimezone({ supabase, userId }) ?? DEFAULT_TIMEZONE;
+          const progressRow = await incrementMeditationProgress({
+            supabase,
+            userId,
+            referenceDate: completionTimestamp,
+            eventTimestamp: completionTimestamp,
+            timezone
+          });
+          weeklyProgress = buildProgressSummary(progressRow, timezone);
+        } catch (progressError) {
+          console.error('Weekly progress update failed after meditation completion:', progressError);
+        }
+
         // Get current streak before this completion
         const { data: completedMeditations, error: streakError } = await supabase
           .from('meditations')
@@ -1108,6 +1124,12 @@ export function registerMeditationRoutes(deps) {
             tags.has_unfinished_meditation = 'false';
           }
 
+          if (weeklyProgress && typeof weeklyProgress.eligible === 'boolean') {
+            tags.weekly_report_eligible = weeklyProgress.eligible ? 'true' : 'false';
+          } else {
+            tags.weekly_report_eligible = 'false';
+          }
+
           const onesignalTasks = [
             updateOneSignalUser(userId, tags),
             sendOneSignalEvent(userId, 'meditation_completed', {
@@ -1124,24 +1146,6 @@ export function registerMeditationRoutes(deps) {
               console.error('Failed to sync OneSignal after meditation completion:', result.reason);
             }
           });
-        }
-      }
-
-      let weeklyProgress = null;
-
-      if (isCompleted) {
-        try {
-          const timezone = await loadUserTimezone({ supabase, userId }) ?? DEFAULT_TIMEZONE;
-          const progressRow = await incrementMeditationProgress({
-            supabase,
-            userId,
-            referenceDate: completionTimestamp,
-            eventTimestamp: completionTimestamp,
-            timezone
-          });
-          weeklyProgress = buildProgressSummary(progressRow, timezone);
-        } catch (progressError) {
-          console.error('Weekly progress update failed after meditation completion:', progressError);
         }
       }
 
