@@ -759,7 +759,6 @@ const styles = {
     },
     desktopCtaContainer: {
         margin: '1.5rem 0',
-        maxWidth: '360px',
     },
     replayButton: {
         width: '100%',

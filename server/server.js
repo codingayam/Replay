@@ -573,7 +573,6 @@ async function processMeditationJob(job) {
 
       const tagUpdates = {
         last_meditation_generated_ts: Math.floor(Date.now() / 1000),
-        meditation_last_generated_id: meditation.id,
         has_unfinished_meditation: 'true',
       };
 

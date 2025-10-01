@@ -466,14 +466,20 @@ export function registerMeditationRoutes(deps) {
           `;
 
           if (type === 'Day') {
-            return `${baseInstructions}
+            return `
+            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses.
+          
+            ${profileContext}
+          
+            Experiences:
+            ${experiencesText}
 
-            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead.`;
+            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead.
+            
+            IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
           }
 
-          return `${baseInstructions}
-
-          After incorporating insights from their experiences and connecting to their values and mission, include a loving-kindness (metta) meditation section. Identify specific people, relationships, places, or challenging situations from their notes and guide them through sending loving-kindness using phrases like "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy." Start with the listener, extend to loved ones, then to neutral or challenging relationships, and close with any difficult circumstances that surfaced. Keep it personal and grounded in their reflections.`;
+          return baseInstructions;
         };
 
         const scriptPrompt = getScriptPrompt(reflectionType);
@@ -1109,27 +1115,19 @@ export function registerMeditationRoutes(deps) {
           .not('completed_at', 'is', null)
           .order('completed_at', { ascending: false });
 
-        let completionsCount = 0;
-
         if (!streakError && completedMeditations) {
           // Get previous streak (before this completion) by filtering out current meditation
           const previousCompletions = completedMeditations.slice(1); // Skip the first one (current meditation)
           previousStreak = calculateStreak(previousCompletions);
           newStreak = calculateStreak(completedMeditations);
           streakUpdated = newStreak !== previousStreak;
-          completionsCount = completedMeditations.length;
         }
 
         if (onesignalEnabled()) {
           completionTimestamp = completionTimestamp || new Date().toISOString();
           const tags = {
             last_meditation_completed_ts: Math.floor(new Date(completionTimestamp).getTime() / 1000),
-            meditation_streak: Math.max(newStreak || 0, 0),
           };
-
-          if (completionsCount <= 1 && completionsCount >= 0) {
-            tags.first_meditation_completed = 'true';
-          }
 
           try {
             const unfinished = await hasUnfinishedMeditations(userId);

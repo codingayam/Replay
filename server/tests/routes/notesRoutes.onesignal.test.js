@@ -188,7 +188,6 @@ test('audio note creation calls OneSignal functions in sequence', async () => {
     const [userId, tags] = mockUpdateOneSignalUser.mock.calls[0].arguments;
     assert.equal(userId, 'user-456');
     assert.ok(tags.last_note_ts, 'Should include last_note_ts tag');
-    assert.ok('journals_to_unlock' in tags, 'Should include journals_to_unlock tag');
     assert.ok('meditation_unlocked' in tags, 'Should include meditation_unlocked tag');
   }
 

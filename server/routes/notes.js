@@ -130,10 +130,6 @@ export function registerNotesRoutes(deps) {
     }
 
     if (weeklyProgress) {
-      if (typeof weeklyProgress.unlocksRemaining === 'number') {
-        tags.journals_to_unlock = Math.max(weeklyProgress.unlocksRemaining, 0);
-      }
-
       if (typeof weeklyProgress.meditationsUnlocked === 'boolean') {
         tags.meditation_unlocked = weeklyProgress.meditationsUnlocked ? 'true' : 'false';
       }

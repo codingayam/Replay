@@ -294,7 +294,8 @@ const styles = {
         width: '100%',
         maxWidth: '600px',
         maxHeight: '90vh',
-        overflowY: 'auto' as const,
+        display: 'flex',
+        flexDirection: 'column' as const,
         boxShadow: 'var(--shadow-lg)',
         border: '1px solid var(--card-border)',
     },
@@ -325,6 +326,9 @@ const styles = {
     },
     content: {
         padding: '1.5rem',
+        flex: 1,
+        overflowY: 'auto' as const,
+        minHeight: 0,
     },
     loadingContainer: {
         display: 'flex',
@@ -403,7 +407,7 @@ const styles = {
         display: 'flex',
         flexDirection: 'column' as const,
         gap: '0.75rem',
-        maxHeight: '400px',
+        maxHeight: '300px',
         overflowY: 'auto' as const,
     },
     experienceCard: {
@@ -490,6 +494,7 @@ const styles = {
         padding: '1rem 1.5rem 1.5rem 1.5rem',
         borderTop: '1px solid var(--card-border)',
         justifyContent: 'flex-end',
+        flexShrink: 0,
     },
     cancelButton: {
         padding: '0.875rem 1.5rem',
