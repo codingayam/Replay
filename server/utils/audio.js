@@ -50,6 +50,53 @@ export function generateSilenceBuffer(durationSeconds = 0.35, options = {}) {
 }
 
 /**
+ * Derive the runtime (in seconds) of a PCM WAV buffer.
+ *
+ * @param {Buffer} buffer - WAV buffer to inspect.
+ * @returns {number} Duration in seconds (0 when unavailable).
+ */
+export function getWavDurationSeconds(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < WAV_HEADER_SIZE) {
+    return 0;
+  }
+
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF') {
+    return 0;
+  }
+
+  if (buffer.toString('ascii', 8, 12) !== 'WAVE') {
+    return 0;
+  }
+
+  // Basic PCM header layout checks
+  if (buffer.toString('ascii', 12, 16) !== 'fmt ') {
+    return 0;
+  }
+
+  const numChannels = buffer.readUInt16LE(22);
+  const sampleRate = buffer.readUInt32LE(24);
+  const bitsPerSample = buffer.readUInt16LE(34);
+  const dataChunkId = buffer.toString('ascii', 36, 40);
+  const dataSize = buffer.readUInt32LE(40);
+
+  if (dataChunkId !== 'data') {
+    return 0;
+  }
+
+  if (!numChannels || !sampleRate || !bitsPerSample || !dataSize) {
+    return 0;
+  }
+
+  const bytesPerSample = bitsPerSample / 8;
+  if (!bytesPerSample) {
+    return 0;
+  }
+
+  const durationSeconds = dataSize / (numChannels * sampleRate * bytesPerSample);
+  return Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0;
+}
+
+/**
  * Join multiple PCM WAV buffers into a single continuous buffer.
  *
  * @param {Buffer[]} buffers - Individual WAV buffers to concatenate.

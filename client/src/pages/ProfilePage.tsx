@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, AlertTriangle, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { useAuthenticatedApi, getFileUrl } from '../utils/api';
+import { useAuthenticatedApi } from '../utils/api';
 import SupabaseImage from '../components/SupabaseImage';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
@@ -17,9 +17,53 @@ interface Profile {
     profileImageUrl?: string;
 }
 
+interface ProfileApiResponse {
+    name?: string | null;
+    values?: string[] | string | null;
+    mission?: string | null;
+    thinking_about?: string | null;
+    profile_image_url?: string | null;
+}
+
+const defaultProfile: Profile = {
+    name: '',
+    values: [],
+    mission: '',
+    thinking_about: '',
+    profileImageUrl: '',
+};
+
+const mapProfileResponse = (profileData?: ProfileApiResponse | null): Profile => {
+    if (!profileData) {
+        return { ...defaultProfile };
+    }
+
+    const rawValues = profileData.values;
+    const values = Array.isArray(rawValues)
+        ? rawValues
+            .map(value => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value): value is string => Boolean(value))
+        : typeof rawValues === 'string'
+            ? rawValues
+                .split(',')
+                .map(value => value.trim())
+                .filter(Boolean)
+            : [];
+
+    return {
+        name: profileData.name?.trim() ?? '',
+        values,
+        mission: profileData.mission ?? '',
+        thinking_about: profileData.thinking_about ?? '',
+        profileImageUrl: profileData.profile_image_url ?? '',
+    };
+};
+
 const ProfilePage: React.FC = () => {
-    const [profile, setProfile] = useState<Profile>({ name: '', values: [], mission: '', thinking_about: '', profileImageUrl: '' });
+    const [profile, setProfile] = useState<Profile>(() => ({ ...defaultProfile }));
     const [status, setStatus] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,38 +81,36 @@ const ProfilePage: React.FC = () => {
     const { isDesktop } = useResponsive();
 
     useEffect(() => {
-        console.log('ProfilePage: Fetching profile...');
-        api.get('/profile')
-            .then(res => {
-                console.log('ProfilePage: API response:', res);
-                console.log('ProfilePage: Profile data:', res.data);
-                if(res.data && res.data.profile) {
-                    const profileData = res.data.profile;
-                    const mappedProfile = {
-                        name: profileData.name || '',
-                        values: Array.isArray(profileData.values) 
-                            ? profileData.values 
-                            : profileData.values 
-                                ? profileData.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
-                                : [],
-                        mission: profileData.mission || '',
-                        thinking_about: profileData.thinking_about || '',
-                        profileImageUrl: profileData.profile_image_url || ''
-                    };
-                    console.log('ProfilePage: Setting profile state:', mappedProfile);
-                    setProfile(mappedProfile);
-                }
-            })
-            .catch(err => {
-                console.error("Error fetching profile:", err);
-                console.error("Error details:", err.response?.data);
-            });
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        const controller = new AbortController();
 
-    // Track profile state changes
-    useEffect(() => {
-        console.log('ProfilePage: Profile state changed:', profile);
-    }, [profile]);
+        const fetchProfile = async () => {
+            setIsLoading(true);
+            setError(null);
+
+            try {
+                const response = await api.get('/profile', { signal: controller.signal });
+                const mappedProfile = mapProfileResponse(response.data?.profile);
+                setProfile(mappedProfile);
+            } catch (err) {
+                if (axios.isCancel(err) || controller.signal.aborted) {
+                    return;
+                }
+
+                console.error('Error fetching profile:', err);
+                setError('We could not load your profile. Please try again.');
+            } finally {
+                if (!controller.signal.aborted) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        fetchProfile();
+
+        return () => {
+            controller.abort();
+        };
+    }, [api]);
 
     useEffect(() => {
         return () => {
@@ -332,6 +374,12 @@ const ProfilePage: React.FC = () => {
             {!isDesktop && <Header title="Profile" />}
 
             <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
+                {isLoading && (
+                    <div style={styles.infoBanner}>Loading profile...</div>
+                )}
+                {error && !isLoading && (
+                    <div style={{ ...styles.infoBanner, ...styles.errorBanner }}>{error}</div>
+                )}
                 {/* Profile content */}
                         {/* Profile Card */}
                         <div style={styles.profileCard}>
@@ -922,6 +970,19 @@ const styles = {
         fontWeight: '600',
         cursor: 'pointer',
         transition: 'all 0.2s ease',
+    },
+    infoBanner: {
+        marginBottom: '1rem',
+        padding: '0.75rem 1rem',
+        borderRadius: '12px',
+        backgroundColor: '#eef2ff',
+        color: '#4338ca',
+        fontSize: '0.9rem',
+        fontWeight: '500',
+    },
+    errorBanner: {
+        backgroundColor: '#fee2e2',
+        color: '#b91c1c',
     },
     status: {
         marginTop: '1rem',

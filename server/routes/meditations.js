@@ -3,7 +3,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { calculateStreak } from '../utils/stats.js';
-import { transcodeAudioBuffer } from '../utils/audio.js';
+import { transcodeAudioBuffer, getWavDurationSeconds } from '../utils/audio.js';
 import {
   onesignalEnabled,
   updateOneSignalUser,
@@ -35,6 +35,7 @@ export function registerMeditationRoutes(deps) {
     resolveVoiceSettings,
     processJobQueue,
     transcodeAudio: providedTranscodeAudio,
+    measureAudioDuration: providedMeasureAudioDuration,
     ffmpegPathResolver,
     weeklyProgressOverrides = {}
   } = deps;
@@ -189,6 +190,9 @@ export function registerMeditationRoutes(deps) {
   };
 
   const transcodeAudio = resolveTranscodeAudio();
+  const measureAudioDuration = typeof providedMeasureAudioDuration === 'function'
+    ? providedMeasureAudioDuration
+    : (buffer) => getWavDurationSeconds(buffer);
 
   const computeAudioAvailability = (meditation) => {
     const expiresAtRaw = meditation?.audio_expires_at;
@@ -549,6 +553,8 @@ export function registerMeditationRoutes(deps) {
         let audioStoragePath = null;
         let audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
 
+        let measuredDurationSeconds = 0;
+
         try {
           // Process all segments and create individual audio files
           for (let i = 0; i < segments.length; i++) {
@@ -624,6 +630,7 @@ export function registerMeditationRoutes(deps) {
           console.log('🎵 Concatenating audio segments...');
           const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
           const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
+          measuredDurationSeconds = Math.round(measureAudioDuration(finalAudioBuffer));
           console.log('✅ Audio concatenation complete');
 
           let audioResult;
@@ -717,18 +724,24 @@ export function registerMeditationRoutes(deps) {
         }
 
         // Calculate total duration from the original segments for database storage
-        let totalDuration = 0;
         const originalSegments = script.split(/\[PAUSE=(\d+)s\]/);
+
+        let totalDuration = measuredDurationSeconds;
+        let estimatedDuration = 0;
       
         for (let i = 0; i < originalSegments.length; i++) {
           const segment = originalSegments[i].trim();
           if (segment && isNaN(segment)) {
             // Speech segment - estimate 10 characters per second
-            totalDuration += Math.ceil(segment.length / 10);
+            estimatedDuration += Math.ceil(segment.length / 10);
           } else if (!isNaN(segment)) {
             // Pause segment
-            totalDuration += parseInt(segment);
+            estimatedDuration += parseInt(segment);
           }
+        }
+
+        if (!totalDuration || totalDuration <= 0) {
+          totalDuration = estimatedDuration;
         }
 
         // Ensure we have a minimum valid duration (fallback to requested duration in seconds)
@@ -744,7 +757,9 @@ export function registerMeditationRoutes(deps) {
         console.log('🎵 Meditation generation complete:');
         console.log(`- Continuous audio file created`);
         console.log(`- Original segments processed: ${originalSegments.length}`);
-        console.log(`- Estimated total duration: ${totalDuration} seconds`);
+        console.log(`- Measured audio duration: ${measuredDurationSeconds || 'n/a'} seconds`);
+        console.log(`- Script-estimated duration: ${estimatedDuration} seconds`);
+        console.log(`- Stored total duration: ${totalDuration} seconds`);
 
         // Ensure playlist is defined before database insertion
         if (!playlist) {

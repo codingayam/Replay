@@ -307,8 +307,7 @@ const ReflectionsPage: React.FC = () => {
 
             console.log('✅ Background job queued:', jobResponse);
 
-            // Reset UI state since generation continues in the background
-            setIsGeneratingMeditation(false);
+            // Reset session-specific state while keeping the generation modal visible
             setIsMeditationApiComplete(false);
             setGeneratedPlaylist(null);
             setMeditationPlaylist(null);
@@ -318,13 +317,11 @@ const ReflectionsPage: React.FC = () => {
             setSelectedEndDate('');
             setSelectedDuration(5);
             setSelectedNoteIds([]);
-
-            alert('Your meditation is being generated in the background. We’ll notify you when it is ready.');
         } catch (err) {
             console.error('Error queuing meditation job:', err);
-            alert('Failed to start meditation generation. Please try again.');
             setIsGeneratingMeditation(false);
             setIsMeditationApiComplete(false);
+            alert('Failed to start meditation generation. Please try again.');
         }
     };
 
@@ -491,14 +488,18 @@ const ReflectionsPage: React.FC = () => {
                 )}
             
             {/* Replay Button */}
-            <button 
-                onClick={handleStartReflection}
-                style={styles.replayButton}
-                className="subtle-glow-button"
+            <div
+                style={isDesktop ? styles.desktopCtaContainer : styles.ctaContainer}
             >
-                <Plus size={20} />
-                <span>Replay</span>
-            </button>
+                <button 
+                    onClick={handleStartReflection}
+                    style={styles.replayButton}
+                    className="subtle-glow-button"
+                >
+                    <Plus size={20} />
+                    <span>Replay</span>
+                </button>
+            </div>
 
             {/* Recent Reflections Section */}
             <div style={styles.reflectionsSection}>
@@ -653,7 +654,7 @@ const ReflectionsPage: React.FC = () => {
 
 const styles = {
     container: {
-        paddingBottom: '100px', // Space for bottom nav
+        paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))', // Space for bottom nav + safe area
         backgroundColor: '#f8f9ff',
         minHeight: '100vh',
         width: '100%',
@@ -702,7 +703,10 @@ const styles = {
         fontWeight: '500',
     },
     contentContainer: {
-        padding: '1.5rem 1rem',
+        paddingTop: '1.5rem',
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
+        paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 16px))',
         backgroundColor: '#ffffff',
         marginTop: '-1rem',
         borderTopLeftRadius: '20px',
@@ -744,6 +748,18 @@ const styles = {
         margin: 0,
         fontSize: '0.85rem',
         color: '#475569',
+    },
+    ctaContainer: {
+        position: 'sticky' as const,
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+        zIndex: 5,
+        padding: '0 0 16px 0',
+        marginTop: '1.5rem',
+        background: 'linear-gradient(to top, rgba(248,249,255,1) 40%, rgba(248,249,255,0))',
+    },
+    desktopCtaContainer: {
+        margin: '1.5rem 0',
+        maxWidth: '360px',
     },
     replayButton: {
         width: '100%',

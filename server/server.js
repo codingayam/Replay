@@ -16,7 +16,7 @@ import mime from 'mime';
 import Replicate from 'replicate';
 import { promisify } from 'util';
 import { exec, execSync } from 'child_process';
-import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer } from './utils/audio.js';
+import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer, getWavDurationSeconds } from './utils/audio.js';
 import {
   onesignalEnabled,
   sendOneSignalNotification,
@@ -414,6 +414,7 @@ async function processMeditationJob(job) {
 
     const audioBuffers = tempAudioFiles.map(filePath => fs.readFileSync(filePath));
     const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
+    const measuredDurationSeconds = Math.round(getWavDurationSeconds(finalAudioBuffer));
 
     const audioResult = await transcodeMeditationAudio(finalAudioBuffer, { reflectionType, duration });
     const finalAudioFileName = `${meditationId}-complete.${audioResult.extension}`;
@@ -441,14 +442,18 @@ async function processMeditationJob(job) {
       duration: 0
     }];
 
-    let totalDuration = 0;
+    let totalDuration = measuredDurationSeconds;
+    let estimatedDuration = 0;
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i].trim();
       if (segment && isNaN(segment)) {
-        totalDuration += Math.ceil(segment.length / 10);
+        estimatedDuration += Math.ceil(segment.length / 10);
       } else if (!isNaN(segment)) {
-        totalDuration += parseInt(segment);
+        estimatedDuration += parseInt(segment);
       }
+    }
+    if (!totalDuration || totalDuration <= 0) {
+      totalDuration = estimatedDuration;
     }
     
     if (totalDuration <= 0) {
@@ -833,6 +838,7 @@ registerMeditationRoutes({
   resolveVoiceSettings,
   processJobQueue,
   transcodeAudio: transcodeMeditationAudio,
+  measureAudioDuration: getWavDurationSeconds,
   ffmpegPathResolver: getFFmpegPath
 });
 
