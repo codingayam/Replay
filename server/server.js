@@ -24,6 +24,7 @@ import {
   sendOneSignalEvent,
   fetchOneSignalUserByExternalId,
 } from './utils/onesignal.js';
+import { recomputeWeeklyProgress } from './utils/weeklyTagSync.js';
 
 const execAsync = promisify(exec);
 
@@ -192,7 +193,9 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerProgressRoutes } from './routes/progress.js';
+import { registerOneSignalRoutes } from './routes/onesignal.js';
 import { createWeeklyReportWorker } from './workers/weeklyReportWorker.js';
+import { createWeeklyTagSyncWorker } from './workers/weeklyTagSyncWorker.js';
 
 // Initialize AI services
 const gemini = globalThis.__REPLAY_TEST_GEMINI__ ?? new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -202,6 +205,10 @@ const replicateClient = globalThis.__REPLAY_TEST_REPLICATE__ ?? new Replicate({
 const weeklyReportWorker = createWeeklyReportWorker({
   supabase,
   gemini
+});
+const weeklyTagSyncWorker = createWeeklyTagSyncWorker({
+  supabase,
+  recompute: recomputeWeeklyProgress
 });
 
 async function transcodeMeditationAudio(buffer, context = {}) {
@@ -241,6 +248,7 @@ const PORT = process.env.PORT || 3001;
 // Background job processing system
 let jobWorkerInterval = null;
 let weeklyReportInterval = null;
+let weeklyTagSyncInterval = null;
 
 // Background worker functions
 async function processMeditationJob(job) {
@@ -806,6 +814,13 @@ registerProgressRoutes({
   supabase
 });
 
+registerOneSignalRoutes({
+  app,
+  requireAuth,
+  supabase,
+  recomputeWeeklyProgress
+});
+
 registerMeditationRoutes({
   app,
   requireAuth,
@@ -850,6 +865,21 @@ const startSchedulers = (protocol) => {
 
   processJobQueue().catch(error => {
     console.error('Initial job queue check failed:', error);
+  });
+
+  if (weeklyTagSyncInterval) {
+    clearInterval(weeklyTagSyncInterval);
+  }
+
+  console.log('🏷️ Weekly tag sync worker scheduled (hourly)');
+  weeklyTagSyncInterval = setInterval(() => {
+    weeklyTagSyncWorker.run().catch((error) => {
+      console.error('Weekly tag sync worker execution failed:', error);
+    });
+  }, 60 * 60 * 1000);
+
+  weeklyTagSyncWorker.run().catch((error) => {
+    console.error('Initial weekly tag sync run failed:', error);
   });
 
   const canSendWeeklyReports = Boolean(process.env.RESEND_API_KEY && process.env.WEEKLY_REPORT_FROM_EMAIL);
@@ -914,6 +944,11 @@ const shutdownSchedulers = () => {
   if (weeklyReportInterval) {
     clearInterval(weeklyReportInterval);
     weeklyReportInterval = null;
+  }
+
+  if (weeklyTagSyncInterval) {
+    clearInterval(weeklyTagSyncInterval);
+    weeklyTagSyncInterval = null;
   }
 };
 

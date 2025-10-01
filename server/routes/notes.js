@@ -5,20 +5,25 @@ import {
   loadUserTimezone as loadUserTimezoneDefault
 } from '../utils/weeklyProgress.js';
 import {
-  onesignalEnabled,
-  updateOneSignalUser,
-  sendOneSignalEvent,
-  attachExternalIdToSubscription
+  onesignalEnabled as onesignalEnabledDefault,
+  updateOneSignalUser as updateOneSignalUserDefault,
+  sendOneSignalEvent as sendOneSignalEventDefault,
+  attachExternalIdToSubscription as attachExternalIdToSubscriptionDefault
 } from '../utils/onesignal.js';
 
 export function registerNotesRoutes(deps) {
   const { app, requireAuth, supabase, upload, uuidv4, gemini } = deps;
   const { weeklyProgressOverrides = {} } = deps;
+  const onesignalOverrides = deps.onesignalOverrides ?? {};
 
   const loadUserTimezone = weeklyProgressOverrides.loadUserTimezone ?? loadUserTimezoneDefault;
   const incrementJournalProgress = weeklyProgressOverrides.incrementJournalProgress ?? incrementJournalProgressDefault;
   const decrementJournalProgress = weeklyProgressOverrides.decrementJournalProgress ?? decrementJournalProgressDefault;
   const buildProgressSummary = weeklyProgressOverrides.buildProgressSummary ?? buildProgressSummaryDefault;
+  const onesignalEnabled = onesignalOverrides.onesignalEnabled ?? onesignalEnabledDefault;
+  const updateOneSignalUser = onesignalOverrides.updateOneSignalUser ?? updateOneSignalUserDefault;
+  const sendOneSignalEvent = onesignalOverrides.sendOneSignalEvent ?? sendOneSignalEventDefault;
+  const attachExternalIdToSubscription = onesignalOverrides.attachExternalIdToSubscription ?? attachExternalIdToSubscriptionDefault;
 
   const getOneSignalSubscriptionId = (req) => {
     const header = req.headers['x-onesignal-subscription-id'];

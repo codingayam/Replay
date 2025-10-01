@@ -11,7 +11,7 @@ test.beforeEach(() => {
     ONESIGNAL_REST_API_KEY: 'test-rest-key',
     ONESIGNAL_ENABLED: 'true',
     ONESIGNAL_CUSTOM_EVENTS: 'true',
-    NODE_ENV: 'test'
+    NODE_ENV: 'production'
   };
 });
 
@@ -92,7 +92,7 @@ test('updateOneSignalUser filters out null/undefined values', async () => {
       tag4: 'value4'
     });
 
-    assert.deepEqual(capturedBody.tags, {
+    assert.deepEqual(capturedBody.properties.tags, {
       tag1: 'value1',
       tag4: 'value4'
     });
@@ -121,11 +121,11 @@ test('updateOneSignalUser converts all values to strings', async () => {
       boolean_tag: true
     });
 
-    assert.equal(capturedBody.tags.string_tag, 'hello');
-    assert.equal(capturedBody.tags.number_tag, '42');
-    assert.equal(capturedBody.tags.boolean_tag, 'true');
-    assert.equal(typeof capturedBody.tags.number_tag, 'string');
-    assert.equal(typeof capturedBody.tags.boolean_tag, 'string');
+    assert.equal(capturedBody.properties.tags.string_tag, 'hello');
+    assert.equal(capturedBody.properties.tags.number_tag, '42');
+    assert.equal(capturedBody.properties.tags.boolean_tag, 'true');
+    assert.equal(typeof capturedBody.properties.tags.number_tag, 'string');
+    assert.equal(typeof capturedBody.properties.tags.boolean_tag, 'string');
   } finally {
     global.fetch = originalFetch;
   }
@@ -179,7 +179,7 @@ test('sendOneSignalNotification targets by subscription_id when no external_id',
       contents: { en: 'Message' }
     });
 
-    assert.deepEqual(capturedBody.include_player_ids, ['sub-123']);
+    assert.deepEqual(capturedBody.include_subscription_ids, ['sub-123']);
     assert.equal(capturedBody.include_aliases, undefined);
   } finally {
     global.fetch = originalFetch;
@@ -268,7 +268,11 @@ test('sendOneSignalEvent sends event when enabled', async () => {
   };
 
   try {
-    await onesignal.sendOneSignalEvent('user-123', 'meditation_completed', {
+    process.env.NODE_ENV = 'production';
+    process.env.ONESIGNAL_CUSTOM_EVENTS = 'true';
+    const module = await import('../../utils/onesignal.js?cachebust=7');
+
+    await module.sendOneSignalEvent('user-123', 'meditation_completed', {
       meditation_id: 'med-456',
       duration: 300
     });

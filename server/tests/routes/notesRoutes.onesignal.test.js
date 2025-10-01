@@ -88,17 +88,42 @@ const mockWeeklyProgressOverrides = {
   }))
 };
 
-test('audio note creation calls OneSignal functions in sequence', async (t) => {
+function createMockApp() {
+  const handlers = {};
+  return {
+    _handlers: handlers,
+    get(path, ...fns) {
+      handlers[path] = fns;
+    },
+    post(path, ...fns) {
+      handlers[path] = fns;
+    },
+    put(path, ...fns) {
+      handlers[path] = fns;
+    },
+    delete(path, ...fns) {
+      handlers[path] = fns;
+    }
+  };
+}
+
+test.beforeEach(() => {
+  mockUpdateOneSignalUser.mock.resetCalls();
+  mockSendOneSignalEvent.mock.resetCalls();
+  mockAttachExternalIdToSubscription.mock.resetCalls();
+  mockOnesignalEnabled.mock.resetCalls();
+
+  mockUpdateOneSignalUser.mock.mockImplementation(async () => ({ success: true }));
+  mockSendOneSignalEvent.mock.mockImplementation(async () => ({ success: true }));
+  mockAttachExternalIdToSubscription.mock.mockImplementation(async () => ({ success: true }));
+  mockOnesignalEnabled.mock.mockImplementation(() => true);
+});
+
+test('audio note creation calls OneSignal functions in sequence', async () => {
   // Import module with mocks
   const { registerNotesRoutes } = await import('../../routes/notes.js');
 
-  const mockApp = {
-    post: test.mock.fn((path, ...handlers) => {
-      // Store handlers for testing
-      mockApp._handlers = mockApp._handlers || {};
-      mockApp._handlers[path] = handlers;
-    })
-  };
+  const mockApp = createMockApp();
 
   // Register routes with mocks
   registerNotesRoutes({
@@ -108,7 +133,13 @@ test('audio note creation calls OneSignal functions in sequence', async (t) => {
     upload: mockUpload,
     uuidv4: mockUuidv4,
     gemini: mockGemini,
-    weeklyProgressOverrides: mockWeeklyProgressOverrides
+    weeklyProgressOverrides: mockWeeklyProgressOverrides,
+    onesignalOverrides: {
+      onesignalEnabled: mockOnesignalEnabled,
+      updateOneSignalUser: mockUpdateOneSignalUser,
+      sendOneSignalEvent: mockSendOneSignalEvent,
+      attachExternalIdToSubscription: mockAttachExternalIdToSubscription
+    }
   });
 
   // Verify route was registered
@@ -141,12 +172,6 @@ test('audio note creation calls OneSignal functions in sequence', async (t) => {
   const finalHandler = handlers[handlers.length - 1];
 
   // Mock OneSignal functions
-  const onesignalModule = await import('../../utils/onesignal.js');
-  t.mock.method(onesignalModule, 'onesignalEnabled', mockOnesignalEnabled);
-  t.mock.method(onesignalModule, 'updateOneSignalUser', mockUpdateOneSignalUser);
-  t.mock.method(onesignalModule, 'sendOneSignalEvent', mockSendOneSignalEvent);
-  t.mock.method(onesignalModule, 'attachExternalIdToSubscription', mockAttachExternalIdToSubscription);
-
   await finalHandler(mockReq, mockRes);
 
   // Verify response
@@ -180,12 +205,7 @@ test('audio note creation calls OneSignal functions in sequence', async (t) => {
 test('syncOneSignalAlias extracts subscription ID from header', async () => {
   const { registerNotesRoutes } = await import('../../routes/notes.js');
 
-  const mockApp = {
-    post: test.mock.fn((path, ...handlers) => {
-      mockApp._handlers = mockApp._handlers || {};
-      mockApp._handlers[path] = handlers;
-    })
-  };
+  const mockApp = createMockApp();
 
   registerNotesRoutes({
     app: mockApp,
@@ -194,7 +214,13 @@ test('syncOneSignalAlias extracts subscription ID from header', async () => {
     upload: mockUpload,
     uuidv4: mockUuidv4,
     gemini: mockGemini,
-    weeklyProgressOverrides: mockWeeklyProgressOverrides
+    weeklyProgressOverrides: mockWeeklyProgressOverrides,
+    onesignalOverrides: {
+      onesignalEnabled: mockOnesignalEnabled,
+      attachExternalIdToSubscription: mockAttachExternalIdToSubscription,
+      updateOneSignalUser: mockUpdateOneSignalUser,
+      sendOneSignalEvent: mockSendOneSignalEvent
+    }
   });
 
   const mockReq = {
@@ -234,17 +260,11 @@ test('syncOneSignalAlias extracts subscription ID from header', async () => {
 });
 
 test('OneSignal operations skip when disabled', async () => {
-  // Temporarily disable OneSignal
-  const disabledMock = test.mock.fn(() => false);
-
   const { registerNotesRoutes } = await import('../../routes/notes.js');
 
-  const mockApp = {
-    post: test.mock.fn((path, ...handlers) => {
-      mockApp._handlers = mockApp._handlers || {};
-      mockApp._handlers[path] = handlers;
-    })
-  };
+  const mockApp = createMockApp();
+
+  mockOnesignalEnabled.mock.mockImplementation(() => false);
 
   registerNotesRoutes({
     app: mockApp,
@@ -253,7 +273,13 @@ test('OneSignal operations skip when disabled', async () => {
     upload: mockUpload,
     uuidv4: mockUuidv4,
     gemini: mockGemini,
-    weeklyProgressOverrides: mockWeeklyProgressOverrides
+    weeklyProgressOverrides: mockWeeklyProgressOverrides,
+    onesignalOverrides: {
+      onesignalEnabled: mockOnesignalEnabled,
+      updateOneSignalUser: mockUpdateOneSignalUser,
+      sendOneSignalEvent: mockSendOneSignalEvent,
+      attachExternalIdToSubscription: mockAttachExternalIdToSubscription
+    }
   });
 
   const mockReq = {
@@ -278,9 +304,6 @@ test('OneSignal operations skip when disabled', async () => {
   mockUpdateOneSignalUser.mock.resetCalls();
   mockSendOneSignalEvent.mock.resetCalls();
 
-  const onesignalModule = await import('../../utils/onesignal.js');
-  t.mock.method(onesignalModule, 'onesignalEnabled', disabledMock);
-
   const handlers = mockApp._handlers['/api/notes'];
   const finalHandler = handlers[handlers.length - 1];
 
@@ -296,12 +319,7 @@ test('OneSignal operations skip when disabled', async () => {
 test('handles missing subscription ID gracefully', async () => {
   const { registerNotesRoutes } = await import('../../routes/notes.js');
 
-  const mockApp = {
-    post: test.mock.fn((path, ...handlers) => {
-      mockApp._handlers = mockApp._handlers || {};
-      mockApp._handlers[path] = handlers;
-    })
-  };
+  const mockApp = createMockApp();
 
   registerNotesRoutes({
     app: mockApp,
@@ -310,7 +328,13 @@ test('handles missing subscription ID gracefully', async () => {
     upload: mockUpload,
     uuidv4: mockUuidv4,
     gemini: mockGemini,
-    weeklyProgressOverrides: mockWeeklyProgressOverrides
+    weeklyProgressOverrides: mockWeeklyProgressOverrides,
+    onesignalOverrides: {
+      onesignalEnabled: mockOnesignalEnabled,
+      updateOneSignalUser: mockUpdateOneSignalUser,
+      sendOneSignalEvent: mockSendOneSignalEvent,
+      attachExternalIdToSubscription: mockAttachExternalIdToSubscription
+    }
   });
 
   const mockReq = {
