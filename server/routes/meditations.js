@@ -87,6 +87,56 @@ export function registerMeditationRoutes(deps) {
     }
   };
 
+  const hasUnfinishedMeditations = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('meditations')
+        .select('id, audio_expires_at, audio_removed_at')
+        .eq('user_id', userId)
+        .is('completed_at', null);
+
+      if (error) {
+        console.warn('[OneSignal] Failed to query unfinished meditations:', error);
+        return true;
+      }
+
+      const now = new Date();
+      return (data ?? []).some((meditation) => {
+        if (!meditation) {
+          return false;
+        }
+        if (meditation.audio_removed_at) {
+          return false;
+        }
+        if (!meditation.audio_expires_at) {
+          return true;
+        }
+        const expiresAt = new Date(meditation.audio_expires_at);
+        if (Number.isNaN(expiresAt.getTime())) {
+          return true;
+        }
+        return expiresAt > now;
+      });
+    } catch (error) {
+      console.warn('[OneSignal] Failed to evaluate unfinished meditations:', error);
+      return true;
+    }
+  };
+
+  const syncHasUnfinishedMeditationTag = async (userId) => {
+    if (!onesignalEnabled()) {
+      return;
+    }
+    const hasUnfinished = await hasUnfinishedMeditations(userId);
+    try {
+      await updateOneSignalUser(userId, {
+        has_unfinished_meditation: hasUnfinished ? 'true' : 'false'
+      });
+    } catch (error) {
+      console.warn('[OneSignal] Failed to sync unfinished meditation tag:', error instanceof Error ? error.message : error);
+    }
+  };
+
   const extractJson = (rawText) => {
     if (!rawText) return null;
     try {
@@ -193,6 +243,8 @@ export function registerMeditationRoutes(deps) {
     } catch (updateError) {
       console.error('Failed to mark meditation audio as removed:', updateError);
     }
+
+    await syncHasUnfinishedMeditationTag(userId);
   };
 
   const generateTitleAndSummary = async (script, reflectionType, fallbackTitle) => {
@@ -1046,6 +1098,14 @@ export function registerMeditationRoutes(deps) {
 
           if (completionsCount <= 1 && completionsCount >= 0) {
             tags.first_meditation_completed = 'true';
+          }
+
+          try {
+            const unfinished = await hasUnfinishedMeditations(userId);
+            tags.has_unfinished_meditation = unfinished ? 'true' : 'false';
+          } catch (error) {
+            console.warn('[OneSignal] Failed to compute unfinished meditation state after completion:', error);
+            tags.has_unfinished_meditation = 'false';
           }
 
           const onesignalTasks = [
