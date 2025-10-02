@@ -452,7 +452,7 @@ export function registerMeditationRoutes(deps) {
         // Create different prompts based on reflection type
         const getScriptPrompt = (type) => {
           const baseInstructions = `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses.
+            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Ideally, only add pauses to moments where it makes sense to do so, for instance when what was said provides a good opportunity to pause and reflect.
           
             ${profileContext}
           
@@ -466,14 +466,14 @@ export function registerMeditationRoutes(deps) {
 
           if (type === 'Day') {
             return `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses.
+            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Ideally, only add pauses to moments where it makes sense to do so, for instance when what was said provides a good opportunity to pause and reflect.
           
             ${profileContext}
           
             Experiences:
             ${experiencesText}
 
-            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead.
+            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead. Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for the day ahead.
             
             IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
           }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Target, FileText, Brain, Flame } from 'lucide-react';
+import { Target, FileText, Brain, Flame, Info } from 'lucide-react';
 import type { WeeklyProgressSummary } from '../hooks/useWeeklyProgress';
 
 interface WeeklyProgressCardProps {
@@ -42,11 +42,9 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
   const journalProgress = journalGoalSafe > 0 ? Math.min(journalCount / journalGoalSafe, 1) : 1;
   const meditationProgress = meditationGoalSafe > 0 ? Math.min(meditationCount / meditationGoalSafe, 1) : 1;
 
-  const reportStatusLabel = summary?.reportSent
-    ? 'Sent'
-    : summary?.reportReady
-      ? 'Ready'
-      : 'Pending';
+  const reportStatusLabel = summary?.reportReady
+    ? 'Unlocked'
+    : 'Locked';
 
   // Animation state
   const [animatingJournal, setAnimatingJournal] = useState(false);
@@ -59,6 +57,23 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
   // Animated display values for count-up effect
   const [displayJournalCount, setDisplayJournalCount] = useState(journalCount);
   const [displayMeditationCount, setDisplayMeditationCount] = useState(meditationCount);
+
+  // Tooltip state
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  // Close tooltip when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (showTooltip) {
+        setShowTooltip(false);
+      }
+    };
+
+    if (showTooltip) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showTooltip]);
 
   // Audio reference
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -381,16 +396,35 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
               </div>
 
               {showReportStatus && (
-                <div style={styles.goalRow}>
+                <div style={{...styles.goalRow, overflow: 'visible', position: 'relative' as const}}>
                   <div style={styles.goalInfo}>
                     <FileText size={16} style={{ color: '#f59e0b' }} />
                     <span style={{...styles.goalName, overflow: 'visible', textOverflow: 'clip', whiteSpace: 'normal' as const}}>Weekly Report</span>
+                    <div
+                      style={styles.infoIconContainer}
+                      className="info-icon-container"
+                      onMouseEnter={() => setShowTooltip(true)}
+                      onMouseLeave={() => setShowTooltip(false)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowTooltip(!showTooltip);
+                      }}
+                    >
+                      <Info size={14} style={styles.infoIcon} />
+                      <div style={{
+                        ...styles.tooltip,
+                        opacity: showTooltip ? 1 : 0,
+                        visibility: showTooltip ? 'visible' : 'hidden'
+                      } as React.CSSProperties}>
+                        Your personalized weekly report will be unlocked after {journalGoalSafe} journals/notes and {meditationGoalSafe} meditations every week. It will be sent automatically to you at the end of the week to your login email.
+                      </div>
+                    </div>
                   </div>
                   <div style={styles.reportStatus}>
                     <span style={{
                       ...styles.statusChip,
-                      backgroundColor: summary?.reportSent ? '#dcfce7' : summary?.reportReady ? '#fef3c7' : '#f1f5f9',
-                      color: summary?.reportSent ? '#059669' : summary?.reportReady ? '#d97706' : '#64748b'
+                      backgroundColor: summary?.reportReady ? '#dcfce7' : '#fee2e2',
+                      color: summary?.reportReady ? '#059669' : '#dc2626'
                     }}>
                       {reportStatusLabel}
                     </span>
@@ -631,6 +665,38 @@ const styles = {
     fontSize: '0.8rem',
     fontWeight: 600,
     boxShadow: '0 2px 4px 0 rgba(220, 38, 38, 0.1)'
+  } as React.CSSProperties,
+  infoIconContainer: {
+    position: 'relative' as const,
+    display: 'inline-flex',
+    alignItems: 'center',
+    marginLeft: '0.25rem',
+    cursor: 'help'
+  } as React.CSSProperties,
+  infoIcon: {
+    color: '#9ca3af',
+    flexShrink: 0
+  } as React.CSSProperties,
+  tooltip: {
+    position: 'absolute' as const,
+    bottom: '100%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    marginBottom: '0.5rem',
+    padding: '0.75rem',
+    backgroundColor: '#1f2937',
+    color: '#ffffff',
+    fontSize: '0.75rem',
+    lineHeight: 1.4,
+    borderRadius: '8px',
+    whiteSpace: 'normal' as const,
+    width: '280px',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    opacity: 0,
+    visibility: 'hidden' as const,
+    transition: 'opacity 0.2s, visibility 0.2s',
+    zIndex: 1000,
+    pointerEvents: 'none' as const
   } as React.CSSProperties
 };
 
