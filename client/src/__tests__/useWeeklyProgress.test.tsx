@@ -46,6 +46,7 @@ describe('useWeeklyProgress hook', () => {
       user: { id: 'user-1' },
       session: {},
       loading: false,
+      authReady: true,
       signUp: jest.fn(),
       signIn: jest.fn(),
       signOut: jest.fn(),

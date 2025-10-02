@@ -2,10 +2,17 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { supabase } from '../lib/supabase';
 import { validatePasswordStrength } from '../utils/passwordPolicy';
 
+declare global {
+  interface Window {
+    OneSignalDeferred?: Array<(oneSignal: any) => void>;
+  }
+}
+
 interface AuthContextType {
   user: any | null; // Simplified to avoid import issues
   session: any | null;
   loading: boolean;
+  authReady: boolean;
   signUp: (email: string, password: string) => Promise<{ user: any | null; error: any | null }>;
   signIn: (email: string, password: string) => Promise<{ user: any | null; error: any | null }>;
   signOut: () => Promise<void>;
@@ -36,26 +43,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<any | null>(null);
   const [session, setSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const hasRequestedPushPermission = useRef(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (!isMounted) return;
+        setSession(session);
+        setUser(session?.user ?? null);
+      })
+      .catch((error) => {
+        console.error('Failed to get initial session:', error);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setAuthReady(true);
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) {
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      setAuthReady(true);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -219,6 +246,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const getToken = useCallback(async (): Promise<string | null> => {
     try {
+      if (!authReady) {
+        // Ensure we have attempted to load a session before proceeding
+        const { data } = await supabase.auth.getSession();
+        setSession(data.session ?? null);
+        setUser(data.session?.user ?? null);
+        setAuthReady(true);
+        setLoading(false);
+      }
+
       let activeSession = session;
 
       if (!activeSession) {
@@ -261,12 +297,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Error retrieving auth token:', error);
       return null;
     }
-  }, [session]);
+  }, [authReady, session]);
 
   const value = {
     user,
     session,
     loading,
+    authReady,
     signUp,
     signIn,
     signOut,

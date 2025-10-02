@@ -94,6 +94,7 @@ const DesktopSidebar: React.FC = () => {
           error={progressError}
           weekLabel={weekStart ? `Week of ${weekStart}` : null}
           timezoneLabel={timezone ?? null}
+          showReportStatus
         />
       </div>
 

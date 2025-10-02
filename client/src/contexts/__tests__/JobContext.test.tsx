@@ -21,9 +21,11 @@ const getTokenMock = jest.fn(async () => 'mock-jwt') as jest.MockedFunction<() =
   getToken: getTokenMock,
   user: { id: 'user-123' },
   loading: false,
+  authReady: true,
   signUp: jest.fn(),
   signIn: jest.fn(),
   signOut: jest.fn(),
+  signInWithGoogle: jest.fn(),
   session: null,
 };
 

@@ -1,6 +1,7 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const importMetaEnv =
   (typeof import.meta !== 'undefined' && (import.meta as any).env) ||
@@ -43,16 +44,46 @@ const api = (testApiClient as any) ?? axios.create({
   },
 });
 
+let redirectingToLogin = false;
+
+const handleUnauthorizedResponse = async () => {
+  if (typeof window === 'undefined' || redirectingToLogin) {
+    return;
+  }
+
+  redirectingToLogin = true;
+
+  try {
+    await supabase.auth.signOut();
+  } catch (signOutError) {
+    console.error('Failed to sign out after unauthorized response:', signOutError);
+  }
+
+  window.location.replace('/login');
+};
+
 api.interceptors.request.use((config) => {
   const subscriptionId = getStoredOneSignalSubscriptionId();
   if (subscriptionId) {
-    config.headers = config.headers ?? {};
-    config.headers['X-OneSignal-Subscription-Id'] = subscriptionId;
+    const headers = ensureHeaders(config);
+    headers.set('X-OneSignal-Subscription-Id', subscriptionId);
   } else if (config.headers) {
-    delete config.headers['X-OneSignal-Subscription-Id'];
+    const headers = ensureHeaders(config);
+    headers.delete('X-OneSignal-Subscription-Id');
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      console.error('Authentication failed - redirecting to login');
+      await handleUnauthorizedResponse();
+    }
+    return Promise.reject(error);
+  }
+);
 
 if (isTestEnv) {
   (globalThis as any).__REPLAY_TEST_API_CLIENT__ = api;
@@ -84,8 +115,8 @@ export const useAuthenticatedApi = () => {
         try {
           const token = await getToken();
           if (token) {
-            config.headers = config.headers ?? {};
-            config.headers.Authorization = `Bearer ${token}`;
+            const headers = ensureHeaders(config);
+            headers.set('Authorization', `Bearer ${token}`);
           }
         } catch (error) {
           console.error('Failed to get auth token:', error);
@@ -93,10 +124,11 @@ export const useAuthenticatedApi = () => {
 
         const subscriptionId = getStoredOneSignalSubscriptionId();
         if (subscriptionId) {
-          config.headers = config.headers ?? {};
-          config.headers['X-OneSignal-Subscription-Id'] = subscriptionId;
+          const headers = ensureHeaders(config);
+          headers.set('X-OneSignal-Subscription-Id', subscriptionId);
         } else if (config.headers) {
-          delete config.headers['X-OneSignal-Subscription-Id'];
+          const headers = ensureHeaders(config);
+          headers.delete('X-OneSignal-Subscription-Id');
         }
         return config;
       },
@@ -105,10 +137,10 @@ export const useAuthenticatedApi = () => {
 
     instance.interceptors.response.use(
       (response) => response,
-      (error) => {
+      async (error) => {
         if (error.response?.status === 401) {
           console.error('Authentication failed - redirecting to login');
-          window.location.href = '/login';
+          await handleUnauthorizedResponse();
         }
         return Promise.reject(error);
       }
@@ -170,3 +202,13 @@ export const getFileUrl = (filePath: string) => {
 };
 
 export default api;
+
+function ensureHeaders(config: { headers?: any }) {
+  if (config.headers instanceof AxiosHeaders) {
+    return config.headers;
+  }
+
+  const headers = new AxiosHeaders(config.headers as any);
+  config.headers = headers;
+  return headers;
+}

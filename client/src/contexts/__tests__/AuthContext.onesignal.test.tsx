@@ -4,12 +4,12 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
 
 // Mock OneSignal
-const mockOneSignalLogin = jest.fn();
-const mockOneSignalLogout = jest.fn();
-const mockGetId = jest.fn();
+const mockOneSignalLogin = jest.fn<(userId: string) => Promise<void>>();
+const mockOneSignalLogout = jest.fn<() => Promise<void>>();
+const mockGetId = jest.fn<() => Promise<string | null>>();
 const mockAddEventListener = jest.fn();
-const mockSlidedownPromptPush = jest.fn();
-const mockRequestPermission = jest.fn();
+const mockSlidedownPromptPush = jest.fn<() => Promise<void>>();
+const mockRequestPermission = jest.fn<() => Promise<void>>();
 
 const mockOneSignal = {
   login: mockOneSignalLogin,
@@ -29,22 +29,58 @@ const mockOneSignal = {
   }
 };
 
-// Setup window.OneSignalDeferred
+// Setup window.OneSignalDeferred and browser globals
 beforeAll(() => {
   (window as any).OneSignalDeferred = [];
-  (window as any).localStorage = {
-    getItem: jest.fn(),
-    setItem: jest.fn(),
-    removeItem: jest.fn(),
-    clear: jest.fn()
-  };
-  (window as any).location = {
-    origin: 'https://replay.agrix.ai'
-  };
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: jest.fn(),
+      setItem: jest.fn(),
+      removeItem: jest.fn(),
+      clear: jest.fn()
+    }
+  });
+
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: {
+      origin: 'https://replay.agrix.ai'
+    }
+  });
 });
 
+const setWindowOrigin = (origin: string) => {
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: { origin }
+  });
+};
+
+const runDeferredOneSignalCallbacks = async () => {
+  const callbacks = [...((window as any).OneSignalDeferred || [])];
+  (window as any).OneSignalDeferred = [];
+  for (const callback of callbacks) {
+    await callback(mockOneSignal);
+  }
+};
+
 // Mock Supabase
-const mockSupabaseAuth = {
+type SupabaseAuthMock = {
+  getSession: jest.MockedFunction<() => Promise<{ data: { session: any } }>>;
+  onAuthStateChange: jest.MockedFunction<
+    (callback: (event: string, session: any) => void) => {
+      data: { subscription: { unsubscribe: () => void } };
+    }
+  >;
+  signUp: jest.Mock;
+  signInWithPassword: jest.Mock;
+  signOut: jest.MockedFunction<() => Promise<void>>;
+  signInWithOAuth: jest.Mock;
+};
+
+const mockSupabaseAuth: SupabaseAuthMock = {
   getSession: jest.fn(),
   onAuthStateChange: jest.fn(),
   signUp: jest.fn(),
@@ -53,16 +89,15 @@ const mockSupabaseAuth = {
   signInWithOAuth: jest.fn()
 };
 
-jest.unstable_mockModule('../lib/supabase', () => ({
-  supabase: {
-    auth: mockSupabaseAuth
-  }
-}));
-
 let AuthProvider: any;
 let useAuth: any;
 
 beforeAll(async () => {
+  await jest.unstable_mockModule('../../lib/supabase', () => ({
+    supabase: {
+      auth: mockSupabaseAuth
+    }
+  }));
   const authModule = await import('../AuthContext');
   AuthProvider = authModule.AuthProvider;
   useAuth = authModule.useAuth;
@@ -72,6 +107,10 @@ describe('AuthContext - OneSignal Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (window as any).OneSignalDeferred = [];
+
+    (window.localStorage.getItem as jest.Mock).mockReset();
+    (window.localStorage.setItem as jest.Mock).mockReset();
+    (window.localStorage.removeItem as jest.Mock).mockReset();
 
     mockSupabaseAuth.getSession.mockResolvedValue({
       data: { session: null }
@@ -100,19 +139,20 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
 
     // Wait for auth to load
     await waitFor(() => {
       expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
     });
 
+    await waitFor(() => {
+      expect(result.current.user).toEqual(mockUser);
+    });
+
     // Trigger OneSignal callback
     await act(async () => {
-      if ((window as any).OneSignalDeferred.length > 0) {
-        const callback = (window as any).OneSignalDeferred[0];
-        await callback(mockOneSignal);
-      }
+      await runDeferredOneSignalCallbacks();
     });
 
     await waitFor(() => {
@@ -132,18 +172,19 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    const { rerender } = renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => {
       expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
     });
 
+    await waitFor(() => {
+      expect(result.current.user).toEqual(mockUser);
+    });
+
     // Trigger OneSignal callback with user
     await act(async () => {
-      if ((window as any).OneSignalDeferred.length > 0) {
-        const callback = (window as any).OneSignalDeferred[0];
-        await callback(mockOneSignal);
-      }
+      await runDeferredOneSignalCallbacks();
     });
 
     // Now sign out
@@ -158,16 +199,8 @@ describe('AuthContext - OneSignal Integration', () => {
     });
 
     // Re-trigger OneSignal callback without user
-    (window as any).OneSignalDeferred = [];
     await act(async () => {
-      (window as any).OneSignalDeferred.push(async (os: any) => {
-        await mockOneSignal.logout();
-      });
-
-      if ((window as any).OneSignalDeferred.length > 0) {
-        const callback = (window as any).OneSignalDeferred[0];
-        await callback(mockOneSignal);
-      }
+      await runDeferredOneSignalCallbacks();
     });
 
     await waitFor(() => {
@@ -185,13 +218,18 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(result.current.user).toEqual(mockUser);
+    });
 
     await act(async () => {
-      if ((window as any).OneSignalDeferred.length > 0) {
-        const callback = (window as any).OneSignalDeferred[0];
-        await callback(mockOneSignal);
-      }
+      await runDeferredOneSignalCallbacks();
     });
 
     await waitFor(() => {
@@ -212,13 +250,18 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(result.current.user).toEqual(mockUser);
+    });
 
     await act(async () => {
-      if ((window as any).OneSignalDeferred.length > 0) {
-        const callback = (window as any).OneSignalDeferred[0];
-        await callback(mockOneSignal);
-      }
+      await runDeferredOneSignalCallbacks();
     });
 
     await waitFor(() => {
@@ -240,13 +283,18 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(result.current.user).toEqual(mockUser);
+    });
 
     await act(async () => {
-      if ((window as any).OneSignalDeferred.length > 0) {
-        const callback = (window as any).OneSignalDeferred[0];
-        await callback(mockOneSignal);
-      }
+      await runDeferredOneSignalCallbacks();
     });
 
     await waitFor(() => {
@@ -271,7 +319,15 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(result.current.user).toEqual(mockUser);
+    });
 
     // Sign out
     await act(async () => {
@@ -285,7 +341,7 @@ describe('AuthContext - OneSignal Integration', () => {
   });
 
   test('does not initialize OneSignal on disallowed origins', async () => {
-    (window as any).location.origin = 'http://localhost:3000'; // Not in allowed list
+    setWindowOrigin('http://localhost:3000'); // Not in allowed list
 
     const mockUser = { id: 'user-123', email: 'test@example.com' };
     mockSupabaseAuth.getSession.mockResolvedValue({
@@ -296,17 +352,16 @@ describe('AuthContext - OneSignal Integration', () => {
       <AuthProvider>{children}</AuthProvider>
     );
 
-    renderHook(() => useAuth(), { wrapper });
+    const { result } = renderHook(() => useAuth(), { wrapper });
 
-    await act(async () => {
-      // Should not add callback to OneSignalDeferred
-      // because origin check fails in the effect
+    await waitFor(() => {
+      expect(mockSupabaseAuth.getSession).toHaveBeenCalled();
     });
 
     // OneSignal methods should not be called
     expect(mockOneSignalLogin).not.toHaveBeenCalled();
 
     // Reset for other tests
-    (window as any).location.origin = 'https://replay.agrix.ai';
+    setWindowOrigin('https://replay.agrix.ai');
   });
 });

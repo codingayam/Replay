@@ -384,7 +384,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
                 <div style={styles.goalRow}>
                   <div style={styles.goalInfo}>
                     <FileText size={16} style={{ color: '#f59e0b' }} />
-                    <span style={styles.goalName}>Weekly Report</span>
+                    <span style={{...styles.goalName, overflow: 'visible', textOverflow: 'clip', whiteSpace: 'normal' as const}}>Weekly Report</span>
                   </div>
                   <div style={styles.reportStatus}>
                     <span style={{
@@ -553,14 +553,16 @@ const styles = {
     border: '1px solid rgba(226, 232, 240, 0.4)',
     transition: 'all 0.2s ease',
     backdropFilter: 'blur(10px)',
-    minHeight: '50px'
+    minHeight: '50px',
+    overflow: 'hidden'
   } as React.CSSProperties,
   goalInfo: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
-    minWidth: '100px',
-    flex: '1 1 auto'
+    minWidth: 0,
+    flex: '1 1 auto',
+    overflow: 'hidden'
   } as React.CSSProperties,
   goalName: {
     fontSize: '0.9rem',
@@ -568,31 +570,30 @@ const styles = {
     fontWeight: 600,
     letterSpacing: '-0.01em',
     whiteSpace: 'nowrap' as const,
-    overflow: 'visible',
-    textOverflow: 'clip'
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
   } as React.CSSProperties,
   goalProgress: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    minWidth: '120px',
+    gap: '0.4rem',
     flex: '0 0 auto'
   } as React.CSSProperties,
   goalCount: {
     fontSize: '0.85rem',
     fontWeight: 700,
-    minWidth: '2.5rem',
+    minWidth: '2.25rem',
     textAlign: 'center' as const,
     letterSpacing: '-0.01em',
     flexShrink: 0,
     whiteSpace: 'nowrap' as const
   } as React.CSSProperties,
   miniProgressBar: {
-    width: '60px',
+    width: '55px',
     height: '5px',
     backgroundColor: '#f1f5f9',
     borderRadius: '999px',
-    overflow: 'visible',
+    overflow: 'hidden',
     border: '1px solid rgba(226, 232, 240, 0.6)',
     boxShadow: 'inset 0 1px 2px 0 rgba(0, 0, 0, 0.05)',
     flexShrink: 0,

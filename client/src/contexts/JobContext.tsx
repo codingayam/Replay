@@ -52,7 +52,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
   const [activeJobs, setActiveJobs] = useState<MeditationJob[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
-  const { getToken, user, loading } = useAuth();
+  const { getToken, user, loading, authReady } = useAuth();
   
   // Track previous job statuses to detect changes
   const previousJobStatuses = useRef<Record<string, string>>({});
@@ -264,7 +264,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
   // Session recovery - check for active jobs on mount (only when authenticated)
   useEffect(() => {
     // Wait for auth loading to complete and ensure user is authenticated
-    if (loading) {
+    if (loading || !authReady) {
       console.log('⏳ Auth still loading, waiting...');
       return;
     }
@@ -307,7 +307,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
     return () => {
       stopPolling();
     };
-  }, [makeAuthenticatedRequest, user, loading]); // Add user and loading as dependencies
+  }, [makeAuthenticatedRequest, user, loading, authReady]); // Add user and loading as dependencies
 
   // Cleanup interval on unmount
   useEffect(() => {

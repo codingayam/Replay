@@ -25,7 +25,7 @@ interface WeeklyProgressProviderProps {
 export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ children, autoRefresh = true, clientOverride }) => {
   const authenticatedApi = useAuthenticatedApi();
   const api = clientOverride ?? authenticatedApi;
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, authReady } = useAuth();
   const [state, setState] = useState<Omit<WeeklyProgressState, 'refresh'>>({
     summary: null,
     weekStart: null,
@@ -60,7 +60,7 @@ export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ 
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!user) {
+    if (!user || !authReady) {
       resetState(false);
       return;
     }
@@ -83,10 +83,10 @@ export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ 
       const message = axiosError.response?.data?.error || axiosError.message || 'Failed to load weekly progress';
       setState((prev) => ({ ...prev, isLoading: false, error: message }));
     }
-  }, [api, resetState, user]);
+  }, [api, authReady, resetState, user]);
 
   useEffect(() => {
-    if (!autoRefresh || authLoading) {
+    if (!autoRefresh || authLoading || !authReady) {
       return;
     }
 
@@ -96,7 +96,7 @@ export const WeeklyProgressProvider: React.FC<WeeklyProgressProviderProps> = ({ 
     }
 
     refresh();
-  }, [autoRefresh, authLoading, refresh, resetState, user]);
+  }, [autoRefresh, authLoading, authReady, refresh, resetState, user]);
 
   const value = useMemo<WeeklyProgressState>(
     () => ({
