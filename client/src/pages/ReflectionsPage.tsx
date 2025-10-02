@@ -68,7 +68,7 @@ const ReflectionsPage: React.FC = () => {
     const meditationGoal = progressThresholds?.reportMeditations ?? 2;
     const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
     
-    const [reflectionDates, setReflectionDates] = useState<string[]>([]);
+    const [activityDates, setActivityDates] = useState<{ journals: string[]; reflections: string[] }>({ journals: [], reflections: [] });
     const [showCalendarModal, setShowCalendarModal] = useState(false);
     
     // New reflection flow state
@@ -132,7 +132,11 @@ const ReflectionsPage: React.FC = () => {
     const fetchCalendar = async () => {
         try {
             const calendarRes = await api.get('/stats/calendar');
-            setReflectionDates(calendarRes.data.dates || []);
+            const data = calendarRes.data || {};
+            setActivityDates({
+                reflections: Array.isArray(data.reflections) ? data.reflections : Array.isArray(data.dates) ? data.dates : [],
+                journals: Array.isArray(data.journals) ? data.journals : [],
+            });
         } catch (err) {
             console.error("Error fetching calendar stats:", err);
         }
@@ -455,7 +459,8 @@ const ReflectionsPage: React.FC = () => {
                 {!isDesktop && (
                     <>
                         <RecentActivityCalendar
-                            reflectionDates={reflectionDates || []}
+                            journalDates={activityDates.journals}
+                            reflectionDates={activityDates.reflections}
                             onExpandClick={() => setShowCalendarModal(true)}
                         />
 
@@ -645,7 +650,8 @@ const ReflectionsPage: React.FC = () => {
             <CalendarModal 
                 isOpen={showCalendarModal}
                 onClose={() => setShowCalendarModal(false)}
-                reflectionDates={reflectionDates || []}
+                journalDates={activityDates.journals}
+                reflectionDates={activityDates.reflections}
             />
             </div>
         </div>

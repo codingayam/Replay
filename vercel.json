@@ -6,10 +6,8 @@
       "NODE_OPTIONS": "--max-old-space-size=4096"
     }
   },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/.*", "dest": "/index.html" }
   ]
 }

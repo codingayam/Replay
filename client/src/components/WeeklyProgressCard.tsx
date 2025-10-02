@@ -397,9 +397,9 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
 
               {showReportStatus && (
                 <div style={{...styles.goalRow, overflow: 'visible', position: 'relative' as const}}>
-                  <div style={styles.goalInfo}>
-                    <FileText size={16} style={{ color: '#f59e0b' }} />
-                    <span style={{...styles.goalName, overflow: 'visible', textOverflow: 'clip', whiteSpace: 'normal' as const}}>Weekly Report</span>
+                  <div style={{...styles.goalInfo, overflow: 'visible', flex: '1 1 auto', minWidth: 0}}>
+                    <FileText size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                    <span style={{...styles.goalName, overflow: 'hidden', textOverflow: 'ellipsis'}}>Weekly Report</span>
                     <div
                       style={styles.infoIconContainer}
                       className="info-icon-container"
@@ -420,7 +420,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
                       </div>
                     </div>
                   </div>
-                  <div style={styles.reportStatus}>
+                  <div style={{...styles.reportStatus, flexShrink: 0}}>
                     <span style={{
                       ...styles.statusChip,
                       backgroundColor: summary?.reportReady ? '#dcfce7' : '#fee2e2',
@@ -458,7 +458,7 @@ const styles = {
     flexDirection: 'column' as const,
     gap: '1.25rem',
     position: 'relative' as const,
-    overflow: 'hidden'
+    overflow: 'visible'
   },
   header: {
     display: 'flex',
@@ -594,18 +594,15 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
-    minWidth: 0,
-    flex: '1 1 auto',
-    overflow: 'hidden'
+    minWidth: 'fit-content',
+    flex: '0 0 auto'
   } as React.CSSProperties,
   goalName: {
     fontSize: '0.9rem',
     color: '#475569',
     fontWeight: 600,
     letterSpacing: '-0.01em',
-    whiteSpace: 'nowrap' as const,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis'
+    whiteSpace: 'nowrap' as const
   } as React.CSSProperties,
   goalProgress: {
     display: 'flex',
@@ -679,10 +676,9 @@ const styles = {
   } as React.CSSProperties,
   tooltip: {
     position: 'absolute' as const,
-    bottom: '100%',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    marginBottom: '0.5rem',
+    top: '100%',
+    left: '0',
+    marginTop: '0.5rem',
     padding: '0.75rem',
     backgroundColor: '#1f2937',
     color: '#ffffff',

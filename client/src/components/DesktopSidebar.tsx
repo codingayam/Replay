@@ -22,7 +22,7 @@ const DesktopSidebar: React.FC = () => {
   const meditationGoal = progressThresholds?.reportMeditations ?? 2;
   const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
 
-  const [reflectionDates, setReflectionDates] = useState<string[]>([]);
+  const [activityDates, setActivityDates] = useState<{ journals: string[]; reflections: string[] }>({ journals: [], reflections: [] });
   const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   const navigation = [
@@ -36,7 +36,11 @@ const DesktopSidebar: React.FC = () => {
     const fetchCalendar = async () => {
       try {
         const calendarRes = await api.get('/stats/calendar');
-        setReflectionDates(calendarRes.data.dates || []);
+        const data = calendarRes.data || {};
+        setActivityDates({
+          reflections: Array.isArray(data.reflections) ? data.reflections : Array.isArray(data.dates) ? data.dates : [],
+          journals: Array.isArray(data.journals) ? data.journals : [],
+        });
       } catch (error) {
         console.error('Error fetching calendar stats:', error);
       }
@@ -100,7 +104,8 @@ const DesktopSidebar: React.FC = () => {
 
       {/* Recent Activity Calendar */}
       <RecentActivityCalendar
-        reflectionDates={reflectionDates}
+        journalDates={activityDates.journals}
+        reflectionDates={activityDates.reflections}
         onExpandClick={handleCalendarExpand}
       />
 
@@ -108,7 +113,8 @@ const DesktopSidebar: React.FC = () => {
       <CalendarModal
         isOpen={showCalendarModal}
         onClose={() => setShowCalendarModal(false)}
-        reflectionDates={reflectionDates || []}
+        journalDates={activityDates.journals}
+        reflectionDates={activityDates.reflections}
       />
     </div>
   );
@@ -116,7 +122,7 @@ const DesktopSidebar: React.FC = () => {
 
 const styles = {
   sidebar: {
-    width: '320px',
+    width: '360px',
     height: '100vh',
     backgroundColor: '#ffffff',
     borderRight: '1px solid #e5e7eb',

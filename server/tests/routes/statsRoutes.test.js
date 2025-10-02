@@ -83,17 +83,33 @@ function requireAuth() {
 test('registerStatsRoutes calendar endpoint returns unique ISO dates', async () => {
   const { app, routes } = createMockApp();
 
+  const meditationsData = [
+    { completed_at: '2025-01-01T10:00:00.000Z' },
+    { completed_at: '2025-01-01T12:00:00.000Z' },
+    { completed_at: '2025-01-02T08:00:00.000Z' }
+  ];
+
+  const notesData = [
+    { date: '2025-01-02' },
+    { date: '2025-01-03' },
+    { date: null, created_at: '2025-01-04T09:15:00.000Z' }
+  ];
+
   const supabase = {
     from(table) {
-      assert.equal(table, 'meditations');
-      return createMeditationsBuilder({
-        data: [
-          { completed_at: '2025-01-01T10:00:00.000Z' },
-          { completed_at: '2025-01-01T12:00:00.000Z' },
-          { completed_at: '2025-01-02T08:00:00.000Z' }
-        ],
-        error: null
-      });
+      if (table === 'meditations') {
+        return createMeditationsBuilder({ data: meditationsData, error: null });
+      }
+      if (table === 'notes') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          order() {
+            return Promise.resolve({ data: notesData, error: null });
+          }
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
     }
   };
 
@@ -106,5 +122,7 @@ test('registerStatsRoutes calendar endpoint returns unique ISO dates', async () 
   await runHandlers(route.handlers, { auth: null }, resWrapper);
 
   assert.equal(resWrapper.statusCode, 200);
+  assert.deepEqual(resWrapper.json.reflections.sort(), ['2025-01-01', '2025-01-02']);
   assert.deepEqual(resWrapper.json.dates.sort(), ['2025-01-01', '2025-01-02']);
+  assert.deepEqual(resWrapper.json.journals.sort(), ['2025-01-02', '2025-01-03', '2025-01-04']);
 });

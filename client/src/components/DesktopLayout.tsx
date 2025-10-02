@@ -24,7 +24,7 @@ const styles = {
   },
   mainContent: {
     flex: 1,
-    marginLeft: '320px', // Same as sidebar width
+    marginLeft: '360px', // Same as sidebar width
     padding: '2rem',
     minHeight: '100vh',
     backgroundColor: '#ffffff',
