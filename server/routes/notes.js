@@ -334,69 +334,58 @@ export function registerNotesRoutes(deps) {
         return res.status(500).json({ error: 'Failed to search notes' });
       }
 
-      // Generate snippets and calculate relevance scores
-      const results = notes.map(note => {
-        const titleMatch = note.title && note.title.toLowerCase().includes(query.toLowerCase());
-        const transcriptMatch = note.transcript && note.transcript.toLowerCase().includes(query.toLowerCase());
-      
-        // Calculate relevance score (title matches get higher score)
-        let relevanceScore = 0.5;
-        if (titleMatch) relevanceScore += 0.4;
-        if (transcriptMatch) relevanceScore += 0.1;
-      
-        // Generate snippet from the matching text
-        let snippet = { text: '', matchCount: 0 };
-        let matchText = '';
-      
-        if (titleMatch && note.title) {
-          matchText = note.title;
-        } else if (transcriptMatch && note.transcript) {
-          matchText = note.transcript;
-        }
-      
-        if (matchText) {
-          const lowerMatchText = matchText.toLowerCase();
-          const lowerQuery = query.toLowerCase();
-          const matchIndex = lowerMatchText.indexOf(lowerQuery);
-        
-          if (matchIndex !== -1) {
-            // Extract 50 characters before and after the match
-            const start = Math.max(0, matchIndex - 50);
-            const end = Math.min(matchText.length, matchIndex + query.length + 50);
-          
-            let snippetText = matchText.substring(start, end);
-          
-            // Add ellipsis if we truncated
-            if (start > 0) snippetText = '...' + snippetText;
-            if (end < matchText.length) snippetText = snippetText + '...';
-          
-            // Count matches in the full text
-            const matches = lowerMatchText.split(lowerQuery).length - 1;
-          
-            snippet = {
-              text: snippetText,
-              matchCount: matches
-            };
+      // Generate snippets for matching notes
+      const results = notes
+        // Ensure newest notes appear first (Supabase already orders, but re-sort defensively)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .map(note => {
+          const titleMatch = note.title && note.title.toLowerCase().includes(query.toLowerCase());
+          const transcriptMatch = note.transcript && note.transcript.toLowerCase().includes(query.toLowerCase());
+
+          // Generate snippet from the matching text
+          let snippet = { text: '', matchCount: 0 };
+          let matchText = '';
+
+          if (titleMatch && note.title) {
+            matchText = note.title;
+          } else if (transcriptMatch && note.transcript) {
+            matchText = note.transcript;
           }
-        }
-      
-        return {
-          id: note.id,
-          title: note.title,
-          date: note.date,
-          type: note.type,
-          snippet,
-          relevanceScore
-        };
-      });
-    
-      // Sort by relevance score (highest first), then by date (newest first)
-      results.sort((a, b) => {
-        if (a.relevanceScore !== b.relevanceScore) {
-          return b.relevanceScore - a.relevanceScore;
-        }
-        return new Date(b.date) - new Date(a.date);
-      });
+
+          if (matchText) {
+            const lowerMatchText = matchText.toLowerCase();
+            const lowerQuery = query.toLowerCase();
+            const matchIndex = lowerMatchText.indexOf(lowerQuery);
+
+            if (matchIndex !== -1) {
+              // Extract 50 characters before and after the match
+              const start = Math.max(0, matchIndex - 50);
+              const end = Math.min(matchText.length, matchIndex + query.length + 50);
+
+              let snippetText = matchText.substring(start, end);
+
+              // Add ellipsis if we truncated
+              if (start > 0) snippetText = '...' + snippetText;
+              if (end < matchText.length) snippetText = snippetText + '...';
+
+              // Count matches in the full text
+              const matches = lowerMatchText.split(lowerQuery).length - 1;
+
+              snippet = {
+                text: snippetText,
+                matchCount: matches
+              };
+            }
+          }
+
+          return {
+            id: note.id,
+            title: note.title,
+            date: note.date,
+            type: note.type,
+            snippet
+          };
+        });
 
       res.json({
         results,

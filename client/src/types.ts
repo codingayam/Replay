@@ -29,5 +29,4 @@ export interface SearchResult {
         text: string;
         matchCount: number;
     };
-    relevanceScore: number;
 }

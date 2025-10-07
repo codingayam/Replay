@@ -5,6 +5,7 @@ import { Camera, User as UserIcon, Heart, Target, LogOut, Plus, X, AlertTriangle
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuthenticatedApi } from '../utils/api';
+import { compressImage } from '../utils/compressImage';
 import SupabaseImage from '../components/SupabaseImage';
 import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
@@ -139,7 +140,14 @@ const ProfilePage: React.FC = () => {
         if (!file) return;
 
         const formData = new FormData();
-        formData.append('profileImage', file);
+
+        const optimizedImage = await compressImage(file, {
+            maxWidth: 1024,
+            maxHeight: 1024,
+            targetSizeBytes: 4 * 1024 * 1024,
+        });
+
+        formData.append('profileImage', optimizedImage);
 
         try {
             const response = await api.post('/profile/image', formData, {
@@ -198,7 +206,18 @@ const ProfilePage: React.FC = () => {
             if (!blob) return;
 
             const formData = new FormData();
-            formData.append('profileImage', blob, 'profile-photo.jpg');
+            const capturedFile = new File([blob], 'profile-photo.jpg', {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+            });
+
+            const optimizedImage = await compressImage(capturedFile, {
+                maxWidth: 1024,
+                maxHeight: 1024,
+                targetSizeBytes: 4 * 1024 * 1024,
+            });
+
+            formData.append('profileImage', optimizedImage);
 
             try {
                 const response = await api.post('/profile/image', formData, {

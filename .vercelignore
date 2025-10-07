@@ -48,16 +48,8 @@ deployment.md
 # Large data files
 server/data/
 
-# Screenshots and test artifacts
+# Screenshots and test artifacts (keep public assets)
 .playwright-mcp/
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.svg
-*.wav
-*.mp3
-*.mp4
 
 # Build artifacts that aren't needed (but keep client/dist for output)
 # dist/

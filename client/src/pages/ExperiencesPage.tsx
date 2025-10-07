@@ -24,12 +24,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import useWeeklyProgress from '../hooks/useWeeklyProgress';
 import { useJobs } from '../contexts/JobContext';
+import { compressImage } from '../utils/compressImage';
 
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
     const [currentAudio, setCurrentAudio] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
+    const audioUnlockedRef = useRef(false);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [isUploadingText, setIsUploadingText] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -91,6 +93,54 @@ const ExperiencesPage: React.FC = () => {
         fetchNotes();
     }, []);
 
+    useEffect(() => {
+        const unlockSrc = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAAAACAAADSX///8AAAAA//8AAP//AAA=';
+
+        const unlockAudio = () => {
+            const audio = audioRef.current;
+            if (!audio || audioUnlockedRef.current) {
+                return;
+            }
+
+            audio.muted = true;
+            audio.src = unlockSrc;
+            const playPromise = audio.play();
+
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise
+                    .then(() => {
+                        audio.pause();
+                        audio.currentTime = 0;
+                        audio.src = '';
+                        audio.muted = false;
+                        audioUnlockedRef.current = true;
+                        window.removeEventListener('pointerdown', unlockAudio, true);
+                    })
+                    .catch((error) => {
+                        console.warn('Audio unlock attempt failed:', error);
+                        audio.pause();
+                        audio.currentTime = 0;
+                        audio.src = '';
+                        audio.muted = false;
+                    });
+            } else {
+                // Older browsers may not return a promise; assume unlock succeeded
+                audio.pause();
+                audio.currentTime = 0;
+                audio.src = '';
+                audio.muted = false;
+                audioUnlockedRef.current = true;
+                window.removeEventListener('pointerdown', unlockAudio, true);
+            }
+        };
+
+        window.addEventListener('pointerdown', unlockAudio, true);
+
+        return () => {
+            window.removeEventListener('pointerdown', unlockAudio, true);
+        };
+    }, []);
+
     const handleSaveAudioNote = async (blob: Blob) => {
         const formData = new FormData();
         formData.append('audio', blob, 'recording.wav');
@@ -108,13 +158,14 @@ const ExperiencesPage: React.FC = () => {
     };
 
     const handleSavePhotoNote = async (file: File, caption: string) => {
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('caption', caption);
-        formData.append('localTimestamp', new Date().toISOString());
-        
         setIsUploadingPhoto(true);
         try {
+            const optimizedImage = await compressImage(file);
+            const formData = new FormData();
+            formData.append('image', optimizedImage);
+            formData.append('caption', caption);
+            formData.append('localTimestamp', new Date().toISOString());
+
             await api.post('/notes/photo', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
@@ -129,17 +180,18 @@ const ExperiencesPage: React.FC = () => {
     };
 
     const handleSaveTextNote = async (title: string, content: string, image?: File) => {
-        const formData = new FormData();
-        formData.append('title', title);
-        formData.append('content', content);
-        formData.append('date', new Date().toISOString());
-        
-        if (image) {
-            formData.append('image', image);
-        }
-        
         setIsUploadingText(true);
         try {
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('content', content);
+            formData.append('date', new Date().toISOString());
+
+            if (image) {
+                const optimizedImage = await compressImage(image);
+                formData.append('image', optimizedImage);
+            }
+
             await api.post('/notes/text', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
@@ -189,6 +241,12 @@ const ExperiencesPage: React.FC = () => {
 
     const handlePlayNote = async (audioUrl: string) => {
         console.log('🎵 handlePlayNote called with audioUrl:', audioUrl);
+        const audioElement = audioRef.current;
+        if (!audioElement) {
+            console.error('❌ Audio element is not available');
+            return;
+        }
+
         if (audioUrl && user) {
             try {
                 let signedUrl = '';
@@ -228,25 +286,23 @@ const ExperiencesPage: React.FC = () => {
                 
                 console.log('🎯 Final signedUrl:', signedUrl);
                 setCurrentAudio(signedUrl);
-                
-                // Wait for the audio element to be rendered, then set source and play
+
+                // Update the singleton audio element immediately
                 if (signedUrl) {
-                    // Use setTimeout to wait for React to render the audio element
-                    setTimeout(() => {
-                        if (audioRef.current) {
-                            console.log('▶️ Setting audio src and playing');
-                            audioRef.current.src = signedUrl;
-                            audioRef.current.load();
-                            audioRef.current.play()
-                                .then(() => {
-                                    console.log('✅ Audio play succeeded');
-                                    setIsPlaying(true);
-                                })
-                                .catch(e => console.error("❌ Audio play failed:", e));
-                        } else {
-                            console.error('❌ AudioRef still not available after timeout');
-                        }
-                    }, 100); // Wait 100ms for React to render
+                    console.log('▶️ Setting audio src and playing');
+                    audioElement.pause();
+                    audioElement.currentTime = 0;
+                    audioElement.src = signedUrl;
+                    audioElement.load();
+                    audioElement.muted = false;
+                    try {
+                        await audioElement.play();
+                        console.log('✅ Audio play succeeded');
+                        setIsPlaying(true);
+                    } catch (e) {
+                        console.error('❌ Audio play failed:', e);
+                        setIsPlaying(false);
+                    }
                 } else {
                     console.error('❌ No signedUrl available');
                 }
@@ -424,6 +480,10 @@ const ExperiencesPage: React.FC = () => {
     if (meditationPlaylist) {
         return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} meditationId={currentMeditationId || undefined} />;
     }
+
+    const bottomPlayerStyle = currentAudio
+        ? styles.bottomPlayerContainer
+        : { ...styles.bottomPlayerContainer, display: 'none' };
 
     return (
         <div style={isDesktop ? styles.desktopContainer : styles.container}>
@@ -683,11 +743,10 @@ const ExperiencesPage: React.FC = () => {
             />
 
             {/* Bottom Audio Player */}
-            {currentAudio && (
-                <div style={styles.bottomPlayerContainer}>
-                    <div style={styles.playerHeader}>
-                        <div style={styles.playerIndicator}>
-                            {isPlaying ? (
+            <div style={bottomPlayerStyle}>
+                <div style={styles.playerHeader}>
+                    <div style={styles.playerIndicator}>
+                        {isPlaying ? (
                                 <Play size={16} style={{ color: '#3b82f6' }} />
                             ) : (
                                 <PlayCircle size={16} style={{ color: '#3b82f6' }} />
@@ -712,12 +771,14 @@ const ExperiencesPage: React.FC = () => {
                         ref={audioRef} 
                         controls 
                         style={styles.bottomAudioPlayer}
+                        preload="none"
+                        playsInline
                         onPlay={() => setIsPlaying(true)}
                         onPause={() => setIsPlaying(false)}
                         onEnded={() => setIsPlaying(false)}
                     />
                 </div>
-            )}
+            </div>
 
             {/* Selection Bar */}
             {selectionMode && !showDurationModal && !showReadyToBeginModal && !showMeditationGeneratingModal && (
