@@ -226,11 +226,17 @@ export function registerNotesRoutes(deps) {
       const transformedNotes = notes.map(note => ({
         ...note,
         imageUrl: note.image_url,
+        imageUrls: Array.isArray(note.image_urls) && note.image_urls.length > 0
+          ? note.image_urls
+          : note.image_url
+            ? [note.image_url]
+            : [],
         audioUrl: note.audio_url,
         originalCaption: note.original_caption,
         aiImageDescription: note.ai_image_description,
         // Remove the snake_case versions
         image_url: undefined,
+        image_urls: undefined,
         audio_url: undefined,
         original_caption: undefined,
         ai_image_description: undefined
@@ -275,11 +281,17 @@ export function registerNotesRoutes(deps) {
       const transformedNotes = notes.map(note => ({
         ...note,
         imageUrl: note.image_url,
+        imageUrls: Array.isArray(note.image_urls) && note.image_urls.length > 0
+          ? note.image_urls
+          : note.image_url
+            ? [note.image_url]
+            : [],
         audioUrl: note.audio_url,
         originalCaption: note.original_caption,
         aiImageDescription: note.ai_image_description,
         // Remove the snake_case versions
         image_url: undefined,
+        image_urls: undefined,
         audio_url: undefined,
         original_caption: undefined,
         ai_image_description: undefined
@@ -323,7 +335,7 @@ export function registerNotesRoutes(deps) {
     
       const { data: notes, error } = await supabase
         .from('notes')
-        .select('id, title, transcript, date, type, image_url, audio_url, original_caption')
+        .select('id, title, transcript, date, type, image_url, image_urls, audio_url, original_caption')
         .eq('user_id', userId)
         .or(`title.ilike.${searchPattern},transcript.ilike.${searchPattern}`)
         .order('date', { ascending: false })
@@ -383,6 +395,12 @@ export function registerNotesRoutes(deps) {
             title: note.title,
             date: note.date,
             type: note.type,
+            imageUrl: note.image_url,
+            imageUrls: Array.isArray(note.image_urls) && note.image_urls.length > 0
+              ? note.image_urls
+              : note.image_url
+                ? [note.image_url]
+                : [],
             snippet
           };
         });
@@ -427,11 +445,17 @@ export function registerNotesRoutes(deps) {
       const transformedNote = {
         ...note,
         imageUrl: note.image_url,
+        imageUrls: Array.isArray(note.image_urls) && note.image_urls.length > 0
+          ? note.image_urls
+          : note.image_url
+            ? [note.image_url]
+            : [],
         audioUrl: note.audio_url,
         originalCaption: note.original_caption,
         aiImageDescription: note.ai_image_description,
         // Remove the snake_case versions
         image_url: undefined,
+        image_urls: undefined,
         audio_url: undefined,
         original_caption: undefined,
         ai_image_description: undefined
@@ -586,126 +610,136 @@ export function registerNotesRoutes(deps) {
   });
 
   // POST /api/notes/photo - Create photo note with image upload
-  app.post('/api/notes/photo', requireAuth(), upload.single('image'), async (req, res) => {
+  app.post('/api/notes/photo', requireAuth(), upload.array('images', 10), async (req, res) => {
+    const cleanupUploadedImages = async (paths) => {
+      if (!paths.length) {
+        return;
+      }
+      try {
+        await supabase.storage.from('images').remove(paths);
+      } catch (cleanupError) {
+        console.warn('Cleanup after photo upload failed:', cleanupError);
+      }
+    };
+
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
       const { caption, date } = req.body;
+      const files = Array.isArray(req.files) ? req.files : [];
 
-      if (!req.file) {
-        return res.status(400).json({ error: 'Image file is required' });
+      if (!files.length) {
+        return res.status(400).json({ error: 'At least one image file is required' });
       }
 
-      // Generate unique filename
       const noteId = uuidv4();
-      const fileExtension = req.file.originalname.split('.').pop();
-      const fileName = `${noteId}.${fileExtension}`;
+      const uploadedImageUrls = [];
+      const storagePaths = [];
 
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(`${userId}/${fileName}`, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: false
-        });
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const fileExtension = (file.originalname.split('.').pop() || 'jpg').toLowerCase();
+        const safeExtension = fileExtension.replace(/[^a-z0-9]/gi, '') || 'jpg';
+        const fileName = `${noteId}_${index}.${safeExtension}`;
+        const storagePath = `${userId}/${fileName}`;
 
-      if (uploadError) {
-        console.error('Storage upload error:', uploadError);
-        return res.status(500).json({ error: 'Failed to upload image file' });
+        const { error: uploadError } = await supabase.storage
+          .from('images')
+          .upload(storagePath, file.buffer, {
+            contentType: file.mimetype,
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError);
+          await cleanupUploadedImages(storagePaths);
+          return res.status(500).json({ error: 'Failed to upload image file' });
+        }
+
+        const { data: urlData } = await supabase.storage
+          .from('images')
+          .createSignedUrl(storagePath, 3600 * 24 * 365);
+
+        uploadedImageUrls.push(urlData?.signedUrl || storagePath);
+        storagePaths.push(storagePath);
       }
-
-      // Get signed URL for the uploaded file
-      const { data: urlData } = await supabase.storage
-        .from('images')
-        .createSignedUrl(`${userId}/${fileName}`, 3600 * 24 * 365); // 1 year
 
       // Enhanced AI processing with Gemini Vision integration
-      let aiImageDescription = '';
+      let aiImageDescriptions = [];
       let enhancedTranscript = caption || 'No caption provided';
       let title = 'Photo Note';
 
       try {
         const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      
-        // Stage 1: Vision Analysis - Analyze the image directly
-        try {
-          console.log('🔍 Starting Gemini Vision analysis...');
-        
-          // Convert image buffer to base64 for Gemini Vision
-          const imageBase64 = req.file.buffer.toString('base64');
-        
-          // Vision analysis prompt
-          const visionPrompt = `Analyze this image in detail. Describe what you see including: objects, people, setting, colors, lighting, mood, and any notable details. Provide a comprehensive but concise description in 1-3 sentences. Focus on elements that would be meaningful for personal reflection or journaling.`;
-        
-          const visionResult = await Promise.race([
-            model.generateContent([
-              visionPrompt,
-              {
-                inlineData: {
-                  data: imageBase64,
-                  mimeType: req.file.mimetype
+        const visionPrompt = `Analyze this image in detail. Describe what you see including: objects, people, setting, colors, lighting, mood, and notable details. Provide a concise description in 1-3 sentences tailored for personal reflection.`;
+
+        for (const file of files) {
+          try {
+            const imageBase64 = file.buffer.toString('base64');
+            const visionResult = await Promise.race([
+              model.generateContent([
+                visionPrompt,
+                {
+                  inlineData: {
+                    data: imageBase64,
+                    mimeType: file.mimetype
+                  }
                 }
-              }
-            ]),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Vision analysis timeout')), 30000)
-            )
-          ]);
-        
-          aiImageDescription = visionResult.response.text().trim();
-          console.log('✅ Vision analysis completed:', aiImageDescription.substring(0, 100) + '...');
-        
-        } catch (visionError) {
-          console.error('❌ Vision analysis failed:', visionError.message);
-          // Continue without vision analysis - fallback to text-only processing
-        }
+              ]),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Vision analysis timeout')), 30000)
+              )
+            ]);
 
-        // Stage 2: Caption Combination - Merge user caption with AI image description
-        if (aiImageDescription && caption) {
-          // Both user caption and AI description available
-          enhancedTranscript = `${caption} [AI_ANALYSIS: ${aiImageDescription}]`;
-        } else if (aiImageDescription && !caption) {
-          // Only AI description available (user provided no caption)
-          enhancedTranscript = `[AI_ANALYSIS: ${aiImageDescription}]`;
-        } else if (caption && !aiImageDescription) {
-          // Only user caption available (vision analysis failed)
-          enhancedTranscript = caption;
-        }
-        // If neither available, keep default 'No caption provided'
-
-        // Ensure combined caption doesn't exceed 1000 characters
-        if (enhancedTranscript.length > 1000) {
-          // Truncate AI description to fit within limit
-          if (caption && aiImageDescription) {
-            const availableSpace = 1000 - caption.length - '[AI_ANALYSIS: ]'.length;
-            const truncatedAI = aiImageDescription.substring(0, Math.max(0, availableSpace));
-            enhancedTranscript = `${caption} [AI_ANALYSIS: ${truncatedAI}]`;
-          } else {
-            enhancedTranscript = enhancedTranscript.substring(0, 1000);
+            const description = visionResult.response.text().trim();
+            if (description) {
+              aiImageDescriptions.push(description);
+            }
+          } catch (visionError) {
+            console.error('Vision analysis failed for image', visionError.message || visionError);
+            aiImageDescriptions.push('');
           }
         }
 
-        console.log('📝 Combined caption created:', enhancedTranscript.substring(0, 100) + '...');
+        const combinedAiDescription = aiImageDescriptions
+          .map((desc, index) => desc ? `Photo ${index + 1}: ${desc}` : '')
+          .filter(Boolean)
+          .join(' ')
+          .trim();
 
-        // Stage 3: Title Generation - Generate title from combined caption
-        try {
-          const titlePrompt = `Create a short, meaningful title (max 50 characters) for this photo description: "${enhancedTranscript}". Return only the title, no other text.`;
-          const titleResult = await model.generateContent(titlePrompt);
-          title = titleResult.response.text().trim().substring(0, 50);
-        } catch (titleError) {
-          console.error('Title generation error:', titleError);
-          title = 'Photo Note';
+        if (combinedAiDescription) {
+          if (caption) {
+            enhancedTranscript = `${caption} [AI_ANALYSIS: ${combinedAiDescription}]`;
+          } else {
+            enhancedTranscript = `[AI_ANALYSIS: ${combinedAiDescription}]`;
+          }
         }
 
+        if (enhancedTranscript.length > 1000) {
+          enhancedTranscript = `${enhancedTranscript.substring(0, 997)}...`;
+        }
 
+        if (combinedAiDescription) {
+          try {
+            const titlePrompt = `Create a short, meaningful title (max 50 characters) for this combined photo description: "${combinedAiDescription}". Return only the title.`;
+            const titleResult = await model.generateContent(titlePrompt);
+            const generatedTitle = titleResult.response.text().trim();
+            if (generatedTitle) {
+              title = generatedTitle.substring(0, 50);
+            }
+          } catch (titleError) {
+            console.error('Title generation error:', titleError);
+          }
+        }
+
+        aiImageDescriptions = aiImageDescriptions.filter((desc) => desc && desc.trim().length > 0);
       } catch (aiError) {
         console.error('AI processing error:', aiError);
-        // Fallback: use original caption or default
         enhancedTranscript = caption || 'Photo uploaded successfully';
-        title = 'Photo Note';
       }
 
-      // Create note record with new ai_image_description field
+      const primaryImageUrl = uploadedImageUrls[0];
+
       const { data: noteData, error: noteError } = await supabase
         .from('notes')
         .insert([{
@@ -715,15 +749,19 @@ export function registerNotesRoutes(deps) {
           transcript: enhancedTranscript,
           type: 'photo',
           date: date || new Date().toISOString(),
-          image_url: urlData?.signedUrl || `${userId}/${fileName}`,
+          image_url: primaryImageUrl,
+          image_urls: uploadedImageUrls,
           original_caption: caption,
-          ai_image_description: aiImageDescription || null
+          ai_image_description: aiImageDescriptions.length
+            ? aiImageDescriptions.join(' ')
+            : null
         }])
         .select()
         .single();
 
       if (noteError) {
         console.error('Error creating photo note:', noteError);
+        await cleanupUploadedImages(storagePaths);
         return res.status(500).json({ error: 'Failed to create photo note' });
       }
 
@@ -732,7 +770,6 @@ export function registerNotesRoutes(deps) {
         noteDate: noteData.date
       });
 
-      // Sync OneSignal operations in sequence
       if (onesignalEnabled()) {
         console.log('[OneSignal] Starting sync sequence for photo note creation');
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -765,7 +802,7 @@ export function registerNotesRoutes(deps) {
   });
 
   // POST /api/notes/text - Create text note with optional image upload
-  app.post('/api/notes/text', requireAuth(), upload.single('image'), async (req, res) => {
+  app.post('/api/notes/text', requireAuth(), upload.array('images', 10), async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
@@ -790,69 +827,92 @@ export function registerNotesRoutes(deps) {
 
       // Generate unique note ID
       const noteId = uuidv4();
-    
-      // Handle optional image upload
-      let imageUrl = null;
+      const files = Array.isArray(req.files) ? req.files : [];
+      const uploadedImageUrls = [];
+      const storagePaths = [];
       let aiImageDescription = null;
-    
-      if (req.file) {
-        // Generate unique filename for image
-        const fileExtension = req.file.originalname.split('.').pop();
-        const fileName = `${noteId}.${fileExtension}`;
 
-        // Upload to Supabase Storage
-        const { error: uploadError } = await supabase.storage
-          .from('images')
-          .upload(`${userId}/${fileName}`, req.file.buffer, {
-            contentType: req.file.mimetype,
-            upsert: false
-          });
+      const cleanupUploadedImages = async () => {
+        if (!storagePaths.length) {
+          return;
+        }
+        try {
+          await supabase.storage.from('images').remove(storagePaths);
+        } catch (cleanupError) {
+          console.warn('Cleanup after text upload failed:', cleanupError);
+        }
+      };
 
-        if (uploadError) {
-          console.error('Storage upload error:', uploadError);
-          return res.status(500).json({ error: 'Failed to upload image file' });
+      if (files.length) {
+        for (let index = 0; index < files.length; index += 1) {
+          const file = files[index];
+          const fileExtension = (file.originalname.split('.').pop() || 'jpg').toLowerCase();
+          const safeExtension = fileExtension.replace(/[^a-z0-9]/gi, '') || 'jpg';
+          const fileName = `${noteId}_${index}.${safeExtension}`;
+          const storagePath = `${userId}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('images')
+            .upload(storagePath, file.buffer, {
+              contentType: file.mimetype,
+              upsert: false
+            });
+
+          if (uploadError) {
+            console.error('Storage upload error:', uploadError);
+            await cleanupUploadedImages();
+            return res.status(500).json({ error: 'Failed to upload image file' });
+          }
+
+          const { data: urlData } = await supabase.storage
+            .from('images')
+            .createSignedUrl(storagePath, 3600 * 24 * 365);
+
+          uploadedImageUrls.push(urlData?.signedUrl || storagePath);
+          storagePaths.push(storagePath);
         }
 
-        // Get signed URL for the uploaded file
-        const { data: urlData } = await supabase.storage
-          .from('images')
-          .createSignedUrl(`${userId}/${fileName}`, 3600 * 24 * 365); // 1 year
-
-        imageUrl = urlData?.signedUrl || `${userId}/${fileName}`;
-
-        // Optional: AI image analysis for attached photos
         try {
           const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        
-          console.log('🔍 Starting Gemini Vision analysis for text note image...');
-        
-          // Convert image buffer to base64 for Gemini Vision
-          const imageBase64 = req.file.buffer.toString('base64');
-        
-          // Vision analysis prompt
-          const visionPrompt = `Analyze this image that accompanies a text journal entry. Describe what you see including: objects, people, setting, colors, lighting, mood, and any notable details. Provide a comprehensive but concise description in 1-2 sentences.`;
-        
-          const visionResult = await Promise.race([
-            model.generateContent([
-              visionPrompt,
-              {
-                inlineData: {
-                  data: imageBase64,
-                  mimeType: req.file.mimetype
-                }
+          const visionPrompt = `Analyze this supporting image for a written journal entry. Describe key visual elements, mood, and context in 1-2 sentences useful for reflection.`;
+
+          const descriptions = [];
+          for (const file of files) {
+            try {
+              const imageBase64 = file.buffer.toString('base64');
+              const visionResult = await Promise.race([
+                model.generateContent([
+                  visionPrompt,
+                  {
+                    inlineData: {
+                      data: imageBase64,
+                      mimeType: file.mimetype
+                    }
+                  }
+                ]),
+                new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Vision analysis timeout')), 30000)
+                )
+              ]);
+
+              const description = visionResult.response.text().trim();
+              if (description) {
+                descriptions.push(description);
               }
-            ]),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Vision analysis timeout')), 30000)
-            )
-          ]);
-        
-          aiImageDescription = visionResult.response.text().trim();
-          console.log('✅ Vision analysis completed for text note image');
-        
+            } catch (visionError) {
+              console.error('Vision analysis failed for text note image:', visionError.message || visionError);
+            }
+          }
+
+          if (descriptions.length) {
+            aiImageDescription = descriptions.join(' ');
+            if (aiImageDescription.length > 1000) {
+              aiImageDescription = `${aiImageDescription.substring(0, 997)}...`;
+            }
+          }
         } catch (visionError) {
-          console.error('❌ Vision analysis failed for text note:', visionError.message);
-          // Continue without vision analysis
+          console.error('AI processing error for text note images:', visionError);
+          aiImageDescription = aiImageDescription ?? null;
         }
       }
 
@@ -867,7 +927,8 @@ export function registerNotesRoutes(deps) {
           transcript: content, // Using transcript field to store user content
           type: 'text',
           date: date || new Date().toISOString(),
-          image_url: imageUrl,
+          image_url: uploadedImageUrls[0] || null,
+          image_urls: uploadedImageUrls.length ? uploadedImageUrls : null,
           ai_image_description: aiImageDescription
         }])
         .select()
@@ -875,6 +936,7 @@ export function registerNotesRoutes(deps) {
 
       if (noteError) {
         console.error('Error creating text note:', noteError);
+        await cleanupUploadedImages();
         return res.status(500).json({ error: 'Failed to create text note' });
       }
 
@@ -937,13 +999,23 @@ export function registerNotesRoutes(deps) {
       // Delete associated files from storage
       try {
         if (note.audio_url && note.type === 'audio') {
-          const filePath = note.audio_url.split('/').slice(-2).join('/'); // Get last two parts
+          const filePath = note.audio_url.split('/').slice(-2).join('/');
           await supabase.storage.from('audio').remove([filePath]);
         }
-      
-        if (note.image_url && note.type === 'photo') {
-          const filePath = note.image_url.split('/').slice(-2).join('/'); // Get last two parts
-          await supabase.storage.from('images').remove([filePath]);
+
+        const imageSources = Array.isArray(note.image_urls) && note.image_urls.length
+          ? note.image_urls
+          : note.image_url
+            ? [note.image_url]
+            : [];
+
+        if (imageSources.length) {
+          const imagePaths = imageSources
+            .map((url) => url.split('/').slice(-2).join('/'))
+            .filter((path) => path && path.trim().length > 0);
+          if (imagePaths.length) {
+            await supabase.storage.from('images').remove(imagePaths);
+          }
         }
       } catch (storageError) {
         console.error('Storage deletion error:', storageError);

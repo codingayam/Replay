@@ -43,6 +43,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onSave }) => {
             mediaRecorder.current.onstop = () => {
                 const blob = new Blob(audioChunks.current, { type: 'audio/wav' });
                 setAudioBlob(blob);
+                console.log('AudioRecorder mimeType:', mediaRecorder.current?.mimeType || 'unknown');
+                console.log('AudioRecorder blob details:', { type: blob.type, size: blob.size });
+                try {
+                    const tempUrl = URL.createObjectURL(blob);
+                    console.log('AudioRecorder preview URL:', tempUrl);
+                } catch (previewError) {
+                    console.warn('AudioRecorder failed to create preview URL:', previewError);
+                }
                 audioChunks.current = [];
                 stream.getTracks().forEach(track => track.stop());
             };

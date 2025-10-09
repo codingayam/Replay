@@ -1,8 +1,8 @@
 const DEFAULT_MAX_DIMENSION = 2048;
-const DEFAULT_QUALITY = 0.82;
-const DEFAULT_TARGET_SIZE_BYTES = 9.5 * 1024 * 1024; // 9.5MB to stay under Supabase 10MB limit
-const DEFAULT_MAX_ATTEMPTS = 4;
-const MIN_QUALITY = 0.5;
+const DEFAULT_QUALITY = 0.78;
+const DEFAULT_TARGET_SIZE_BYTES = 0.5 * 1024 * 1024; // 500KB default target for uploads
+const DEFAULT_MAX_ATTEMPTS = 5;
+const MIN_QUALITY = 0.4;
 
 export interface CompressImageOptions {
   maxWidth?: number;

@@ -1,64 +1,202 @@
-import React, { useState, useRef } from 'react';
-import { X, FileText, Image as ImageIcon, Save, Plus } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { FileText, Image as ImageIcon, Plus, Save, Video, X, Camera } from 'lucide-react';
 
 interface TextUploadModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onUpload: (title: string, content: string, image?: File) => void;
+    onUpload: (title: string, content: string, images: File[], noteDate: string) => void;
     isUploading?: boolean;
+    noteDate: string;
+    onDateChange: (value: string) => void;
 }
+
+const MAX_PHOTOS = 10;
 
 const TextUploadModal: React.FC<TextUploadModalProps> = ({
     isOpen,
     onClose,
     onUpload,
     isUploading = false,
+    noteDate,
+    onDateChange,
 }) => {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
-    const [selectedImage, setSelectedImage] = useState<File | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [selectedImages, setSelectedImages] = useState<File[]>([]);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [showImageUpload, setShowImageUpload] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [cameraError, setCameraError] = useState<string | null>(null);
+    const [isCameraActive, setIsCameraActive] = useState(false);
+    const [isCapturing, setIsCapturing] = useState(false);
+    const libraryInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
-    const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            setSelectedImage(file);
-            const url = URL.createObjectURL(file);
-            setPreviewUrl(url);
+    const supportsCameraApi = useMemo(() => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia), []);
+    const remainingSlots = MAX_PHOTOS - selectedImages.length;
+    const isValid = title.trim().length > 0
+        && content.trim().length >= 10
+        && content.trim().length <= 5000
+        && title.trim().length <= 100
+        && Boolean(noteDate);
+
+    useEffect(() => {
+        return () => {
+            cleanupPreviews();
+            stopCameraStream();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            cleanupPreviews();
+            stopCameraStream();
+            resetForm();
         }
+    }, [isOpen]);
+
+    const cleanupPreviews = () => {
+        previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+
+    const resetForm = () => {
+        setTitle('');
+        setContent('');
+        setSelectedImages([]);
+        setPreviewUrls([]);
+        setShowImageUpload(false);
+        setCameraError(null);
+    };
+
+    const stopCameraStream = () => {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setIsCameraActive(false);
+        setIsCapturing(false);
+    };
+
+    const addImages = (files: File[]) => {
+        if (!files.length) {
+            return;
+        }
+        const allowed = files.slice(0, remainingSlots);
+        if (!allowed.length) {
+            alert(`You can attach up to ${MAX_PHOTOS} photos per note.`);
+            return;
+        }
+        const previews = allowed.map((file) => URL.createObjectURL(file));
+        setSelectedImages((prev) => [...prev, ...allowed]);
+        setPreviewUrls((prev) => [...prev, ...previews]);
+        setShowImageUpload(true);
+    };
+
+    const triggerLibraryInput = () => {
+        libraryInputRef.current?.click();
+    };
+
+    const handleLibrarySelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files ? Array.from(event.target.files) : [];
+        addImages(files);
+        event.target.value = '';
+    };
+
+    const triggerCamera = async () => {
+        setCameraError(null);
+        if (!supportsCameraApi) {
+            cameraInputRef.current?.click();
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            streamRef.current = stream;
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+                await videoRef.current.play();
+            }
+            setIsCameraActive(true);
+        } catch (error) {
+            console.error('Camera error:', error);
+            setCameraError('Unable to access the camera on this device.');
+            cameraInputRef.current?.click();
+        }
+    };
+
+    const handleFallbackCamera = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files ? Array.from(event.target.files) : [];
+        addImages(files);
+        event.target.value = '';
+    };
+
+    const handleCapturePhoto = () => {
+        if (!videoRef.current || !canvasRef.current) {
+            return;
+        }
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            setCameraError('Unable to capture image.');
+            return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setIsCapturing(true);
+        canvas.toBlob((blob) => {
+            setIsCapturing(false);
+            if (!blob) {
+                setCameraError('Capturing photo failed.');
+                return;
+            }
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const file = new File([blob], `${timestamp}-captured-photo.jpg`, { type: blob.type || 'image/jpeg' });
+            addImages([file]);
+            stopCameraStream();
+        }, 'image/jpeg', 0.92);
+    };
+
+    const removeImage = (index: number) => {
+        setSelectedImages((prev) => prev.filter((_, idx) => idx !== index));
+        setPreviewUrls((prev) => {
+            const next = [...prev];
+            const [removed] = next.splice(index, 1);
+            if (removed) {
+                URL.revokeObjectURL(removed);
+            }
+            return next;
+        });
+        if (selectedImages.length <= 1) {
+            setShowImageUpload(false);
+        }
+    };
+
+    const clearImages = () => {
+        cleanupPreviews();
+        setSelectedImages([]);
+        setPreviewUrls([]);
+        setShowImageUpload(false);
     };
 
     const handleUpload = () => {
-        if (title.trim() && content.trim()) {
-            onUpload(title.trim(), content.trim(), selectedImage || undefined);
-            handleClose();
+        if (!isValid || isUploading) {
+            return;
         }
+        onUpload(title.trim(), content.trim(), selectedImages, noteDate);
+        handleClose();
     };
 
     const handleClose = () => {
-        setTitle('');
-        setContent('');
-        setSelectedImage(null);
-        setPreviewUrl(null);
-        setShowImageUpload(false);
+        cleanupPreviews();
+        stopCameraStream();
+        resetForm();
         onClose();
     };
 
-    const removeImage = () => {
-        setSelectedImage(null);
-        setPreviewUrl(null);
-        setShowImageUpload(false);
-    };
-
-    const triggerFileInput = () => {
-        fileInputRef.current?.click();
-    };
-
-    const isValid = title.trim().length > 0 && content.trim().length >= 10 && content.trim().length <= 5000 && title.trim().length <= 100;
-
-    if (!isOpen) return null;
+    if (!isOpen) {
+        return null;
+    }
 
     return (
         <div style={styles.backdrop} onClick={handleClose}>
@@ -71,7 +209,6 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                 </div>
 
                 <div style={styles.content}>
-                    {/* Title Section */}
                     <div style={styles.titleSection}>
                         <label htmlFor="title" style={styles.label}>
                             Title <span style={styles.required}>*</span>
@@ -89,13 +226,24 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                             maxLength={100}
                         />
                         <div style={styles.charCount}>
-                            <span style={{color: title.length > 100 ? '#e53e3e' : '#666'}}>
+                            <span style={{ color: title.length > 100 ? '#e53e3e' : '#666' }}>
                                 {title.length}/100
                             </span>
                         </div>
                     </div>
 
-                    {/* Content Section */}
+                    <div style={styles.dateSection}>
+                        <label htmlFor="text-note-date" style={styles.label}>Note date <span style={styles.required}>*</span></label>
+                        <input
+                            id="text-note-date"
+                            type="date"
+                            value={noteDate}
+                            onChange={(event) => onDateChange(event.target.value)}
+                            style={styles.input}
+                        />
+                        <small style={styles.hint}>Set when the journal entry took place</small>
+                    </div>
+
                     <div style={styles.contentSection}>
                         <label htmlFor="content" style={styles.label}>
                             Your Journal Entry <span style={styles.required}>*</span>
@@ -104,7 +252,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                             id="content"
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
-                            placeholder="Write about your thoughts, feelings, experiences, reflections, or anything that's on your mind..."
+                            placeholder="Write about your thoughts, feelings, experiences, reflections..."
                             style={{
                                 ...styles.textarea,
                                 ...(content.length < 10 || content.length > 5000 ? styles.inputError : {})
@@ -112,65 +260,83 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                             rows={8}
                         />
                         <div style={styles.charCount}>
-                            <span style={{color: content.length < 10 || content.length > 5000 ? '#e53e3e' : '#666'}}>
+                            <span style={{ color: content.length < 10 || content.length > 5000 ? '#e53e3e' : '#666' }}>
                                 {content.length}/5000 (min: 10 characters)
                             </span>
                         </div>
                         {content.length < 10 && content.length > 0 && (
-                            <small style={styles.errorHint}>
-                                Please write at least 10 characters
-                            </small>
+                            <small style={styles.errorHint}>Please write at least 10 characters</small>
                         )}
                     </div>
 
-                    {/* Optional Image Section */}
                     <div style={styles.imageSection}>
-                        {!showImageUpload && !selectedImage ? (
-                            <button
-                                onClick={() => setShowImageUpload(true)}
-                                style={styles.addImageButton}
-                                type="button"
-                            >
+                        {!showImageUpload && selectedImages.length === 0 ? (
+                            <button onClick={() => setShowImageUpload(true)} style={styles.addImageButton} type="button">
                                 <Plus size={16} />
-                                Add Photo (Optional)
+                                Add Photos (Optional)
                             </button>
                         ) : (
                             <div style={styles.imageContainer}>
-                                <label style={styles.label}>
-                                    Attach Photo (Optional)
-                                </label>
-                                
-                                {!selectedImage ? (
-                                    <div style={styles.imageUploadArea} onClick={triggerFileInput}>
-                                        <div style={styles.imageUploadIcon}>
-                                            <ImageIcon size={32} />
-                                        </div>
-                                        <p style={styles.imageUploadText}>
-                                            Tap to select a photo
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div style={styles.imagePreview}>
-                                        <img src={previewUrl!} alt="Preview" style={styles.previewImage} />
-                                        <div style={styles.imageActions}>
-                                            <button onClick={triggerFileInput} style={styles.changeImageButton}>
-                                                Change Photo
+                                <label style={styles.label}>Attach Photos (Optional)</label>
+                                <div style={styles.imageUploadMeta}>
+                                    <span>{selectedImages.length} / {MAX_PHOTOS} photos selected</span>
+                                    {remainingSlots === 0 && <span style={styles.limitNotice}>Maximum reached</span>}
+                                </div>
+                                <div style={styles.actionRow}>
+                                    <button type="button" style={styles.optionButton} onClick={triggerLibraryInput} disabled={remainingSlots <= 0}>
+                                        <ImageIcon size={16} />
+                                        Photo Library
+                                    </button>
+                                    <button type="button" style={styles.optionButton} onClick={triggerCamera} disabled={remainingSlots <= 0}>
+                                        <Camera size={16} />
+                                        Camera
+                                    </button>
+                                </div>
+                                {cameraError && <div style={styles.errorHint}>{cameraError}</div>}
+
+                                {isCameraActive && (
+                                    <div style={styles.cameraContainer}>
+                                        <video ref={videoRef} style={styles.videoPreview} playsInline muted />
+                                        <canvas ref={canvasRef} style={styles.hiddenCanvas} />
+                                        <div style={styles.cameraButtons}>
+                                            <button type="button" style={styles.secondaryButton} onClick={stopCameraStream}>
+                                                Cancel
                                             </button>
-                                            <button onClick={removeImage} style={styles.removeImageButton}>
-                                                Remove
+                                            <button type="button" style={styles.primaryButton} onClick={handleCapturePhoto} disabled={isCapturing}>
+                                                <Video size={16} />
+                                                {isCapturing ? 'Capturing...' : 'Capture Photo'}
                                             </button>
                                         </div>
                                     </div>
                                 )}
-                                
-                                <small style={styles.hint}>
-                                    Photos will be analyzed by AI to enhance your journal entry
-                                </small>
+
+                                {previewUrls.length > 0 && (
+                                    <div style={styles.previewGrid}>
+                                        {previewUrls.map((url, index) => (
+                                            <div key={`${url}-${index}`} style={styles.previewItem}>
+                                                <img src={url} alt={`Preview ${index + 1}`} style={styles.previewImage} />
+                                                <button type="button" style={styles.removePreviewButton} onClick={() => removeImage(index)}>
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div style={styles.imageActionsRow}>
+                                    <button onClick={triggerLibraryInput} style={styles.changeImageButton} type="button">
+                                        Add More
+                                    </button>
+                                    {selectedImages.length > 0 && (
+                                        <button onClick={clearImages} style={styles.removeImageButton} type="button">
+                                            Remove All
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Actions */}
                     <div style={styles.actions}>
                         <button
                             onClick={handleUpload}
@@ -187,10 +353,19 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                 </div>
 
                 <input
-                    ref={fileInputRef}
+                    ref={libraryInputRef}
                     type="file"
                     accept="image/*"
-                    onChange={handleImageSelect}
+                    multiple
+                    onChange={handleLibrarySelected}
+                    style={styles.hiddenInput}
+                />
+                <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFallbackCamera}
                     style={styles.hiddenInput}
                 />
             </div>
@@ -198,9 +373,9 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     );
 };
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
     backdrop: {
-        position: 'fixed' as const,
+        position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
@@ -219,7 +394,7 @@ const styles = {
         maxWidth: '600px',
         width: '100%',
         maxHeight: '90vh',
-        overflowY: 'auto' as const,
+        overflowY: 'auto',
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
         border: '1px solid var(--card-border)',
     },
@@ -232,7 +407,7 @@ const styles = {
     title: {
         margin: 0,
         fontSize: '1.25rem',
-        fontWeight: '600',
+        fontWeight: 600,
         color: 'var(--text-color)',
     },
     closeButton: {
@@ -248,27 +423,27 @@ const styles = {
     },
     content: {
         display: 'flex',
-        flexDirection: 'column' as const,
+        flexDirection: 'column',
         gap: '1.5rem',
     },
     titleSection: {
         display: 'flex',
-        flexDirection: 'column' as const,
+        flexDirection: 'column',
         gap: '0.5rem',
     },
     contentSection: {
         display: 'flex',
-        flexDirection: 'column' as const,
+        flexDirection: 'column',
         gap: '0.5rem',
     },
     imageSection: {
         display: 'flex',
-        flexDirection: 'column' as const,
+        flexDirection: 'column',
         gap: '0.5rem',
     },
     label: {
         fontSize: '0.9rem',
-        fontWeight: '600',
+        fontWeight: 600,
         color: 'var(--text-color)',
     },
     required: {
@@ -287,7 +462,7 @@ const styles = {
         borderRadius: '8px',
         fontSize: '1rem',
         fontFamily: 'inherit',
-        resize: 'vertical' as const,
+        resize: 'vertical',
         minHeight: '200px',
     },
     inputError: {
@@ -318,46 +493,112 @@ const styles = {
         color: 'var(--primary-color)',
         cursor: 'pointer',
         fontSize: '0.9rem',
-        fontWeight: '500',
-        transition: 'all 0.2s ease',
+        fontWeight: 500,
     },
     imageContainer: {
         display: 'flex',
-        flexDirection: 'column' as const,
+        flexDirection: 'column',
         gap: '0.5rem',
     },
-    imageUploadArea: {
-        border: '1px dashed var(--card-border)',
-        borderRadius: '8px',
-        padding: '1.5rem',
-        textAlign: 'center' as const,
-        cursor: 'pointer',
-        transition: 'border-color 0.2s ease',
-    },
-    imageUploadIcon: {
+    imageUploadMeta: {
         display: 'flex',
-        justifyContent: 'center',
-        marginBottom: '0.5rem',
-        color: 'var(--primary-color)',
+        justifyContent: 'space-between',
+        fontSize: '0.8rem',
+        color: '#555',
     },
-    imageUploadText: {
-        margin: 0,
-        color: '#666',
-        fontSize: '0.9rem',
-    },
-    imagePreview: {
+    actionRow: {
         display: 'flex',
-        flexDirection: 'column' as const,
+        gap: '0.5rem',
+        flexWrap: 'wrap',
+    },
+    optionButton: {
+        display: 'inline-flex',
         alignItems: 'center',
+        gap: '0.4rem',
+        padding: '0.5rem 0.75rem',
+        borderRadius: '8px',
+        border: '1px solid var(--card-border)',
+        backgroundColor: 'var(--card-elevated)',
+        cursor: 'pointer',
+        fontSize: '0.8rem',
+    },
+    limitNotice: {
+        color: '#e53e3e',
+        fontWeight: 600,
+    },
+    cameraContainer: {
+        border: '1px solid var(--card-border)',
+        borderRadius: '12px',
+        padding: '0.75rem',
+        display: 'flex',
+        flexDirection: 'column',
         gap: '0.5rem',
+    },
+    videoPreview: {
+        width: '100%',
+        borderRadius: '8px',
+        backgroundColor: '#0f172a',
+    },
+    hiddenCanvas: {
+        display: 'none',
+    },
+    cameraButtons: {
+        display: 'flex',
+        gap: '0.5rem',
+    },
+    primaryButton: {
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.4rem',
+        padding: '0.6rem 0.75rem',
+        borderRadius: '8px',
+        border: 'none',
+        backgroundColor: 'var(--primary-color)',
+        color: '#fff',
+        cursor: 'pointer',
+    },
+    secondaryButton: {
+        flex: 1,
+        padding: '0.6rem 0.75rem',
+        borderRadius: '8px',
+        border: '1px solid var(--card-border)',
+        backgroundColor: 'transparent',
+        cursor: 'pointer',
+    },
+    previewGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+        gap: '0.5rem',
+    },
+    previewItem: {
+        position: 'relative',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        border: '1px solid var(--card-border)',
     },
     previewImage: {
-        maxWidth: '100%',
-        maxHeight: '200px',
-        borderRadius: '8px',
-        objectFit: 'cover' as const,
+        width: '100%',
+        height: '80px',
+        objectFit: 'cover',
     },
-    imageActions: {
+    removePreviewButton: {
+        position: 'absolute',
+        top: '4px',
+        right: '4px',
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        border: 'none',
+        borderRadius: '50%',
+        color: '#fff',
+        width: '18px',
+        height: '18px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+    },
+    imageActionsRow: {
         display: 'flex',
         gap: '0.5rem',
     },
@@ -391,11 +632,10 @@ const styles = {
         border: 'none',
         borderRadius: '8px',
         backgroundColor: 'var(--primary-color)',
-        color: 'white',
+        color: '#fff',
         cursor: 'pointer',
         fontSize: '0.9rem',
-        fontWeight: '600',
-        transition: 'background-color 0.2s ease',
+        fontWeight: 600,
     },
     disabledButton: {
         backgroundColor: '#ccc',

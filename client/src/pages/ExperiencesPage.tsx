@@ -26,6 +26,16 @@ import useWeeklyProgress from '../hooks/useWeeklyProgress';
 import { useJobs } from '../contexts/JobContext';
 import { compressImage } from '../utils/compressImage';
 
+const getNoteImages = (note: Note) => {
+    if (note.imageUrls && note.imageUrls.length > 0) {
+        return note.imageUrls;
+    }
+    if (note.imageUrl && note.imageUrl.trim().length > 0) {
+        return [note.imageUrl];
+    }
+    return [];
+};
+
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
     const [currentAudio, setCurrentAudio] = useState<string | null>(null);
@@ -141,10 +151,23 @@ const ExperiencesPage: React.FC = () => {
         };
     }, []);
 
-    const handleSaveAudioNote = async (blob: Blob) => {
+    const normalizeNoteDate = (value?: string) => {
+        if (!value) {
+            return new Date().toISOString();
+        }
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+            return new Date().toISOString();
+        }
+        return parsed.toISOString();
+    };
+
+    const handleSaveAudioNote = async (blob: Blob, noteDate?: string) => {
+        const normalizedDate = normalizeNoteDate(noteDate);
         const formData = new FormData();
         formData.append('audio', blob, 'recording.wav');
-        formData.append('localTimestamp', new Date().toISOString());
+        formData.append('date', normalizedDate);
+        formData.append('localTimestamp', normalizedDate);
         try {
             await api.post('/notes', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
@@ -157,14 +180,20 @@ const ExperiencesPage: React.FC = () => {
         }
     };
 
-    const handleSavePhotoNote = async (file: File, caption: string) => {
+    const handleSavePhotoNote = async (files: File[], caption: string, noteDate?: string) => {
         setIsUploadingPhoto(true);
         try {
-            const optimizedImage = await compressImage(file);
             const formData = new FormData();
-            formData.append('image', optimizedImage);
+            const optimizedImages = await Promise.all(files.map(async (image) => compressImage(image)));
+
+            optimizedImages.forEach((optimizedImage) => {
+                formData.append('images', optimizedImage);
+            });
+
             formData.append('caption', caption);
-            formData.append('localTimestamp', new Date().toISOString());
+            const normalizedDate = normalizeNoteDate(noteDate);
+            formData.append('date', normalizedDate);
+            formData.append('localTimestamp', normalizedDate);
 
             await api.post('/notes/photo', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
@@ -179,17 +208,21 @@ const ExperiencesPage: React.FC = () => {
         }
     };
 
-    const handleSaveTextNote = async (title: string, content: string, image?: File) => {
+    const handleSaveTextNote = async (title: string, content: string, images: File[], noteDate?: string) => {
         setIsUploadingText(true);
         try {
             const formData = new FormData();
             formData.append('title', title);
             formData.append('content', content);
-            formData.append('date', new Date().toISOString());
+            const normalizedDate = normalizeNoteDate(noteDate);
+            formData.append('date', normalizedDate);
+            formData.append('localTimestamp', normalizedDate);
 
-            if (image) {
-                const optimizedImage = await compressImage(image);
-                formData.append('image', optimizedImage);
+            if (images.length) {
+                const optimizedImages = await Promise.all(images.map(async (image) => compressImage(image)));
+                optimizedImages.forEach((optimizedImage) => {
+                    formData.append('images', optimizedImage);
+                });
             }
 
             await api.post('/notes/text', formData, {
@@ -237,6 +270,37 @@ const ExperiencesPage: React.FC = () => {
     const handleCloseEditModal = () => {
         setEditModalOpen(false);
         setNoteToEdit(null);
+    };
+
+    const renderNoteImages = (note: Note) => {
+        const images = getNoteImages(note);
+        if (!images.length) {
+            return null;
+        }
+
+        return (
+            <div style={styles.photoContainer}>
+                <div style={styles.photoPlaceholder}>
+                    <SupabaseImage
+                        src={images[0]}
+                        alt={note.userTitle || note.title}
+                        style={styles.photo}
+                    />
+                </div>
+                {images.length > 1 && (
+                    <div style={styles.photoThumbnailRow}>
+                        {images.slice(1).map((imageUrl, index) => (
+                            <SupabaseImage
+                                key={`${note.id}-gallery-${index}`}
+                                src={imageUrl}
+                                alt={`${note.title} thumbnail ${index + 2}`}
+                                style={styles.photoThumbnail}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
     };
 
     const handlePlayNote = async (audioUrl: string) => {
@@ -649,17 +713,7 @@ const ExperiencesPage: React.FC = () => {
                                                         ) : note.type === 'text' ? (
                                                             <div>
                                                                 {/* Optional image for text notes */}
-                                                                {note.imageUrl && note.imageUrl.trim() && (
-                                                                    <div style={styles.photoContainer}>
-                                                                        <div style={styles.photoPlaceholder}>
-                                                                            <SupabaseImage
-                                                                                src={note.imageUrl}
-                                                                                alt={note.userTitle || note.title}
-                                                                                style={styles.photo}
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                                {renderNoteImages(note)}
                                                                 <div style={styles.transcript}>
                                                                     <p style={styles.transcriptText}>
                                                                         {note.transcript}
@@ -669,17 +723,7 @@ const ExperiencesPage: React.FC = () => {
                                                         ) : (
                                                             <div>
                                                                 {/* Photo notes */}
-                                                                <div style={styles.photoContainer}>
-                                                                    <div style={styles.photoPlaceholder}>
-                                                                        {note.imageUrl && (
-                                                                            <SupabaseImage
-                                                                                src={note.imageUrl}
-                                                                                alt={note.title}
-                                                                                style={styles.photo}
-                                                                            />
-                                                                        )}
-                                                                    </div>
-                                                                </div>
+                                                                {renderNoteImages(note)}
                                                                 <div style={styles.transcript}>
                                                                     <p style={styles.transcriptText}>
                                                                         {note.originalCaption || 'No caption provided'}
@@ -766,10 +810,9 @@ const ExperiencesPage: React.FC = () => {
                         >
                             <X size={16} />
                         </button>
-                    </div>
-                    <audio 
-                        ref={audioRef} 
-                        controls 
+                    <audio
+                        ref={audioRef}
+                        controls
                         style={styles.bottomAudioPlayer}
                         preload="none"
                         playsInline
@@ -1176,6 +1219,19 @@ const styles = {
         maxHeight: '480px',
         objectFit: 'contain' as const,
         borderRadius: '6px',
+    },
+    photoThumbnailRow: {
+        display: 'flex',
+        flexWrap: 'wrap' as const,
+        gap: '0.5rem',
+        marginTop: '0.5rem',
+    },
+    photoThumbnail: {
+        width: '56px',
+        height: '56px',
+        borderRadius: '6px',
+        objectFit: 'cover' as const,
+        border: '1px solid rgba(0,0,0,0.08)',
     },
     actionButtons: {
         display: 'flex',

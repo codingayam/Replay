@@ -19,6 +19,12 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
     const isTextNote = note.type === 'text';
+    const images = (note.imageUrls && note.imageUrls.length > 0)
+        ? note.imageUrls
+        : note.imageUrl
+            ? [note.imageUrl]
+            : [];
+    const hasImages = images.length > 0;
 
 
     // Get emoji based on note type
@@ -77,13 +83,25 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
             {showDetails && (
                 <div style={styles.detailsContainer}>
                     {/* Image display for photo notes and text notes with images */}
-                    {(isPhotoNote || isTextNote) && note.imageUrl && note.imageUrl.trim() && (
+                    {(isPhotoNote || isTextNote) && hasImages && (
                         <div style={styles.imageContainer}>
                             <img 
-                                src={getFileUrl(note.imageUrl)} 
+                                src={getFileUrl(images[0])}
                                 alt={isTextNote && note.userTitle ? note.userTitle : note.title}
                                 style={styles.image}
                             />
+                            {images.length > 1 && (
+                                <div style={styles.thumbnailRow}>
+                                    {images.slice(1).map((imageUrl, index) => (
+                                        <img
+                                            key={`${note.id}-thumb-${index}`}
+                                            src={getFileUrl(imageUrl)}
+                                            alt={`Additional photo ${index + 2}`}
+                                            style={styles.thumbnailImage}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -236,6 +254,21 @@ const styles = {
         height: '200px',
         objectFit: 'cover' as const,
         display: 'block',
+    },
+    thumbnailRow: {
+        display: 'flex',
+        gap: '0.5rem',
+        marginTop: '0.5rem',
+        overflowX: 'auto' as const,
+        paddingBottom: '0.25rem',
+    },
+    thumbnailImage: {
+        width: '56px',
+        height: '56px',
+        objectFit: 'cover' as const,
+        borderRadius: '6px',
+        flexShrink: 0,
+        border: '1px solid rgba(0,0,0,0.05)',
     },
     transcript: {
         background: '#fff',

@@ -25,6 +25,10 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;');
 }
 
+function convertBoldToHtml(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function markdownToHtml(markdown) {
   const lines = markdown.split('\n');
   let html = '<div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">';
@@ -38,7 +42,8 @@ function markdownToHtml(markdown) {
         html += '<ul style="padding-left: 20px;">';
         inList = true;
       }
-      html += `<li>${escapeHtml(line.slice(2))}</li>`;
+      const listContent = convertBoldToHtml(escapeHtml(line.slice(2)));
+      html += `<li>${listContent}</li>`;
       continue;
     }
 
@@ -48,17 +53,20 @@ function markdownToHtml(markdown) {
     }
 
     if (line.startsWith('# ')) {
-      html += `<h2 style="margin: 24px 0 12px;">${escapeHtml(line.slice(2).trim())}</h2>`;
+      const headerContent = convertBoldToHtml(escapeHtml(line.slice(2).trim()));
+      html += `<h2 style="margin: 24px 0 12px;">${headerContent}</h2>`;
       continue;
     }
 
     if (line.startsWith('## ')) {
-      html += `<h3 style="margin: 20px 0 10px;">${escapeHtml(line.slice(3).trim())}</h3>`;
+      const headerContent = convertBoldToHtml(escapeHtml(line.slice(3).trim()));
+      html += `<h3 style="margin: 20px 0 10px;">${headerContent}</h3>`;
       continue;
     }
 
     if (line.startsWith('### ')) {
-      html += `<h4 style="margin: 16px 0 8px;">${escapeHtml(line.slice(4).trim())}</h4>`;
+      const headerContent = convertBoldToHtml(escapeHtml(line.slice(4).trim()));
+      html += `<h4 style="margin: 16px 0 8px;">${headerContent}</h4>`;
       continue;
     }
 
@@ -67,7 +75,8 @@ function markdownToHtml(markdown) {
       continue;
     }
 
-    html += `<p style="margin: 12px 0;">${escapeHtml(line)}</p>`;
+    const paragraphContent = convertBoldToHtml(escapeHtml(line));
+    html += `<p style="margin: 12px 0;">${paragraphContent}</p>`;
   }
 
   if (inList) {
@@ -306,11 +315,12 @@ async function generateGeminiSummary(gemini, { notes, meditations, timezone, wee
     Output Structure
     -When providing your crystallized view:
       Opening reflection: Acknowledge the depth and breadth of what they've shared
-    -Key patterns observed: Present 3-5 major themes you've noticed
+    -Key patterns observed: Present major themes you've noticed
     -Connections and insights: Show how different elements of their reflections relate
-    -Questions for deeper exploration: Offer 2-3 powerful questions for them to consider
+    -Questions for deeper exploration: Offer powerful questions for them to consider
     -Affirmation: Recognize their growth, courage, or insights
     -Invitation: End with an open invitation for them to share what resonates and what they can continue to keep in mind or let ruminate in their subconscious as they go about their week.
+    -Values: Based on what they've shared, identify the values that are most present in their reflections. You should try to ignore ${profileValues} as you set about doing this. The idea here is to identify values that are most present in their reflections, not the values they've explicitly stated. However, if values do overlap, that's ok as well. 
 
 IMPORTANT: You are not the expert on their life—they are. Your role is to help them see themselves more clearly through careful attention, pattern recognition, and thoughtful questioning. Trust their wisdom and capacity for self-discovery while providing the structure and reflection that facilitates deeper understanding. Be empathetic and kind - NEVER BE CRUEL, HARSH, JUDGEMENTAL OR CONDESCENDING.
 
@@ -381,17 +391,11 @@ async function buildEmailPayload({
     '## Activity snapshot',
     `- Journals created: ${progressSummary.journalCount}`,
     `- Meditations completed: ${progressSummary.meditationCount}`,
-    `- Report ready since: ${row.weekly_report_ready_at ?? 'not recorded'}`,
     '',
     markdownSummary
   ].join('\n');
 
-  const bodyMarkdown = [
-    `# Weekly reflection (${row.week_start})`,
-    `Timezone: ${timezone}`,
-    '',
-    statsBlock
-  ].join('\n');
+  const bodyMarkdown = statsBlock;
 
   const subject = `Your Replay weekly reflection · Week of ${row.week_start}`;
 

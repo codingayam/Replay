@@ -5,12 +5,41 @@ import PhotoUploadModal from './PhotoUploadModal';
 import TextUploadModal from './TextUploadModal';
 
 interface FloatingUploadButtonProps {
-    onSaveAudio: (blob: Blob) => void;
-    onSavePhoto: (file: File, caption: string) => void;
-    onSaveText: (title: string, content: string, image?: File) => void;
+    onSaveAudio: (blob: Blob, noteDate?: string) => void;
+    onSavePhoto: (files: File[], caption: string, noteDate?: string) => void;
+    onSaveText: (title: string, content: string, images: File[], noteDate?: string) => void;
     isUploadingPhoto?: boolean;
     isUploadingText?: boolean;
 }
+
+const formatDateInput = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    return `${year}-${month}-${day}`;
+};
+
+const formatDateTimeLocal = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const ensureIsoString = (value: string) => {
+    if (!value) {
+        return new Date().toISOString();
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return new Date().toISOString();
+    }
+    return parsed.toISOString();
+};
 
 const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({ 
     onSaveAudio, 
@@ -30,6 +59,9 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
     const [showOptionsModal, setShowOptionsModal] = useState(false);
     const [showPhotoModal, setShowPhotoModal] = useState(false);
     const [showTextModal, setShowTextModal] = useState(false);
+    const [audioNoteDate, setAudioNoteDate] = useState<string>(() => formatDateInput(new Date()));
+    const [photoNoteDate, setPhotoNoteDate] = useState<string>(() => formatDateTimeLocal(new Date()));
+    const [textNoteDate, setTextNoteDate] = useState<string>(() => formatDateTimeLocal(new Date()));
 
     // Audio recording functions
     const startRecording = async () => {
@@ -71,6 +103,14 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
                 console.log('Recording stopped, processing audio...');
                 const blob = new Blob(audioChunks.current, { type: 'audio/wav' });
                 console.log('Audio blob created:', blob.size, 'bytes');
+                console.log('Recorder mimeType:', mediaRecorder.current?.mimeType || 'unknown');
+                console.log('Blob details:', { type: blob.type, size: blob.size });
+                try {
+                    const tempUrl = URL.createObjectURL(blob);
+                    console.log('Blob preview URL:', tempUrl);
+                } catch (previewError) {
+                    console.warn('Failed to create preview URL for blob:', previewError);
+                }
                 setAudioBlob(blob);
                 audioChunks.current = [];
                 setShowAudioControls(true);
@@ -118,15 +158,17 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
 
     const handleSaveAudio = () => {
         if (audioBlob) {
-            onSaveAudio(audioBlob);
+            onSaveAudio(audioBlob, ensureIsoString(audioNoteDate));
             setAudioBlob(null);
             setShowAudioControls(false);
+            setAudioNoteDate(formatDateInput(new Date()));
         }
     };
 
     const handleCancelAudio = () => {
         setAudioBlob(null);
         setShowAudioControls(false);
+        setAudioNoteDate(formatDateInput(new Date()));
     };
 
     // Modal handlers
@@ -137,6 +179,7 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
     const handleSelectAudio = () => {
         console.log('Audio recording selected');
         setShowOptionsModal(false);
+        setAudioNoteDate(formatDateInput(new Date()));
         // Add a small delay to ensure modal closes first
         setTimeout(() => {
             console.log('Starting audio recording...');
@@ -146,22 +189,29 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
 
     const handleSelectPhoto = () => {
         setShowOptionsModal(false);
+        setPhotoNoteDate(formatDateTimeLocal(new Date()));
         setShowPhotoModal(true);
     };
 
     const handleSelectText = () => {
         setShowOptionsModal(false);
+        setTextNoteDate(formatDateTimeLocal(new Date()));
         setShowTextModal(true);
     };
 
-    const handleSavePhoto = (file: File, caption: string) => {
-        onSavePhoto(file, caption);
+    const handleSavePhoto = (files: File[], caption: string, noteDateValue?: string) => {
+        if (!files.length) {
+            return;
+        }
+        onSavePhoto(files, caption, ensureIsoString(noteDateValue || photoNoteDate));
         setShowPhotoModal(false);
+        setPhotoNoteDate(formatDateTimeLocal(new Date()));
     };
 
-    const handleSaveText = (title: string, content: string, image?: File) => {
-        onSaveText(title, content, image);
+    const handleSaveText = (title: string, content: string, images: File[], noteDateValue: string) => {
+        onSaveText(title, content, images, ensureIsoString(noteDateValue || textNoteDate));
         setShowTextModal(false);
+        setTextNoteDate(formatDateTimeLocal(new Date()));
     };
 
     // Show audio controls if we have a recorded audio blob
@@ -171,6 +221,16 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
                 <div style={styles.controlsContainer}>
                     <div style={styles.audioContainer}>
                         <audio src={URL.createObjectURL(audioBlob)} controls style={styles.audioPlayer} />
+                    </div>
+                    <div style={styles.datePickerRow}>
+                        <label htmlFor="audio-note-date" style={styles.datePickerLabel}>Note date</label>
+                        <input
+                            id="audio-note-date"
+                            type="date"
+                            value={audioNoteDate}
+                            onChange={(event) => setAudioNoteDate(event.target.value)}
+                            style={styles.datePickerInput}
+                        />
                     </div>
                     <div style={styles.actionButtons}>
                         <button onClick={handleSaveAudio} style={{...styles.actionButton, ...styles.saveButton}}>
@@ -246,16 +306,26 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
 
             <PhotoUploadModal
                 isOpen={showPhotoModal}
-                onClose={() => setShowPhotoModal(false)}
+                onClose={() => {
+                    setShowPhotoModal(false);
+                    setPhotoNoteDate(formatDateTimeLocal(new Date()));
+                }}
                 onUpload={handleSavePhoto}
                 isUploading={isUploadingPhoto}
+                noteDate={photoNoteDate}
+                onDateChange={setPhotoNoteDate}
             />
 
             <TextUploadModal
                 isOpen={showTextModal}
-                onClose={() => setShowTextModal(false)}
+                onClose={() => {
+                    setShowTextModal(false);
+                    setTextNoteDate(formatDateTimeLocal(new Date()));
+                }}
                 onUpload={handleSaveText}
                 isUploading={isUploadingText}
+                noteDate={textNoteDate}
+                onDateChange={setTextNoteDate}
             />
         </>
     );
@@ -339,7 +409,26 @@ const styles = {
         backgroundColor: 'var(--text-secondary)',
         color: 'white',
     },
-    
+    datePickerRow: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '0.35rem',
+        marginBottom: '0.75rem',
+    },
+    datePickerLabel: {
+        fontSize: '0.85rem',
+        fontWeight: 600,
+        color: 'var(--text-color)',
+    },
+    datePickerInput: {
+        padding: '0.5rem',
+        borderRadius: '8px',
+        border: '1px solid var(--card-border)',
+        fontSize: '0.9rem',
+        backgroundColor: 'var(--card-background)',
+        color: 'var(--text-color)',
+    },
+
     // New recording interface styles
     recordingOverlay: {
         position: 'fixed' as const,

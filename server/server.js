@@ -691,7 +691,7 @@ const upload = multer({
       }
     }
     // Allow image files for photos
-    else if (file.fieldname === 'image') {
+    else if (file.fieldname === 'image' || file.fieldname === 'images') {
       const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);

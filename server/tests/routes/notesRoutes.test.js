@@ -67,6 +67,7 @@ test('registerNotesRoutes transforms snake_case note fields for GET /api/notes',
             id: 'note-1',
             title: 'Test',
             image_url: 'image/path',
+            image_urls: ['image/path', 'image/path-2'],
             audio_url: 'audio/path',
             original_caption: 'caption',
             ai_image_description: 'desc'
@@ -89,7 +90,10 @@ test('registerNotesRoutes transforms snake_case note fields for GET /api/notes',
     next();
   };
 
-  const upload = { single: () => (_req, _res, next) => next() };
+  const upload = { 
+    single: () => (_req, _res, next) => next(),
+    array: () => (_req, _res, next) => next()
+  };
   const uuidv4 = () => 'uuid';
   const gemini = { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) };
 
@@ -145,15 +149,17 @@ test('registerNotesRoutes transforms snake_case note fields for GET /api/notes',
   assert.equal(resWrapper.statusCode, 200);
   assert.ok(resWrapper.json);
   assert.deepEqual(resWrapper.json, {
-    notes: [
+      notes: [
       {
         id: 'note-1',
         title: 'Test',
         imageUrl: 'image/path',
+        imageUrls: ['image/path', 'image/path-2'],
         audioUrl: 'audio/path',
         originalCaption: 'caption',
         aiImageDescription: 'desc',
         image_url: undefined,
+        image_urls: undefined,
         audio_url: undefined,
         original_caption: undefined,
         ai_image_description: undefined
@@ -219,7 +225,10 @@ test('DELETE /api/notes/:id decrements weekly progress and returns summary', asy
     next();
   };
 
-  const upload = { single: () => (_req, _res, next) => next() };
+  const upload = { 
+    single: () => (_req, _res, next) => next(),
+    array: () => (_req, _res, next) => next()
+  };
   const uuidv4 = () => 'uuid';
   const gemini = { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) };
 

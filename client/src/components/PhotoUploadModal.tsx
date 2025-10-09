@@ -1,124 +1,298 @@
-import React, { useState, useRef } from 'react';
-import { X, Camera, Image as ImageIcon, Save } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, Image as ImageIcon, Save, Video, X } from 'lucide-react';
 
 interface PhotoUploadModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onUpload: (file: File, caption: string) => void;
+    onUpload: (files: File[], caption: string, noteDate: string) => void;
     isUploading?: boolean;
+    noteDate: string;
+    onDateChange: (value: string) => void;
 }
+
+const MAX_PHOTOS = 10;
+const FALLBACK_CAMERA_CAPTURE_NAME = 'captured-photo.jpg';
 
 const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     isOpen,
     onClose,
     onUpload,
     isUploading = false,
+    noteDate,
+    onDateChange,
 }) => {
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [caption, setCaption] = useState('');
+    const [cameraError, setCameraError] = useState<string | null>(null);
+    const [isCameraActive, setIsCameraActive] = useState(false);
+    const [isCapturing, setIsCapturing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
-    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            setSelectedFile(file);
-            const url = URL.createObjectURL(file);
-            setPreviewUrl(url);
+    const remainingSlots = MAX_PHOTOS - selectedFiles.length;
+    const hasSelection = selectedFiles.length > 0;
+    const supportsCameraApi = useMemo(() => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia), []);
+
+    useEffect(() => {
+        return () => {
+            cleanupPreviews();
+            stopCameraStream();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            cleanupPreviews();
+            stopCameraStream();
+            resetFormState();
         }
+    }, [isOpen]);
+
+    const cleanupPreviews = () => {
+        previewUrls.forEach((url) => URL.revokeObjectURL(url));
+        setPreviewUrls([]);
     };
 
-    const handleUpload = () => {
-        if (selectedFile && caption.trim()) {
-            onUpload(selectedFile, caption);
-            handleClose();
-        }
+    const stopCameraStream = () => {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setIsCameraActive(false);
+        setIsCapturing(false);
     };
 
-    const handleClose = () => {
-        setSelectedFile(null);
-        setPreviewUrl(null);
+    const resetFormState = () => {
+        setSelectedFiles([]);
         setCaption('');
-        onClose();
+        setCameraError(null);
     };
 
-    const triggerFileInput = () => {
+    const addFiles = (files: File[]) => {
+        if (!files.length) {
+            return;
+        }
+        const allowed = files.slice(0, remainingSlots);
+        if (!allowed.length) {
+            alert(`You can upload up to ${MAX_PHOTOS} photos per note.`);
+            return;
+        }
+        const previews = allowed.map((file) => URL.createObjectURL(file));
+        setSelectedFiles((prev) => [...prev, ...allowed]);
+        setPreviewUrls((prev) => [...prev, ...previews]);
+    };
+
+    const handleLibrarySelect = () => {
         fileInputRef.current?.click();
     };
 
-    if (!isOpen) return null;
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files ? Array.from(event.target.files) : [];
+        if (files.length) {
+            addFiles(files);
+        }
+        event.target.value = '';
+    };
+
+    const handleCameraTrigger = async () => {
+        setCameraError(null);
+        if (supportsCameraApi) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    await videoRef.current.play();
+                }
+                setIsCameraActive(true);
+            } catch (error) {
+                console.error('Camera access error:', error);
+                setCameraError('Unable to access camera. You can use the fallback capture instead.');
+                triggerFallbackCamera();
+            }
+        } else {
+            triggerFallbackCamera();
+        }
+    };
+
+    const triggerFallbackCamera = () => {
+        cameraInputRef.current?.click();
+    };
+
+    const handleFallbackCameraChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files ? Array.from(event.target.files) : [];
+        if (files.length) {
+            addFiles(files);
+        }
+        event.target.value = '';
+    };
+
+    const handleCaptureFrame = () => {
+        if (!videoRef.current || !canvasRef.current) {
+            return;
+        }
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            setCameraError('Unable to capture image, please try again.');
+            return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setIsCapturing(true);
+        canvas.toBlob((blob) => {
+            setIsCapturing(false);
+            if (!blob) {
+                setCameraError('Failed to capture photo. Please try again.');
+                return;
+            }
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const file = new File([blob], `${timestamp}-${FALLBACK_CAMERA_CAPTURE_NAME}`, { type: blob.type || 'image/jpeg' });
+            addFiles([file]);
+            stopCameraStream();
+        }, 'image/jpeg', 0.92);
+    };
+
+    const handleRemoveFile = (index: number) => {
+        setSelectedFiles((prev) => prev.filter((_, idx) => idx !== index));
+        setPreviewUrls((prev) => {
+            const next = [...prev];
+            const [removed] = next.splice(index, 1);
+            if (removed) {
+                URL.revokeObjectURL(removed);
+            }
+            return next;
+        });
+    };
+
+    const handleUpload = () => {
+        if (!hasSelection || !caption.trim() || !noteDate || isUploading) {
+            return;
+        }
+        onUpload(selectedFiles, caption.trim(), noteDate);
+        handleClose();
+    };
+
+    const handleClose = () => {
+        cleanupPreviews();
+        stopCameraStream();
+        resetFormState();
+        onClose();
+    };
+
+    if (!isOpen) {
+        return null;
+    }
 
     return (
         <div style={styles.backdrop} onClick={handleClose}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <div style={styles.header}>
-                    <h3 style={styles.title}>Upload Photo</h3>
+                    <h3 style={styles.title}>Upload Photos</h3>
                     <button onClick={handleClose} style={styles.closeButton}>
                         <X size={20} />
                     </button>
                 </div>
 
                 <div style={styles.content}>
-                    {!selectedFile ? (
-                        <div style={styles.uploadArea} onClick={triggerFileInput}>
-                            <div style={styles.uploadIcon}>
-                                <Camera size={48} />
+                    <div style={styles.uploadSummary}>
+                        <span>{selectedFiles.length} / {MAX_PHOTOS} photos selected</span>
+                        {remainingSlots === 0 && <span style={styles.limitNotice}>Maximum reached</span>}
+                    </div>
+
+                    <div style={styles.actionRow}>
+                        <button type="button" style={styles.optionButton} onClick={handleLibrarySelect} disabled={remainingSlots <= 0}>
+                            <ImageIcon size={18} />
+                            Photo Library
+                        </button>
+                        <button type="button" style={styles.optionButton} onClick={handleCameraTrigger} disabled={remainingSlots <= 0}>
+                            <Camera size={18} />
+                            Camera
+                        </button>
+                    </div>
+
+                    {cameraError && (
+                        <div style={styles.errorText}>{cameraError}</div>
+                    )}
+
+                    {isCameraActive && (
+                        <div style={styles.cameraContainer}>
+                            <video ref={videoRef} style={styles.videoPreview} playsInline muted />
+                            <canvas ref={canvasRef} style={styles.hiddenCanvas} />
+                            <div style={styles.cameraButtons}>
+                                <button type="button" style={styles.secondaryButton} onClick={() => {
+                                    stopCameraStream();
+                                }}>
+                                    Cancel
+                                </button>
+                                <button type="button" style={styles.primaryButton} onClick={handleCaptureFrame} disabled={isCapturing}>
+                                    <Video size={16} />
+                                    {isCapturing ? 'Capturing...' : 'Capture Photo'}
+                                </button>
                             </div>
-                            <h4 style={styles.uploadTitle}>Select a Photo</h4>
-                            <p style={styles.uploadDescription}>
-                                Choose from camera or photo library
-                            </p>
-                            <div style={styles.uploadOptions}>
-                                <div style={styles.uploadOption}>
-                                    <ImageIcon size={16} />
-                                    <span>Photo Library</span>
-                                </div>
-                                <div style={styles.uploadOption}>
-                                    <Camera size={16} />
-                                    <span>Camera</span>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div style={styles.previewContainer}>
-                            <img src={previewUrl!} alt="Preview" style={styles.previewImage} />
-                            <button onClick={() => {
-                                setSelectedFile(null);
-                                setPreviewUrl(null);
-                            }} style={styles.changePhotoButton}>
-                                Change Photo
-                            </button>
                         </div>
                     )}
 
+                    {hasSelection && (
+                        <div style={styles.previewGrid}>
+                            {previewUrls.map((url, index) => (
+                                <div key={`${url}-${index}`} style={styles.previewItem}>
+                                    <img src={url} alt={`Preview ${index + 1}`} style={styles.previewImage} />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemoveFile(index)}
+                                        style={styles.removePreviewButton}
+                                        aria-label={`Remove photo ${index + 1}`}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div style={styles.dateSection}>
+                        <label htmlFor="photo-note-date" style={styles.label}>Note date</label>
+                        <input
+                            id="photo-note-date"
+                            type="date"
+                            value={noteDate}
+                            onChange={(event) => onDateChange(event.target.value)}
+                            style={styles.dateInput}
+                        />
+                        <small style={styles.hint}>Choose when this experience happened</small>
+                    </div>
+
                     <div style={styles.captionSection}>
-                        <label htmlFor="caption" style={styles.label}>
-                            Your Caption
-                        </label>
+                        <label htmlFor="caption" style={styles.label}>Your Caption</label>
                         <textarea
                             id="caption"
                             value={caption}
                             onChange={(e) => setCaption(e.target.value)}
-                            placeholder="Describe what this photo means to you, what you were feeling, or what happened..."
+                            placeholder="Describe what these photos capture..."
                             style={styles.textarea}
                             rows={4}
                         />
                         <small style={styles.hint}>
-                            AI will analyze your photo and enhance your caption with visual details and context
+                            AI will analyze your photos and enhance your caption with visual details and context
                         </small>
                     </div>
 
                     <div style={styles.actions}>
                         <button
                             onClick={handleUpload}
-                            disabled={!selectedFile || !caption.trim() || isUploading}
+                            disabled={!hasSelection || !caption.trim() || !noteDate || isUploading}
                             style={{
                                 ...styles.uploadButton,
-                                ...((!selectedFile || !caption.trim() || isUploading) ? styles.disabledButton : {})
+                                ...((!hasSelection || !caption.trim() || !noteDate || isUploading) ? styles.disabledButton : {}),
                             }}
                         >
                             <Save size={16} />
-                            {isUploading ? 'Analyzing image and generating description...' : 'Upload Photo'}
+                            {isUploading ? 'Analyzing photos...' : 'Upload Photos'}
                         </button>
                     </div>
                 </div>
@@ -127,8 +301,16 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
+                    onChange={handleFileChange}
+                    style={styles.hiddenInput}
+                />
+                <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
                     capture="environment"
-                    onChange={handleFileSelect}
+                    onChange={handleFallbackCameraChange}
                     style={styles.hiddenInput}
                 />
             </div>
@@ -136,9 +318,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     );
 };
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
     backdrop: {
-        position: 'fixed' as const,
+        position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
@@ -154,10 +336,10 @@ const styles = {
         backgroundColor: 'var(--card-background)',
         borderRadius: '16px',
         padding: '1.5rem',
-        maxWidth: '500px',
+        maxWidth: '540px',
         width: '100%',
         maxHeight: '90vh',
-        overflowY: 'auto' as const,
+        overflowY: 'auto',
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
         border: '1px solid var(--card-border)',
     },
@@ -165,12 +347,12 @@ const styles = {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '1.5rem',
+        marginBottom: '1.25rem',
     },
     title: {
         margin: 0,
         fontSize: '1.25rem',
-        fontWeight: '600',
+        fontWeight: 600,
         color: 'var(--text-color)',
     },
     closeButton: {
@@ -186,74 +368,129 @@ const styles = {
     },
     content: {
         display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '1.5rem',
+        flexDirection: 'column',
+        gap: '1.25rem',
     },
-    uploadArea: {
-        border: '2px dashed var(--card-border)',
-        borderRadius: '12px',
-        padding: '2rem',
-        textAlign: 'center' as const,
-        cursor: 'pointer',
-        transition: 'border-color 0.2s ease',
-    },
-    uploadIcon: {
+    uploadSummary: {
         display: 'flex',
-        justifyContent: 'center',
-        marginBottom: '1rem',
-        color: 'var(--primary-color)',
+        justifyContent: 'space-between',
+        fontSize: '0.85rem',
+        color: '#555',
     },
-    uploadTitle: {
-        margin: '0 0 0.5rem 0',
-        fontSize: '1.1rem',
-        fontWeight: '600',
+    limitNotice: {
+        color: '#e53e3e',
+        fontWeight: 600,
+    },
+    actionRow: {
+        display: 'flex',
+        gap: '0.75rem',
+        flexWrap: 'wrap',
+    },
+    optionButton: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        padding: '0.55rem 0.85rem',
+        borderRadius: '8px',
+        border: '1px solid var(--card-border)',
+        backgroundColor: 'var(--card-elevated)',
+        cursor: 'pointer',
+        fontSize: '0.85rem',
         color: 'var(--text-color)',
     },
-    uploadDescription: {
-        margin: '0 0 1rem 0',
-        color: '#666',
-        fontSize: '0.9rem',
-    },
-    uploadOptions: {
+    cameraContainer: {
+        border: '1px solid var(--card-border)',
+        borderRadius: '12px',
+        padding: '0.75rem',
         display: 'flex',
-        justifyContent: 'center',
-        gap: '1rem',
+        flexDirection: 'column',
+        gap: '0.5rem',
     },
-    uploadOption: {
+    videoPreview: {
+        width: '100%',
+        borderRadius: '8px',
+        backgroundColor: '#111',
+    },
+    hiddenCanvas: {
+        display: 'none',
+    },
+    cameraButtons: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: '0.5rem',
+    },
+    primaryButton: {
+        flex: 1,
         display: 'flex',
         alignItems: 'center',
-        gap: '0.5rem',
-        fontSize: '0.85rem',
-        color: '#666',
+        justifyContent: 'center',
+        gap: '0.4rem',
+        padding: '0.6rem 0.75rem',
+        border: 'none',
+        borderRadius: '8px',
+        backgroundColor: 'var(--primary-color)',
+        color: '#fff',
+        cursor: 'pointer',
     },
-    previewContainer: {
-        textAlign: 'center' as const,
+    secondaryButton: {
+        flex: 1,
+        padding: '0.6rem 0.75rem',
+        borderRadius: '8px',
+        border: '1px solid var(--card-border)',
+        backgroundColor: 'transparent',
+        cursor: 'pointer',
+    },
+    previewGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+        gap: '0.75rem',
+    },
+    previewItem: {
+        position: 'relative',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        border: '1px solid var(--card-border)',
     },
     previewImage: {
-        maxWidth: '100%',
-        maxHeight: '300px',
-        borderRadius: '8px',
-        marginBottom: '1rem',
-        objectFit: 'cover' as const,
+        width: '100%',
+        height: '80px',
+        objectFit: 'cover',
     },
-    changePhotoButton: {
-        background: 'none',
-        border: '1px solid var(--card-border)',
-        borderRadius: '8px',
-        padding: '0.5rem 1rem',
-        cursor: 'pointer',
-        color: 'var(--text-color)',
-        fontSize: '0.9rem',
-    },
-    captionSection: {
+    removePreviewButton: {
+        position: 'absolute',
+        top: '4px',
+        right: '4px',
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        border: 'none',
+        borderRadius: '50%',
+        color: '#fff',
+        width: '20px',
+        height: '20px',
         display: 'flex',
-        flexDirection: 'column' as const,
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+    },
+    dateSection: {
+        display: 'flex',
+        flexDirection: 'column',
         gap: '0.5rem',
     },
     label: {
         fontSize: '0.9rem',
-        fontWeight: '600',
+        fontWeight: 600,
         color: 'var(--text-color)',
+    },
+    dateInput: {
+        padding: '0.6rem',
+        borderRadius: '8px',
+        border: '1px solid var(--card-border)',
+        fontSize: '0.9rem',
+    },
+    captionSection: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
     },
     textarea: {
         padding: '0.75rem',
@@ -261,13 +498,17 @@ const styles = {
         borderRadius: '8px',
         fontSize: '1rem',
         fontFamily: 'inherit',
-        resize: 'vertical' as const,
-        minHeight: '100px',
+        resize: 'vertical',
+        minHeight: '110px',
     },
     hint: {
         fontSize: '0.8rem',
         color: '#666',
         fontStyle: 'italic',
+    },
+    errorText: {
+        fontSize: '0.8rem',
+        color: '#e53e3e',
     },
     actions: {
         display: 'flex',
@@ -281,11 +522,10 @@ const styles = {
         border: 'none',
         borderRadius: '8px',
         backgroundColor: 'var(--primary-color)',
-        color: 'white',
+        color: '#fff',
         cursor: 'pointer',
         fontSize: '0.9rem',
-        fontWeight: '600',
-        transition: 'background-color 0.2s ease',
+        fontWeight: 600,
     },
     disabledButton: {
         backgroundColor: '#ccc',

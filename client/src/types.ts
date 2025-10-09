@@ -6,7 +6,8 @@ export interface Note {
     transcript: string; // For audio: transcription, for photo: AI-enhanced caption, for text: user content
     type: 'audio' | 'photo' | 'text';
     audioUrl?: string; // Only for audio notes
-    imageUrl?: string; // For photo notes and optional text note images
+    imageUrl?: string; // Legacy single image fallback
+    imageUrls?: string[]; // Supports up to 10 images for photo/text notes
     originalCaption?: string; // Only for photo notes - user's original caption
     aiImageDescription?: string; // For photo notes and optional text note images - standalone AI vision analysis
     userTitle?: string; // For text notes - user-provided custom title
@@ -25,6 +26,8 @@ export interface SearchResult {
     title: string;
     date: string;
     type: 'audio' | 'photo' | 'text';
+    imageUrl?: string;
+    imageUrls?: string[];
     snippet: {
         text: string;
         matchCount: number;

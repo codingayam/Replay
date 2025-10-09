@@ -96,6 +96,14 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
     return <>{parts}</>;
   };
 
+  const imageList = note
+    ? note.imageUrls && note.imageUrls.length > 0
+      ? note.imageUrls
+      : note.imageUrl
+        ? [note.imageUrl]
+        : []
+    : [];
+
   // Format date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -164,13 +172,25 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
               </div>
 
               {/* Photo Display */}
-              {note.type === 'photo' && note.imageUrl && (
+              {imageList.length > 0 && (
                 <div style={styles.imageContainer}>
                   <img 
-                    src={getFileUrl(note.imageUrl)} 
+                    src={getFileUrl(imageList[0])} 
                     alt={note.title}
                     style={styles.image}
                   />
+                  {imageList.length > 1 && (
+                    <div style={styles.thumbnailRow}>
+                      {imageList.slice(1).map((url, index) => (
+                        <img
+                          key={`${note.id}-thumb-${index}`}
+                          src={getFileUrl(url)}
+                          alt={`Additional photo ${index + 2}`}
+                          style={styles.thumbnailImage}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -335,6 +355,18 @@ const styles = {
     borderRadius: '8px',
     maxHeight: '400px',
     objectFit: 'cover' as const,
+  },
+  thumbnailRow: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '0.5rem',
+  },
+  thumbnailImage: {
+    width: '60px',
+    height: '60px',
+    borderRadius: '6px',
+    objectFit: 'cover' as const,
+    border: '1px solid rgba(0,0,0,0.08)',
   },
   audioSection: {
     marginBottom: '1.5rem',
