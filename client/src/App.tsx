@@ -16,13 +16,16 @@ import BackgroundJobIndicator from './components/BackgroundJobIndicator';
 import { useResponsive } from './hooks/useResponsive';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import { WeeklyProgressProvider } from './contexts/WeeklyProgressContext';
+import { ProfileProvider } from './contexts/ProfileContext';
+import RequireOnboarding from './components/RequireOnboarding';
 
 function App() {
   return (
     <AuthProvider>
-      <WeeklyProgressProvider>
-        <JobProvider>
-          <Router>
+      <ProfileProvider>
+        <WeeklyProgressProvider>
+          <JobProvider>
+            <Router>
         <Routes>
           {/* Public Routes - Authentication */}
           <Route 
@@ -77,7 +80,9 @@ function App() {
             path="/onboarding" 
             element={
               <SignedIn>
-                <OnboardingPage />
+                <RequireOnboarding>
+                  <OnboardingPage />
+                </RequireOnboarding>
               </SignedIn>
             } 
           />
@@ -85,9 +90,11 @@ function App() {
             path="/experiences" 
             element={
               <SignedIn>
-                <AppLayout>
-                  <ExperiencesPage />
-                </AppLayout>
+                <RequireOnboarding>
+                  <AppLayout>
+                    <ExperiencesPage />
+                  </AppLayout>
+                </RequireOnboarding>
               </SignedIn>
             } 
           />
@@ -95,9 +102,11 @@ function App() {
             path="/reflections" 
             element={
               <SignedIn>
-                <AppLayout>
-                  <ReflectionsPage />
-                </AppLayout>
+                <RequireOnboarding>
+                  <AppLayout>
+                    <ReflectionsPage />
+                  </AppLayout>
+                </RequireOnboarding>
               </SignedIn>
             } 
           />
@@ -105,9 +114,11 @@ function App() {
             path="/profile"
             element={
               <SignedIn>
-                <AppLayout>
-                  <ProfilePage />
-                </AppLayout>
+                <RequireOnboarding>
+                  <AppLayout>
+                    <ProfilePage />
+                  </AppLayout>
+                </RequireOnboarding>
               </SignedIn>
             }
           />
@@ -144,6 +155,7 @@ function App() {
           </Router>
         </JobProvider>
       </WeeklyProgressProvider>
+      </ProfileProvider>
     </AuthProvider>
   );
 }

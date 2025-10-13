@@ -193,5 +193,6 @@ export {
   getWeekStart,
   hasReachedLocalMoment,
   normalizeTimezone,
-  computeNextReportAtUtc
+  computeNextReportAtUtc,
+  getUtcFromLocalDate
 };

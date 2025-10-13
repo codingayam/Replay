@@ -14,10 +14,13 @@ export interface WeeklyProgressSummary {
   nextReportDate: string | null;
   eligible: boolean;
   nextReportAtUtc: string | null;
+  weekTimezone?: string | null;
 }
 
 export interface WeeklyProgressThresholds {
   unlockMeditations: number;
+  weeklyJournals: number;
+  weeklyMeditations: number;
   reportJournals: number;
   reportMeditations: number;
 }

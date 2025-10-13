@@ -18,9 +18,8 @@ const DesktopSidebar: React.FC = () => {
     weekStart,
     timezone
   } = useWeeklyProgress();
-  const journalGoal = progressThresholds?.unlockMeditations ?? 3;
-  const meditationGoal = progressThresholds?.reportMeditations ?? 2;
-  const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
+  const journalGoal = progressThresholds?.weeklyJournals ?? 3;
+  const meditationGoal = progressThresholds?.weeklyMeditations ?? 1;
 
   const [activityDates, setActivityDates] = useState<{ journals: string[]; reflections: string[] }>({ journals: [], reflections: [] });
   const [showCalendarModal, setShowCalendarModal] = useState(false);
@@ -93,8 +92,8 @@ const DesktopSidebar: React.FC = () => {
           summary={weeklyProgress}
           journalGoal={journalGoal}
           meditationGoal={meditationGoal}
+          reportJournalThreshold={progressThresholds?.reportJournals ?? 5}
           isLoading={isProgressLoading}
-          isLocked={!meditationsUnlocked}
           error={progressError}
           weekLabel={weekStart ? `Week of ${weekStart}` : null}
           timezoneLabel={timezone ?? null}

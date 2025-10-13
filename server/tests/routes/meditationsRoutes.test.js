@@ -504,15 +504,16 @@ test('POST /api/meditations/:id/complete updates weekly progress after completio
       journalCount: row.journal_count ?? 0,
       meditationCount: row.meditation_count ?? 0,
       timezone,
-      meditationsUnlocked: Boolean(row.meditations_unlocked_at),
+      meditationsUnlocked: true,
       reportReady: true,
       reportSent: false,
-      unlocksRemaining: Math.max(3 - (row.journal_count ?? 0), 0),
+      unlocksRemaining: 0,
       reportJournalRemaining: 0,
-      reportMeditationRemaining: Math.max(2 - (row.meditation_count ?? 0), 0),
+      reportMeditationRemaining: Math.max(1 - (row.meditation_count ?? 0), 0),
       nextReportDate: '2025-05-26',
       eligible: Boolean(row.eligible),
-      nextReportAtUtc: row.next_report_at_utc ?? null
+      nextReportAtUtc: row.next_report_at_utc ?? null,
+      weekTimezone: timezone
     })
   };
 

@@ -35,7 +35,61 @@ export function registerProfileRoutes(deps) {
   app.post('/api/profile', requireAuth(), async (req, res) => {
     try {
       const userId = req.auth.userId;
-      const { name, values, mission, thinking_about } = req.body;
+      const {
+        name,
+        values,
+        mission,
+        thinking_about,
+        onboarding_step,
+        onboarding_completed
+      } = req.body;
+
+      const normalizeValues = (rawValues) => {
+        if (Array.isArray(rawValues)) {
+          return rawValues
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter(Boolean);
+        }
+
+        if (typeof rawValues === 'string') {
+          return rawValues
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+        }
+
+        return null;
+      };
+
+      const normalizedValues = normalizeValues(values);
+
+      const payload = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (typeof name === 'string') {
+        payload.name = name;
+      }
+
+      if (values !== undefined) {
+        payload.values = normalizedValues ?? ([]);
+      }
+
+      if (mission !== undefined) {
+        payload.mission = mission;
+      }
+
+      if (thinking_about !== undefined) {
+        payload.thinking_about = thinking_about;
+      }
+
+      if (typeof onboarding_step === 'number' && Number.isFinite(onboarding_step)) {
+        payload.onboarding_step = onboarding_step;
+      }
+
+      if (typeof onboarding_completed === 'boolean') {
+        payload.onboarding_completed = onboarding_completed;
+      }
 
       // Check if profile already exists
       const { data: existingProfile } = await supabase
@@ -50,13 +104,7 @@ export function registerProfileRoutes(deps) {
         // Update existing profile
         const { data, error } = await supabase
           .from('profiles')
-          .update({
-            name,
-            values,
-            mission,
-            thinking_about,
-            updated_at: new Date().toISOString()
-          })
+          .update(payload)
           .eq('user_id', userId)
           .select()
           .single();
@@ -69,15 +117,14 @@ export function registerProfileRoutes(deps) {
         profileData = data;
       } else {
         // Create new profile
+        const insertPayload = {
+          user_id: userId,
+          ...payload
+        };
+
         const { data, error } = await supabase
           .from('profiles')
-          .insert([{
-            user_id: userId,
-            name,
-            values,
-            mission,
-            thinking_about
-          }])
+          .insert([insertPayload])
           .select()
           .single();
 

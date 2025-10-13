@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createWeeklyReportWorker } from '../../workers/weeklyReportWorker.js';
+import createWeeklyReportWorker from '../../workers/weeklyReportWorker.js';
 
 function createSupabaseStub() {
   const state = {

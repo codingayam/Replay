@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlayCircle, Trash2, Edit, Image as ImageIcon, User, X, Play, Pause, Mic, FileText } from 'lucide-react';
+import { PlayCircle, Trash2, Edit, Image as ImageIcon, X, Play, Mic, FileText } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
 import Header from '../components/Header';
@@ -26,6 +26,18 @@ import useWeeklyProgress from '../hooks/useWeeklyProgress';
 import { useJobs } from '../contexts/JobContext';
 import { compressImage } from '../utils/compressImage';
 
+type AudioContextConstructor = typeof AudioContext;
+
+const getAudioContextConstructor = (): AudioContextConstructor | undefined => {
+    if (typeof window === 'undefined') {
+        return undefined;
+    }
+    const browserWindow = window as Window & {
+        webkitAudioContext?: AudioContextConstructor;
+    };
+    return browserWindow.AudioContext || browserWindow.webkitAudioContext;
+};
+
 const getNoteImages = (note: Note) => {
     if (note.imageUrls && note.imageUrls.length > 0) {
         return note.imageUrls;
@@ -42,6 +54,7 @@ const ExperiencesPage: React.FC = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
     const audioUnlockedRef = useRef(false);
+    const audioContextRef = useRef<AudioContext | null>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [isUploadingText, setIsUploadingText] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -75,7 +88,7 @@ const ExperiencesPage: React.FC = () => {
     const api = useAuthenticatedApi();
     const { user } = useAuth();
     const { isDesktop } = useResponsive();
-    const { summary: weeklyProgress, thresholds: progressThresholds, refresh: refreshWeeklyProgress } = useWeeklyProgress();
+    const { refresh: refreshWeeklyProgress } = useWeeklyProgress();
     const { createJob } = useJobs();
     
     // Calculate recommended duration based on number of experiences
@@ -104,12 +117,54 @@ const ExperiencesPage: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        const unlockSrc = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAAAACAAADSX///8AAAAA//8AAP//AAA=';
+        const AudioContextClass = getAudioContextConstructor();
+        // Tiny silent WAV; keeps fallback broadly compatible if AudioContext resume fails.
+        const unlockSrc = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 
-        const unlockAudio = () => {
+        const tryResumeAudioContext = () => {
+            if (!AudioContextClass) {
+                return Promise.resolve(false);
+            }
+
+            if (!audioContextRef.current) {
+                try {
+                    audioContextRef.current = new AudioContextClass();
+                } catch (error) {
+                    console.warn('Unable to create AudioContext:', error);
+                    return Promise.resolve(false);
+                }
+            }
+
+            const audioContext = audioContextRef.current;
+            if (!audioContext) {
+                return Promise.resolve(false);
+            }
+
+            if (audioContext.state === 'running') {
+                return Promise.resolve(true);
+            }
+
+            try {
+                const resumeResult = audioContext.resume();
+                if (resumeResult && typeof resumeResult.then === 'function') {
+                    return resumeResult
+                        .then(() => true)
+                        .catch((error) => {
+                            console.warn('AudioContext resume failed:', error);
+                            return false;
+                        });
+                }
+                return Promise.resolve(audioContext.state === 'running');
+            } catch (error) {
+                console.warn('AudioContext resume threw an error:', error);
+                return Promise.resolve(false);
+            }
+        };
+
+        const tryUnlockWithAudioElement = () => {
             const audio = audioRef.current;
-            if (!audio || audioUnlockedRef.current) {
-                return;
+            if (!audio) {
+                return Promise.resolve(false);
             }
 
             audio.muted = true;
@@ -117,31 +172,54 @@ const ExperiencesPage: React.FC = () => {
             const playPromise = audio.play();
 
             if (playPromise && typeof playPromise.then === 'function') {
-                playPromise
-                    .then(() => {
-                        audio.pause();
-                        audio.currentTime = 0;
-                        audio.src = '';
-                        audio.muted = false;
-                        audioUnlockedRef.current = true;
-                        window.removeEventListener('pointerdown', unlockAudio, true);
-                    })
+                return playPromise
+                    .then(() => true)
                     .catch((error) => {
-                        console.warn('Audio unlock attempt failed:', error);
+                        console.warn('Audio element unlock failed:', error);
+                        return false;
+                    })
+                    .finally(() => {
                         audio.pause();
                         audio.currentTime = 0;
                         audio.src = '';
                         audio.muted = false;
                     });
-            } else {
-                // Older browsers may not return a promise; assume unlock succeeded
-                audio.pause();
-                audio.currentTime = 0;
-                audio.src = '';
-                audio.muted = false;
-                audioUnlockedRef.current = true;
-                window.removeEventListener('pointerdown', unlockAudio, true);
             }
+
+            // Older browsers may not return a promise; assume unlock succeeded
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+            audio.muted = false;
+            return Promise.resolve(true);
+        };
+
+        const finalizeUnlock = () => {
+            audioUnlockedRef.current = true;
+            window.removeEventListener('pointerdown', unlockAudio, true);
+        };
+
+        const unlockAudio = () => {
+            if (audioUnlockedRef.current) {
+                return;
+            }
+
+            tryResumeAudioContext()
+                .then((contextUnlocked) => {
+                    if (contextUnlocked) {
+                        finalizeUnlock();
+                        return true;
+                    }
+                    return tryUnlockWithAudioElement().then((elementUnlocked) => {
+                        if (elementUnlocked) {
+                            finalizeUnlock();
+                        }
+                        return elementUnlocked;
+                    });
+                })
+                .catch((error) => {
+                    console.warn('Audio unlock attempt failed:', error);
+                });
         };
 
         window.addEventListener('pointerdown', unlockAudio, true);
@@ -454,19 +532,8 @@ const ExperiencesPage: React.FC = () => {
         setSelectionMode(false);
     };
 
-    const showProgressNotice = (customMessage?: string) => {
-        const remaining = weeklyProgress?.unlocksRemaining ?? (progressThresholds?.unlockMeditations ?? 3);
-        const defaultMessage = `Meditations unlock after ${progressThresholds?.unlockMeditations ?? 3} journals this week. ${remaining > 0 ? `You're ${remaining} away.` : ''}`;
-        window.alert(customMessage ?? defaultMessage.trim());
-    };
-
     const handleGenerateFromSelection = () => {
         if (selectedNoteIds.size === 0) {
-            return;
-        }
-
-        if (!(weeklyProgress?.meditationsUnlocked)) {
-            showProgressNotice();
             return;
         }
 
@@ -491,12 +558,6 @@ const ExperiencesPage: React.FC = () => {
     const handleReadyToBeginStart = async () => {
         setShowReadyToBeginModal(false);
         setShowMeditationGeneratingModal(true);
-
-        if (!(weeklyProgress?.meditationsUnlocked)) {
-            showProgressNotice();
-            setShowMeditationGeneratingModal(false);
-            return;
-        }
 
         try {
             console.log('🧘 Queuing background meditation job from selected experiences...');

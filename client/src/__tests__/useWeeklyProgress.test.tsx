@@ -72,9 +72,11 @@ describe('useWeeklyProgress hook', () => {
           weekStart: '2025-05-19',
           timezone: 'America/New_York',
           thresholds: {
-            unlockMeditations: 3,
+            unlockMeditations: 0,
+            weeklyJournals: 3,
+            weeklyMeditations: 1,
             reportJournals: 5,
-            reportMeditations: 2
+            reportMeditations: 1
           },
           weeklyProgress: {
             weekStart: '2025-05-19',
@@ -85,9 +87,10 @@ describe('useWeeklyProgress hook', () => {
             reportSent: false,
             timezone: 'America/New_York',
             unlocksRemaining: 0,
-            reportJournalRemaining: 1,
-            reportMeditationRemaining: 1,
-            nextReportDate: '2025-05-26'
+            reportJournalRemaining: 0,
+            reportMeditationRemaining: 0,
+            nextReportDate: '2025-05-26',
+            weekTimezone: 'America/New_York'
           }
         }
       });
@@ -103,7 +106,7 @@ describe('useWeeklyProgress hook', () => {
 
     expect(screen.getByTestId('meditations')).toHaveTextContent('1');
     expect(screen.getByTestId('unlocked')).toHaveTextContent('yes');
-    expect(screen.getByTestId('threshold')).toHaveTextContent('3');
+    expect(screen.getByTestId('threshold')).toHaveTextContent('0');
     expect(apiGet).toHaveBeenCalledWith('/progress/week');
   });
 

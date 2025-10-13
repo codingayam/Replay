@@ -12,6 +12,14 @@ interface TextUploadModalProps {
 
 const MAX_PHOTOS = 10;
 
+const formatDateInput = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    return `${year}-${month}-${day}`;
+};
+
 const TextUploadModal: React.FC<TextUploadModalProps> = ({
     isOpen,
     onClose,
@@ -28,6 +36,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     const [cameraError, setCameraError] = useState<string | null>(null);
     const [isCameraActive, setIsCameraActive] = useState(false);
     const [isCapturing, setIsCapturing] = useState(false);
+    const [isVideoReady, setIsVideoReady] = useState(false);
     const libraryInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -57,6 +66,15 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
         }
     }, [isOpen]);
 
+    useEffect(() => {
+        if (isOpen) {
+            const parsed = noteDate ? new Date(noteDate) : null;
+            if (!parsed || Number.isNaN(parsed.getTime())) {
+                onDateChange(formatDateInput(new Date()));
+            }
+        }
+    }, [isOpen, noteDate, onDateChange]);
+
     const cleanupPreviews = () => {
         previewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
@@ -75,6 +93,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
         streamRef.current = null;
         setIsCameraActive(false);
         setIsCapturing(false);
+        setIsVideoReady(false);
     };
 
     const addImages = (files: File[]) => {
@@ -116,6 +135,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                 await videoRef.current.play();
             }
             setIsCameraActive(true);
+            setIsVideoReady(true);
         } catch (error) {
             console.error('Camera error:', error);
             setCameraError('Unable to access the camera on this device.');
@@ -135,13 +155,30 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
         }
         const video = videoRef.current;
         const canvas = canvasRef.current;
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+        const intrinsicWidth = video.videoWidth || video.clientWidth || 1280;
+        const intrinsicHeight = video.videoHeight || video.clientHeight || 720;
+        if (intrinsicWidth === 0 || intrinsicHeight === 0) {
+            setCameraError('Camera is still getting ready. Please try again in a moment.');
+            return;
+        }
+        canvas.width = intrinsicWidth;
+        canvas.height = intrinsicHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
             setCameraError('Unable to capture image.');
             return;
         }
+        const track = streamRef.current?.getVideoTracks()?.find((t) => t.readyState === 'live');
+        console.table({
+            source: 'TextUpload capture',
+            readyState: video.readyState,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            clientWidth: video.clientWidth,
+            clientHeight: video.clientHeight,
+            trackReadyState: track?.readyState,
+            trackMuted: track?.muted,
+        });
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         setIsCapturing(true);
         canvas.toBlob((blob) => {
@@ -241,7 +278,6 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                             onChange={(event) => onDateChange(event.target.value)}
                             style={styles.input}
                         />
-                        <small style={styles.hint}>Set when the journal entry took place</small>
                     </div>
 
                     <div style={styles.contentSection}>
@@ -297,11 +333,11 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                                 {isCameraActive && (
                                     <div style={styles.cameraContainer}>
                                         <video ref={videoRef} style={styles.videoPreview} playsInline muted />
-                                        <canvas ref={canvasRef} style={styles.hiddenCanvas} />
-                                        <div style={styles.cameraButtons}>
-                                            <button type="button" style={styles.secondaryButton} onClick={stopCameraStream}>
-                                                Cancel
-                                            </button>
+                                       <canvas ref={canvasRef} style={styles.hiddenCanvas} />
+                                       <div style={styles.cameraButtons}>
+                                           <button type="button" style={styles.secondaryButton} onClick={stopCameraStream}>
+                                               Cancel
+                                           </button>
                                             <button type="button" style={styles.primaryButton} onClick={handleCapturePhoto} disabled={isCapturing}>
                                                 <Video size={16} />
                                                 {isCapturing ? 'Capturing...' : 'Capture Photo'}

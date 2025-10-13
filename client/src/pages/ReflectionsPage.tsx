@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AxiosError } from 'axios';
 import Header from '../components/Header';
 import MeditationPlayer from '../components/MeditationPlayer';
@@ -64,9 +64,8 @@ const ReflectionsPage: React.FC = () => {
         error: progressError,
         refresh: refreshWeeklyProgress
     } = useWeeklyProgress();
-    const journalGoal = progressThresholds?.unlockMeditations ?? 3;
-    const meditationGoal = progressThresholds?.reportMeditations ?? 2;
-    const meditationsUnlocked = weeklyProgress?.meditationsUnlocked ?? false;
+    const journalGoal = progressThresholds?.weeklyJournals ?? 3;
+    const meditationGoal = progressThresholds?.weeklyMeditations ?? 1;
     
     const [activityDates, setActivityDates] = useState<{ journals: string[]; reflections: string[] }>({ journals: [], reflections: [] });
     const [showCalendarModal, setShowCalendarModal] = useState(false);
@@ -90,8 +89,6 @@ const ReflectionsPage: React.FC = () => {
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
     const [generatedPlaylist, setGeneratedPlaylist] = useState<PlaylistItem[] | null>(null);
-    const [progressMessage, setProgressMessage] = useState<string | null>(null);
-    const progressMessageTimeoutRef = useRef<number | null>(null);
     
 
     const fetchSavedMeditations = async () => {
@@ -147,14 +144,6 @@ const ReflectionsPage: React.FC = () => {
         fetchCalendar();
     }, []);
 
-    useEffect(() => {
-        return () => {
-            if (progressMessageTimeoutRef.current) {
-                window.clearTimeout(progressMessageTimeoutRef.current);
-            }
-        };
-    }, []);
-
     const handlePlaySavedMeditation = async (meditationId: string) => {
         setIsLoadingMeditation(true);
         try {
@@ -207,44 +196,12 @@ const ReflectionsPage: React.FC = () => {
         });
     };
 
-    const showProgressNotice = (customMessage?: string) => {
-        const remaining = weeklyProgress?.unlocksRemaining ?? journalGoal;
-        const defaultMessage = `Meditations unlock after ${journalGoal} journals this week. ${remaining > 0 ? `You're ${remaining} away.` : ''}`;
-        const message = customMessage ?? defaultMessage.trim();
-
-        if (isDesktop) {
-            window.alert(message);
-            return;
-        }
-
-        if (progressMessageTimeoutRef.current) {
-            window.clearTimeout(progressMessageTimeoutRef.current);
-        }
-
-        setProgressMessage(message);
-
-        progressMessageTimeoutRef.current = window.setTimeout(() => {
-            setProgressMessage(null);
-            progressMessageTimeoutRef.current = null;
-        }, 5000);
-    };
-
     // New reflection flow handlers
     const handleStartReflection = () => {
-        if (!meditationsUnlocked) {
-            showProgressNotice();
-            return;
-        }
-
         setShowMeditationSubTypeModal(true);
     };
 
     const handleMeditationSubTypeSelection = (type: 'Day' | 'Night') => {
-        if (!meditationsUnlocked) {
-            showProgressNotice();
-            setShowMeditationSubTypeModal(false);
-            return;
-        }
         setSelectedReflectionType(type);
         setShowMeditationSubTypeModal(false);
         setShowTimePeriodModal(true);
@@ -291,13 +248,6 @@ const ReflectionsPage: React.FC = () => {
         setShowReadyToBeginModal(false);
         setIsGeneratingMeditation(true);
         setIsMeditationApiComplete(false);
-
-        if (!meditationsUnlocked) {
-            showProgressNotice();
-            setIsGeneratingMeditation(false);
-            setIsMeditationApiComplete(false);
-            return;
-        }
 
         try {
             console.log('🧘 Queuing background meditation job...');
@@ -465,26 +415,17 @@ const ReflectionsPage: React.FC = () => {
                         />
 
                         <div style={styles.progressSection}>
-                            {progressMessage && (
-                                <div style={styles.progressBanner}>{progressMessage}</div>
-                            )}
                             <WeeklyProgressCard
                                 summary={weeklyProgress}
                                 journalGoal={journalGoal}
                                 meditationGoal={meditationGoal}
+                                reportJournalThreshold={progressThresholds?.reportJournals ?? 5}
                                 isLoading={isProgressLoading}
-                                isLocked={!meditationsUnlocked}
                                 error={progressError}
                                 weekLabel={progressWeekStart ? `Week of ${progressWeekStart}` : 'This week'}
                                 timezoneLabel={progressTimezone ?? null}
                                 showReportStatus
                             />
-                            {!meditationsUnlocked && !isProgressLoading && (
-                                <p style={styles.progressHint}>
-                                    Add {weeklyProgress ? weeklyProgress.unlocksRemaining : journalGoal} more journal
-                                    {((weeklyProgress?.unlocksRemaining ?? journalGoal) === 1) ? '' : 's'} to unlock guided meditations this week.
-                                </p>
-                            )}
                             {weeklyProgress?.reportReady && !weeklyProgress?.reportSent && (
                                 <p style={styles.progressHint}>Weekly report will send Monday at midnight.</p>
                             )}
@@ -741,14 +682,6 @@ const styles = {
         margin: 0,
         fontSize: '0.85rem',
         color: '#475569',
-    },
-    progressBanner: {
-        backgroundColor: 'rgba(251,191,36,0.15)',
-        border: '1px solid rgba(217,119,6,0.3)',
-        color: '#92400e',
-        padding: '0.5rem 0.75rem',
-        borderRadius: '8px',
-        fontSize: '0.85rem',
     },
     progressLoading: {
         margin: 0,

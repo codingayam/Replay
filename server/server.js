@@ -186,7 +186,8 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerProgressRoutes } from './routes/progress.js';
-import { createWeeklyReportWorker } from './workers/weeklyReportWorker.js';
+import createWeeklyReportWorker from './workers/weeklyReportWorker.js';
+import { createWeeklyReportReminderWorker } from './workers/weeklyReportReminderWorker.js';
 
 // Initialize AI services
 const gemini = globalThis.__REPLAY_TEST_GEMINI__ ?? new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -196,6 +197,9 @@ const replicateClient = globalThis.__REPLAY_TEST_REPLICATE__ ?? new Replicate({
 const weeklyReportWorker = createWeeklyReportWorker({
   supabase,
   gemini
+});
+const weeklyReportReminderWorker = createWeeklyReportReminderWorker({
+  supabase
 });
 
 async function transcodeMeditationAudio(buffer, context = {}) {
@@ -235,6 +239,7 @@ const PORT = process.env.PORT || 3001;
 // Background job processing system
 let jobWorkerInterval = null;
 let weeklyReportInterval = null;
+let weeklyReportReminderInterval = null;
 
 // Background worker functions
 async function processMeditationJob(job) {
@@ -856,6 +861,9 @@ const startSchedulers = (protocol) => {
   if (weeklyReportInterval) {
     clearInterval(weeklyReportInterval);
   }
+  if (weeklyReportReminderInterval) {
+    clearInterval(weeklyReportReminderInterval);
+  }
 
   if (canSendWeeklyReports) {
     console.log('📬 Weekly report worker enabled');
@@ -867,6 +875,16 @@ const startSchedulers = (protocol) => {
 
     weeklyReportWorker.run().catch((error) => {
       console.error('Initial weekly report run failed:', error);
+    });
+
+    weeklyReportReminderInterval = setInterval(() => {
+      weeklyReportReminderWorker.run().catch((error) => {
+        console.error('Weekly report reminder worker execution failed:', error);
+      });
+    }, 10 * 60 * 1000);
+
+    weeklyReportReminderWorker.run().catch((error) => {
+      console.error('Initial weekly report reminder run failed:', error);
     });
   } else {
     console.warn('📬 Weekly report worker disabled - missing RESEND_API_KEY or WEEKLY_REPORT_FROM_EMAIL');
@@ -913,6 +931,11 @@ const shutdownSchedulers = () => {
   if (weeklyReportInterval) {
     clearInterval(weeklyReportInterval);
     weeklyReportInterval = null;
+  }
+
+  if (weeklyReportReminderInterval) {
+    clearInterval(weeklyReportReminderInterval);
+    weeklyReportReminderInterval = null;
   }
 };
 

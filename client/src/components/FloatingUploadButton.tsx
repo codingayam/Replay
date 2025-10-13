@@ -20,16 +20,6 @@ const formatDateInput = (date: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-const formatDateTimeLocal = (date: Date) => {
-    const pad = (value: number) => value.toString().padStart(2, '0');
-    const year = date.getFullYear();
-    const month = pad(date.getMonth() + 1);
-    const day = pad(date.getDate());
-    const hours = pad(date.getHours());
-    const minutes = pad(date.getMinutes());
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
 const ensureIsoString = (value: string) => {
     if (!value) {
         return new Date().toISOString();
@@ -60,8 +50,8 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
     const [showPhotoModal, setShowPhotoModal] = useState(false);
     const [showTextModal, setShowTextModal] = useState(false);
     const [audioNoteDate, setAudioNoteDate] = useState<string>(() => formatDateInput(new Date()));
-    const [photoNoteDate, setPhotoNoteDate] = useState<string>(() => formatDateTimeLocal(new Date()));
-    const [textNoteDate, setTextNoteDate] = useState<string>(() => formatDateTimeLocal(new Date()));
+    const [photoNoteDate, setPhotoNoteDate] = useState<string>(() => formatDateInput(new Date()));
+    const [textNoteDate, setTextNoteDate] = useState<string>(() => formatDateInput(new Date()));
 
     // Audio recording functions
     const startRecording = async () => {
@@ -189,13 +179,13 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
 
     const handleSelectPhoto = () => {
         setShowOptionsModal(false);
-        setPhotoNoteDate(formatDateTimeLocal(new Date()));
+        setPhotoNoteDate(formatDateInput(new Date()));
         setShowPhotoModal(true);
     };
 
     const handleSelectText = () => {
         setShowOptionsModal(false);
-        setTextNoteDate(formatDateTimeLocal(new Date()));
+        setTextNoteDate(formatDateInput(new Date()));
         setShowTextModal(true);
     };
 
@@ -205,13 +195,13 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
         }
         onSavePhoto(files, caption, ensureIsoString(noteDateValue || photoNoteDate));
         setShowPhotoModal(false);
-        setPhotoNoteDate(formatDateTimeLocal(new Date()));
+        setPhotoNoteDate(formatDateInput(new Date()));
     };
 
     const handleSaveText = (title: string, content: string, images: File[], noteDateValue: string) => {
         onSaveText(title, content, images, ensureIsoString(noteDateValue || textNoteDate));
         setShowTextModal(false);
-        setTextNoteDate(formatDateTimeLocal(new Date()));
+        setTextNoteDate(formatDateInput(new Date()));
     };
 
     // Show audio controls if we have a recorded audio blob
@@ -308,7 +298,7 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
                 isOpen={showPhotoModal}
                 onClose={() => {
                     setShowPhotoModal(false);
-                    setPhotoNoteDate(formatDateTimeLocal(new Date()));
+                    setPhotoNoteDate(formatDateInput(new Date()));
                 }}
                 onUpload={handleSavePhoto}
                 isUploading={isUploadingPhoto}
@@ -320,7 +310,7 @@ const FloatingUploadButton: React.FC<FloatingUploadButtonProps> = ({
                 isOpen={showTextModal}
                 onClose={() => {
                     setShowTextModal(false);
-                    setTextNoteDate(formatDateTimeLocal(new Date()));
+                    setTextNoteDate(formatDateInput(new Date()));
                 }}
                 onUpload={handleSaveText}
                 isUploading={isUploadingText}

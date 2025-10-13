@@ -63,7 +63,8 @@ const mockUpload = {
       mimetype: 'audio/wav'
     };
     next();
-  })
+  }),
+  array: test.mock.fn(() => (_req, _res, next) => next())
 };
 
 // Mock auth middleware
@@ -79,12 +80,13 @@ const mockUuidv4 = test.mock.fn(() => 'note-123');
 const mockWeeklyProgressOverrides = {
   loadUserTimezone: test.mock.fn(async () => 'America/New_York'),
   incrementJournalProgress: test.mock.fn(async () => ({
-    unlocksRemaining: 2,
-    meditationsUnlocked: false
+    unlocksRemaining: 0,
+    meditationsUnlocked: true
   })),
   buildProgressSummary: test.mock.fn(() => ({
-    unlocksRemaining: 2,
-    meditationsUnlocked: false
+    unlocksRemaining: 0,
+    meditationsUnlocked: true,
+    weekTimezone: 'America/New_York'
   }))
 };
 

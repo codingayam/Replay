@@ -7,14 +7,16 @@ import {
   normalizeTimezone
 } from './week.js';
 
-const JOURNAL_UNLOCK_THRESHOLD = 3;
+const JOURNAL_UNLOCK_THRESHOLD = 0;
+const WEEKLY_JOURNAL_GOAL = 3;
+const WEEKLY_MEDITATION_GOAL = 1;
 const REPORT_JOURNAL_THRESHOLD = 5;
-const REPORT_MEDITATION_THRESHOLD = 2;
+const REPORT_MEDITATION_THRESHOLD = 1;
 const MAX_RETRY_ATTEMPTS = 5;
 
 function determineReportScheduling({ record, journalCount, meditationCount, timezone, eventTimestamp }) {
-  const meetsThresholds = journalCount >= REPORT_JOURNAL_THRESHOLD && meditationCount >= REPORT_MEDITATION_THRESHOLD;
-  const shouldEnable = meetsThresholds && !record.weekly_report_sent_at;
+  const reportProgress = computeReportProgress(journalCount, meditationCount);
+  const shouldEnable = reportProgress.isEligible && !record.weekly_report_sent_at;
   const tz = normalizeTimezone(timezone);
   const scheduling = {
     eligible: shouldEnable,
@@ -27,14 +29,35 @@ function determineReportScheduling({ record, journalCount, meditationCount, time
     scheduling.weekly_report_ready_at = eventTimestamp;
   }
 
-  if (!shouldEnable && !meetsThresholds && record.weekly_report_ready_at) {
+  if (!shouldEnable && !reportProgress.isEligible && record.weekly_report_ready_at) {
     scheduling.weekly_report_ready_at = null;
   }
 
   return scheduling;
 }
 
-async function ensureWeeklyProgressRow(supabase, userId, weekStart) {
+function computeReportProgress(journalCount, meditationCount) {
+  const journalsNeededOnly = Math.max(REPORT_JOURNAL_THRESHOLD - journalCount, 0);
+  const journalsNeededCombo = Math.max(WEEKLY_JOURNAL_GOAL - journalCount, 0);
+  const medNeededCombo = Math.max(WEEKLY_MEDITATION_GOAL - meditationCount, 0);
+
+  const meetsJournalOnly = journalsNeededOnly === 0;
+  const meetsCombo = journalsNeededCombo === 0 && medNeededCombo === 0;
+
+  const comboTaskCount = journalsNeededCombo + medNeededCombo;
+  const journalOnlyTaskCount = journalsNeededOnly;
+  const useComboPath = comboTaskCount === 0 ? true : comboTaskCount <= journalOnlyTaskCount;
+
+  return {
+    meetsJournalOnly,
+    meetsCombo,
+    isEligible: meetsJournalOnly || meetsCombo,
+    reportJournalRemaining: useComboPath ? journalsNeededCombo : journalsNeededOnly,
+    reportMeditationRemaining: useComboPath ? medNeededCombo : 0
+  };
+}
+
+async function ensureWeeklyProgressRow(supabase, userId, weekStart, { timezone } = {}) {
   const { data: existing, error: fetchError } = await supabase
     .from('weekly_progress')
     .select('*')
@@ -47,17 +70,30 @@ async function ensureWeeklyProgressRow(supabase, userId, weekStart) {
   }
 
   if (existing) {
+    if (timezone && !existing.week_timezone) {
+      const normalized = normalizeTimezone(timezone);
+      await supabase
+        .from('weekly_progress')
+        .update({ week_timezone: normalized })
+        .eq('user_id', userId)
+        .eq('week_start', weekStart);
+      existing.week_timezone = normalized;
+    }
     return existing;
   }
 
   const { data: inserted, error: insertError } = await supabase
     .from('weekly_progress')
-    .insert({ user_id: userId, week_start: weekStart })
+    .insert({
+      user_id: userId,
+      week_start: weekStart,
+      week_timezone: timezone ? normalizeTimezone(timezone) : null
+    })
     .select()
     .single();
 
   if (insertError && insertError.code === '23505') {
-    return ensureWeeklyProgressRow(supabase, userId, weekStart);
+    return ensureWeeklyProgressRow(supabase, userId, weekStart, { timezone });
   }
 
   if (insertError) {
@@ -86,7 +122,7 @@ async function getCurrentWeekProgress({ supabase, userId, referenceDate = new Da
   const tz = normalizeTimezone(timezone);
   const weekStart = getWeekStart(referenceDate, tz);
   const progress = await getWeeklyProgress({ supabase, userId, weekStart })
-    ?? await ensureWeeklyProgressRow(supabase, userId, weekStart);
+    ?? await ensureWeeklyProgressRow(supabase, userId, weekStart, { timezone: tz });
 
   return { progress, weekStart };
 }
@@ -100,7 +136,7 @@ async function incrementJournalProgress({
 }) {
   const tz = normalizeTimezone(timezone);
   const weekStart = getWeekStart(noteDate ? new Date(noteDate) : new Date(), tz);
-  const record = await ensureWeeklyProgressRow(supabase, userId, weekStart);
+  const record = await ensureWeeklyProgressRow(supabase, userId, weekStart, { timezone: tz });
 
   const nextJournalCount = (record.journal_count ?? 0) + 1;
   const nextMeditationCount = record.meditation_count ?? 0;
@@ -146,7 +182,7 @@ async function decrementJournalProgress({
 }) {
   const tz = normalizeTimezone(timezone);
   const weekStart = getWeekStart(noteDate ? new Date(noteDate) : new Date(), tz);
-  const record = await ensureWeeklyProgressRow(supabase, userId, weekStart);
+  const record = await ensureWeeklyProgressRow(supabase, userId, weekStart, { timezone: tz });
 
   const currentJournalCount = record.journal_count ?? 0;
   const nextJournalCount = Math.max(currentJournalCount - 1, 0);
@@ -193,7 +229,7 @@ async function incrementMeditationProgress({
 }) {
   const tz = normalizeTimezone(timezone);
   const weekStart = getWeekStart(referenceDate ? new Date(referenceDate) : new Date(), tz);
-  const record = await ensureWeeklyProgressRow(supabase, userId, weekStart);
+  const record = await ensureWeeklyProgressRow(supabase, userId, weekStart, { timezone: tz });
 
   const nextMeditationCount = (record.meditation_count ?? 0) + 1;
   const nextJournalCount = record.journal_count ?? 0;
@@ -232,23 +268,25 @@ function buildProgressSummary(progress, timezone = DEFAULT_TIMEZONE) {
       weekStart: null,
       journalCount: 0,
       meditationCount: 0,
-      meditationsUnlocked: false,
+      meditationsUnlocked: true,
       reportReady: false,
       reportSent: false,
-    timezone: normalizeTimezone(timezone),
-    unlocksRemaining: Math.max(JOURNAL_UNLOCK_THRESHOLD, 0),
-    reportJournalRemaining: REPORT_JOURNAL_THRESHOLD,
-    reportMeditationRemaining: REPORT_MEDITATION_THRESHOLD,
-    nextReportDate: null,
-    eligible: false,
-    nextReportAtUtc: null
-  };
-}
+      timezone: normalizeTimezone(timezone),
+      unlocksRemaining: Math.max(JOURNAL_UNLOCK_THRESHOLD, 0),
+      reportJournalRemaining: WEEKLY_JOURNAL_GOAL,
+      reportMeditationRemaining: WEEKLY_MEDITATION_GOAL,
+      nextReportDate: null,
+      eligible: false,
+      nextReportAtUtc: null,
+      weekTimezone: normalizeTimezone(timezone)
+    };
+  }
 
   const journalCount = progress.journal_count ?? 0;
   const meditationCount = progress.meditation_count ?? 0;
   const meditationsUnlocked = Boolean(progress.meditations_unlocked_at) || journalCount >= JOURNAL_UNLOCK_THRESHOLD;
-  const reportReady = Boolean(progress.weekly_report_ready_at) || (journalCount >= REPORT_JOURNAL_THRESHOLD && meditationCount >= REPORT_MEDITATION_THRESHOLD);
+  const reportProgress = computeReportProgress(journalCount, meditationCount);
+  const reportReady = Boolean(progress.weekly_report_ready_at) || reportProgress.isEligible;
   const reportSent = Boolean(progress.weekly_report_sent_at);
   const tz = normalizeTimezone(timezone);
   const nextReportDate = getNextWeekStart(progress.week_start);
@@ -262,17 +300,18 @@ function buildProgressSummary(progress, timezone = DEFAULT_TIMEZONE) {
     reportSent,
     timezone: tz,
     unlocksRemaining: Math.max(JOURNAL_UNLOCK_THRESHOLD - journalCount, 0),
-    reportJournalRemaining: Math.max(REPORT_JOURNAL_THRESHOLD - journalCount, 0),
-    reportMeditationRemaining: Math.max(REPORT_MEDITATION_THRESHOLD - meditationCount, 0),
+    reportJournalRemaining: reportProgress.reportJournalRemaining,
+    reportMeditationRemaining: reportProgress.reportMeditationRemaining,
     nextReportDate,
     eligible: Boolean(progress.eligible),
-    nextReportAtUtc: progress.next_report_at_utc ?? null
+    nextReportAtUtc: progress.next_report_at_utc ?? null,
+    weekTimezone: progress.week_timezone ?? normalizeTimezone(timezone)
   };
 }
 
 function canAccessMeditations(progress) {
   if (!progress) {
-    return false;
+    return true;
   }
 
   const journalCount = progress.journal_count ?? 0;
@@ -333,6 +372,8 @@ async function loadUserTimezone({ supabase, userId }) {
 
 export {
   JOURNAL_UNLOCK_THRESHOLD,
+  WEEKLY_JOURNAL_GOAL,
+  WEEKLY_MEDITATION_GOAL,
   REPORT_JOURNAL_THRESHOLD,
   REPORT_MEDITATION_THRESHOLD,
   buildProgressSummary,

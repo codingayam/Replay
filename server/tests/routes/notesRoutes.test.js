@@ -54,6 +54,21 @@ function runRequireAuth(handler, req) {
   });
 }
 
+function computeReportRemaining(journalCount = 0, meditationCount = 0) {
+  const journalsNeededOnly = Math.max(5 - journalCount, 0);
+  const journalsNeededCombo = Math.max(3 - journalCount, 0);
+  const medNeededCombo = Math.max(1 - meditationCount, 0);
+
+  const comboTaskCount = journalsNeededCombo + medNeededCombo;
+  const journalOnlyTaskCount = journalsNeededOnly;
+  const useComboPath = comboTaskCount === 0 ? true : comboTaskCount <= journalOnlyTaskCount;
+
+  return {
+    reportJournalRemaining: useComboPath ? Math.max(journalsNeededCombo, 0) : Math.max(journalsNeededOnly, 0),
+    reportMeditationRemaining: useComboPath ? Math.max(medNeededCombo, 0) : 0
+  };
+}
+
 test('registerNotesRoutes transforms snake_case note fields for GET /api/notes', async () => {
   const { app, routes } = createMockApp();
 
@@ -117,21 +132,25 @@ test('registerNotesRoutes transforms snake_case note fields for GET /api/notes',
       weekly_report_sent_at: null,
       weekly_report_ready_at: null
     }),
-    buildProgressSummary: () => ({
-      weekStart: '2025-05-19',
-      journalCount: 1,
-      meditationCount: 0,
-      meditationsUnlocked: false,
-      reportReady: false,
-      reportSent: false,
-      timezone: 'America/New_York',
-      unlocksRemaining: 2,
-      reportJournalRemaining: 4,
-      reportMeditationRemaining: 2,
-      nextReportDate: '2025-05-26',
-      eligible: false,
-      nextReportAtUtc: null
-    })
+    buildProgressSummary: () => {
+      const remaining = computeReportRemaining(1, 0);
+      return {
+        weekStart: '2025-05-19',
+        journalCount: 1,
+        meditationCount: 0,
+        meditationsUnlocked: true,
+        reportReady: false,
+        reportSent: false,
+        timezone: 'America/New_York',
+        unlocksRemaining: 0,
+        reportJournalRemaining: remaining.reportJournalRemaining,
+        reportMeditationRemaining: remaining.reportMeditationRemaining,
+        nextReportDate: '2025-05-26',
+        eligible: false,
+        nextReportAtUtc: null,
+        weekTimezone: 'America/New_York'
+      };
+    }
   };
 
   registerNotesRoutes({ app, requireAuth, supabase, upload, uuidv4, gemini, weeklyProgressOverrides });
@@ -249,21 +268,25 @@ test('DELETE /api/notes/:id decrements weekly progress and returns summary', asy
         weekly_report_sent_at: null
       };
     },
-    buildProgressSummary: (progress) => ({
-      weekStart: progress.week_start ?? '2025-05-19',
-      journalCount: progress.journal_count ?? 0,
-      meditationCount: progress.meditation_count ?? 0,
-      meditationsUnlocked: Boolean(progress.meditations_unlocked_at),
-      reportReady: Boolean(progress.weekly_report_ready_at),
-      reportSent: Boolean(progress.weekly_report_sent_at),
-      timezone: 'America/New_York',
-      unlocksRemaining: Math.max(3 - (progress.journal_count ?? 0), 0),
-      reportJournalRemaining: Math.max(5 - (progress.journal_count ?? 0), 0),
-      reportMeditationRemaining: Math.max(2 - (progress.meditation_count ?? 0), 0),
-      nextReportDate: '2025-05-27',
-      eligible: Boolean(progress.eligible),
-      nextReportAtUtc: progress.next_report_at_utc ?? null
-    })
+    buildProgressSummary: (progress) => {
+      const remaining = computeReportRemaining(progress.journal_count ?? 0, progress.meditation_count ?? 0);
+      return {
+        weekStart: progress.week_start ?? '2025-05-19',
+        journalCount: progress.journal_count ?? 0,
+        meditationCount: progress.meditation_count ?? 0,
+        meditationsUnlocked: true,
+        reportReady: Boolean(progress.weekly_report_ready_at),
+        reportSent: Boolean(progress.weekly_report_sent_at),
+        timezone: 'America/New_York',
+        unlocksRemaining: 0,
+        reportJournalRemaining: remaining.reportJournalRemaining,
+        reportMeditationRemaining: remaining.reportMeditationRemaining,
+        nextReportDate: '2025-05-27',
+        eligible: Boolean(progress.eligible),
+        nextReportAtUtc: progress.next_report_at_utc ?? null,
+        weekTimezone: 'America/New_York'
+      };
+    }
   };
 
   registerNotesRoutes({ app, requireAuth, supabase, upload, uuidv4, gemini, weeklyProgressOverrides });
@@ -287,16 +310,17 @@ test('DELETE /api/notes/:id decrements weekly progress and returns summary', asy
       weekStart: '2025-05-19',
       journalCount: 0,
       meditationCount: 0,
-      meditationsUnlocked: false,
+      meditationsUnlocked: true,
       reportReady: false,
       reportSent: false,
       timezone: 'America/New_York',
-      unlocksRemaining: 3,
-      reportJournalRemaining: 5,
-      reportMeditationRemaining: 2,
+      unlocksRemaining: 0,
+      reportJournalRemaining: 3,
+      reportMeditationRemaining: 1,
       nextReportDate: '2025-05-27',
       eligible: false,
-      nextReportAtUtc: null
+      nextReportAtUtc: null,
+      weekTimezone: 'America/New_York'
     }
   });
 });

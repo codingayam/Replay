@@ -1,5 +1,7 @@
 import {
   JOURNAL_UNLOCK_THRESHOLD,
+  WEEKLY_JOURNAL_GOAL,
+  WEEKLY_MEDITATION_GOAL,
   REPORT_JOURNAL_THRESHOLD,
   REPORT_MEDITATION_THRESHOLD,
   buildProgressSummary as buildProgressSummaryDefault,
@@ -54,6 +56,8 @@ export function registerProgressRoutes(deps) {
         weeklyProgress,
         thresholds: {
           unlockMeditations: JOURNAL_UNLOCK_THRESHOLD,
+          weeklyJournals: WEEKLY_JOURNAL_GOAL,
+          weeklyMeditations: WEEKLY_MEDITATION_GOAL,
           reportJournals: REPORT_JOURNAL_THRESHOLD,
           reportMeditations: REPORT_MEDITATION_THRESHOLD
         }

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Target, FileText, Brain, Flame, Info } from 'lucide-react';
+import { FileText, Brain, Info } from 'lucide-react';
 import type { WeeklyProgressSummary } from '../hooks/useWeeklyProgress';
 
 interface WeeklyProgressCardProps {
   summary: WeeklyProgressSummary | null;
   journalGoal: number;
   meditationGoal: number;
+  reportJournalThreshold?: number;
   isLoading?: boolean;
   isLocked?: boolean;
   error?: string | null;
@@ -19,6 +20,7 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
   summary,
   journalGoal,
   meditationGoal,
+  reportJournalThreshold,
   isLoading = false,
   isLocked = false,
   error = null,
@@ -32,12 +34,10 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
 
   const journalGoalSafe = Math.max(journalGoal, 0);
   const meditationGoalSafe = Math.max(meditationGoal, 0);
+  const reportJournalGoalSafe = Math.max(reportJournalThreshold ?? journalGoalSafe, 0);
 
   const metJournalGoal = journalGoalSafe === 0 ? true : journalCount >= journalGoalSafe;
   const metMeditationGoal = meditationGoalSafe === 0 ? true : meditationCount >= meditationGoalSafe;
-
-  const goalsMet = [metJournalGoal, metMeditationGoal].filter(Boolean).length;
-  const totalGoals = 2;
 
   const journalProgress = journalGoalSafe > 0 ? Math.min(journalCount / journalGoalSafe, 1) : 1;
   const meditationProgress = meditationGoalSafe > 0 ? Math.min(meditationCount / meditationGoalSafe, 1) : 1;
@@ -299,23 +299,6 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
           </div>
         ) : (
           <>
-            <div style={styles.progressOverview}>
-              <div style={styles.progressStats}>
-                <div style={styles.progressNumber}>{goalsMet}</div>
-                <div style={styles.progressLabel}>of {totalGoals} completed</div>
-              </div>
-              <div style={{
-                ...styles.progressRing,
-                background: `conic-gradient(${isLocked ? '#dc2626' : goalsMet === totalGoals ? '#059669' : '#6366f1'} ${(goalsMet / totalGoals) * 360}deg, #f1f5f9 0deg)`
-              }}>
-                <div style={styles.progressRingInner}>
-                  {goalsMet === totalGoals && !isLocked && (
-                    <Flame size={16} style={{ color: '#059669' }} />
-                  )}
-                </div>
-              </div>
-            </div>
-
             <div style={styles.goalsContainer}>
               <div style={styles.goalRow}>
                 <div style={styles.goalInfo}>
@@ -416,7 +399,10 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
                         opacity: showTooltip ? 1 : 0,
                         visibility: showTooltip ? 'visible' : 'hidden'
                       } as React.CSSProperties}>
-                        Your personalized weekly report will be unlocked after {journalGoalSafe} journals/notes and {meditationGoalSafe} meditations every week. It will be sent automatically to you at the end of the week to your login email.
+                        Unlock your weekly report by completing {journalGoalSafe} journal
+                        {journalGoalSafe === 1 ? '' : 's'} and {meditationGoalSafe} meditation
+                        {meditationGoalSafe === 1 ? '' : 's'}, or automatically after {reportJournalGoalSafe} journal
+                        {reportJournalGoalSafe === 1 ? '' : 's'} in the same week. It will be sent automatically to you at the end of the week to your login email.
                       </div>
                     </div>
                   </div>
@@ -516,59 +502,6 @@ const styles = {
   loadingText: {
     fontSize: '0.8rem',
     color: '#94a3b8'
-  } as React.CSSProperties,
-  progressOverview: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '1.25rem',
-    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-    borderRadius: '12px',
-    marginTop: '0.5rem',
-    border: '1px solid rgba(226, 232, 240, 0.5)',
-    position: 'relative' as const
-  } as React.CSSProperties,
-  progressStats: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '0.125rem'
-  } as React.CSSProperties,
-  progressNumber: {
-    fontSize: '2rem',
-    fontWeight: 800,
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-    lineHeight: 1
-  } as React.CSSProperties,
-  progressLabel: {
-    fontSize: '0.8rem',
-    color: '#64748b',
-    fontWeight: 600,
-    letterSpacing: '0.01em'
-  } as React.CSSProperties,
-  progressRing: {
-    width: '56px',
-    height: '56px',
-    borderRadius: '50%',
-    padding: '3px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative' as const,
-    filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))'
-  } as React.CSSProperties,
-  progressRingInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: '50%',
-    backgroundColor: '#ffffff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: '2px solid rgba(255, 255, 255, 0.9)',
-    boxShadow: 'inset 0 1px 3px 0 rgba(0, 0, 0, 0.05)'
   } as React.CSSProperties,
   goalsContainer: {
     display: 'flex',

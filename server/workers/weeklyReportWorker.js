@@ -105,7 +105,7 @@ function createResendClientFromEnv(fetchImpl = fetch) {
 
   return {
     fromEmail,
-    async sendEmail({ to, subject, html, text, tags }) {
+    async sendEmail({ to, subject, html, text, tags, headers }) {
       const response = await fetchImpl(RESEND_API_URL, {
         method: 'POST',
         headers: {
@@ -118,7 +118,8 @@ function createResendClientFromEnv(fetchImpl = fetch) {
           subject,
           html,
           text,
-          tags
+          tags,
+          headers
         })
       });
 
@@ -628,4 +629,5 @@ export function createWeeklyReportWorker({
   };
 }
 
+export { createResendClientFromEnv };
 export default createWeeklyReportWorker;

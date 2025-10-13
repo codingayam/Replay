@@ -13,6 +13,14 @@ interface PhotoUploadModalProps {
 const MAX_PHOTOS = 10;
 const FALLBACK_CAMERA_CAPTURE_NAME = 'captured-photo.jpg';
 
+const formatDateInput = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    return `${year}-${month}-${day}`;
+};
+
 const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     isOpen,
     onClose,
@@ -27,6 +35,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     const [cameraError, setCameraError] = useState<string | null>(null);
     const [isCameraActive, setIsCameraActive] = useState(false);
     const [isCapturing, setIsCapturing] = useState(false);
+    const [isVideoReady, setIsVideoReady] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -52,6 +61,15 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
         }
     }, [isOpen]);
 
+    useEffect(() => {
+        if (isOpen) {
+            const parsed = noteDate ? new Date(noteDate) : null;
+            if (!parsed || Number.isNaN(parsed.getTime())) {
+                onDateChange(formatDateInput(new Date()));
+            }
+        }
+    }, [isOpen, noteDate, onDateChange]);
+
     const cleanupPreviews = () => {
         previewUrls.forEach((url) => URL.revokeObjectURL(url));
         setPreviewUrls([]);
@@ -62,6 +80,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
         streamRef.current = null;
         setIsCameraActive(false);
         setIsCapturing(false);
+        setIsVideoReady(false);
     };
 
     const resetFormState = () => {
@@ -96,17 +115,92 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
         event.target.value = '';
     };
 
+    const waitForVideoReady = async (video: HTMLVideoElement) => {
+        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+            setIsVideoReady(true);
+            return;
+        }
+
+        await new Promise<void>((resolve) => {
+            let resolved = false;
+            let timeoutId: number | undefined;
+            let frameRequestId: number | null = null;
+
+            const cleanup = () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                if (frameRequestId !== null && 'cancelVideoFrameCallback' in video) {
+                    (video as any).cancelVideoFrameCallback(frameRequestId);
+                }
+                video.removeEventListener('loadeddata', handleReady);
+                video.removeEventListener('loadedmetadata', handleReady);
+            };
+
+            const resolveReady = () => {
+                if (!resolved) {
+                    resolved = true;
+                    cleanup();
+                    resolve();
+                }
+            };
+
+            const handleReady = () => {
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    resolveReady();
+                }
+            };
+
+            const requestFrame = () => {
+                if ('requestVideoFrameCallback' in video) {
+                    frameRequestId = (video as any).requestVideoFrameCallback(() => {
+                        if (video.videoWidth > 0 && video.videoHeight > 0) {
+                            resolveReady();
+                        } else {
+                            requestFrame();
+                        }
+                    });
+                } else {
+                    const fallbackCheck = () => {
+                        if (video.videoWidth > 0 && video.videoHeight > 0) {
+                            resolveReady();
+                        } else {
+                            frameRequestId = window.requestAnimationFrame(fallbackCheck);
+                        }
+                    };
+                    frameRequestId = window.requestAnimationFrame(fallbackCheck);
+                }
+            };
+
+            video.addEventListener('loadeddata', handleReady);
+            video.addEventListener('loadedmetadata', handleReady);
+            requestFrame();
+
+            timeoutId = window.setTimeout(() => {
+                cleanup();
+                resolveReady();
+            }, 5000);
+        });
+
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setIsVideoReady(true);
+        } else {
+            setCameraError('Camera stream is taking longer than expected. Please try again or use the Photo Library option.');
+        }
+    };
+
     const handleCameraTrigger = async () => {
         setCameraError(null);
+        setIsVideoReady(false);
         if (supportsCameraApi) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 streamRef.current = stream;
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
-                    await videoRef.current.play();
                 }
                 setIsCameraActive(true);
+                setIsVideoReady(true);
             } catch (error) {
                 console.error('Camera access error:', error);
                 setCameraError('Unable to access camera. You can use the fallback capture instead.');
@@ -135,13 +229,30 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
         }
         const video = videoRef.current;
         const canvas = canvasRef.current;
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+        const intrinsicWidth = video.videoWidth || video.clientWidth || 1280;
+        const intrinsicHeight = video.videoHeight || video.clientHeight || 720;
+        if (intrinsicWidth === 0 || intrinsicHeight === 0) {
+            setCameraError('Camera is still getting ready. Please try again in a moment.');
+            return;
+        }
+        canvas.width = intrinsicWidth;
+        canvas.height = intrinsicHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
             setCameraError('Unable to capture image, please try again.');
             return;
         }
+        const track = streamRef.current?.getVideoTracks()?.find((t) => t.readyState === 'live');
+        console.table({
+            source: 'PhotoUpload capture',
+            readyState: video.readyState,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            clientWidth: video.clientWidth,
+            clientHeight: video.clientHeight,
+            trackReadyState: track?.readyState,
+            trackMuted: track?.muted,
+        });
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         setIsCapturing(true);
         canvas.toBlob((blob) => {
@@ -224,11 +335,11 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
                             <video ref={videoRef} style={styles.videoPreview} playsInline muted />
                             <canvas ref={canvasRef} style={styles.hiddenCanvas} />
                             <div style={styles.cameraButtons}>
-                                <button type="button" style={styles.secondaryButton} onClick={() => {
-                                    stopCameraStream();
-                                }}>
-                                    Cancel
-                                </button>
+                    <button type="button" style={styles.secondaryButton} onClick={() => {
+                        stopCameraStream();
+                    }}>
+                        Cancel
+                    </button>
                                 <button type="button" style={styles.primaryButton} onClick={handleCaptureFrame} disabled={isCapturing}>
                                     <Video size={16} />
                                     {isCapturing ? 'Capturing...' : 'Capture Photo'}
