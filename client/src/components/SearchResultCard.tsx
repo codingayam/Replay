@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, Camera } from 'lucide-react';
+import { Mic, Camera, FileText } from 'lucide-react';
 import type { SearchResult } from '../types';
 
 interface SearchResultCardProps {
@@ -23,6 +23,8 @@ const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onResultCli
   const getTypeIcon = () => {
     if (result.type === 'audio') {
       return <Mic className="h-4 w-4 text-blue-600" />;
+    } else if (result.type === 'text') {
+      return <FileText className="h-4 w-4 text-purple-600" />;
     } else {
       return <Camera className="h-4 w-4 text-green-600" />;
     }

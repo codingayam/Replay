@@ -192,6 +192,9 @@ const styles = {
     padding: '0',
     margin: '0',
     minHeight: '100vh',
+    width: '100%',
+    maxWidth: '100vw',
+    overflow: 'hidden',
   }
 };
 

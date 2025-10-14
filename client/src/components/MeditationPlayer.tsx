@@ -34,6 +34,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     const audioRef = useRef<HTMLAudioElement>(null);
     const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pauseStartTimeRef = useRef<number>(0);
+    const wasPlayingBeforeHideRef = useRef(false);
     
     // Progress tracking for completion
     const [totalPlayedTime, setTotalPlayedTime] = useState(0);
@@ -45,6 +46,7 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
     
     const { user } = useAuth();
     const api = useAuthenticatedApi();
+    const playlistLength = playlist.length;
 
     // Helper function to get signed URLs for audio files
     const getSignedAudioUrl = async (audioUrl: string): Promise<string> => {
@@ -86,7 +88,37 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
             let total = 0;
             
             for (const item of playlist) {
-                if (item.type === 'speech') {
+                if (item.type === 'continuous') {
+                    if (item.duration && item.duration > 0) {
+                        total += item.duration;
+                    } else if (item.audioUrl) {
+                        try {
+                            const audio = new Audio();
+                            audio.preload = 'metadata';
+                            const signedUrl = await getSignedAudioUrl(item.audioUrl);
+                            audio.src = signedUrl;
+
+                            await new Promise((resolve) => {
+                                audio.onloadedmetadata = () => {
+                                    total += audio.duration * 1000;
+                                    resolve(null);
+                                };
+                                audio.onerror = () => {
+                                    total += 300000;
+                                    resolve(null);
+                                };
+                                setTimeout(() => {
+                                    total += 300000;
+                                    resolve(null);
+                                }, 5000);
+                            });
+                        } catch {
+                            total += 300000;
+                        }
+                    } else {
+                        total += 300000;
+                    }
+                } else if (item.type === 'speech') {
                     // For speech items, try to get actual audio duration
                     if (item.duration) {
                         // Duration is already provided in milliseconds
@@ -315,6 +347,48 @@ const MeditationPlayer: React.FC<MeditationPlayerProps> = ({
             audio.removeEventListener('play', handlePlay);
         };
     }, []);
+
+    useEffect(() => {
+        if (typeof document === 'undefined' || typeof window === 'undefined') {
+            return;
+        }
+
+        const tryResumePlayback = () => {
+            const audio = audioRef.current;
+            if (!audio) {
+                return;
+            }
+
+            if (!isPaused && wasPlayingBeforeHideRef.current && audio.paused && currentIndex < playlist.length) {
+                audio.play().catch((error) => {
+                    console.error('Failed to resume audio after tab switch:', error);
+                });
+            }
+
+            wasPlayingBeforeHideRef.current = false;
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                const audio = audioRef.current;
+                wasPlayingBeforeHideRef.current = Boolean(audio && !audio.paused && !isPaused);
+            } else {
+                tryResumePlayback();
+            }
+        };
+
+        const handleWindowFocus = () => {
+            tryResumePlayback();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleWindowFocus);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, [isPaused, currentIndex, playlistLength]);
 
     const handleAudioEnded = () => {
         setCurrentIndex(i => i + 1);

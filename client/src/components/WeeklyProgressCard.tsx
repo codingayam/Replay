@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, Brain, Info } from 'lucide-react';
+import { FileText, Brain } from 'lucide-react';
 import type { WeeklyProgressSummary } from '../hooks/useWeeklyProgress';
 
 interface WeeklyProgressCardProps {
@@ -58,22 +58,6 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
   const [displayJournalCount, setDisplayJournalCount] = useState(journalCount);
   const [displayMeditationCount, setDisplayMeditationCount] = useState(meditationCount);
 
-  // Tooltip state
-  const [showTooltip, setShowTooltip] = useState(false);
-
-  // Close tooltip when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
-      if (showTooltip) {
-        setShowTooltip(false);
-      }
-    };
-
-    if (showTooltip) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [showTooltip]);
 
   // Audio reference
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -379,43 +363,29 @@ const WeeklyProgressCard: React.FC<WeeklyProgressCardProps> = ({
               </div>
 
               {showReportStatus && (
-                <div style={{...styles.goalRow, overflow: 'visible', position: 'relative' as const}}>
-                  <div style={{...styles.goalInfo, overflow: 'visible', flex: '1 1 auto', minWidth: 0}}>
-                    <FileText size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                    <span style={{...styles.goalName, overflow: 'hidden', textOverflow: 'ellipsis'}}>Weekly Report</span>
-                    <div
-                      style={styles.infoIconContainer}
-                      className="info-icon-container"
-                      onMouseEnter={() => setShowTooltip(true)}
-                      onMouseLeave={() => setShowTooltip(false)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowTooltip(!showTooltip);
-                      }}
-                    >
-                      <Info size={14} style={styles.infoIcon} />
-                      <div style={{
-                        ...styles.tooltip,
-                        opacity: showTooltip ? 1 : 0,
-                        visibility: showTooltip ? 'visible' : 'hidden'
-                      } as React.CSSProperties}>
-                        Unlock your weekly report by completing {journalGoalSafe} journal
-                        {journalGoalSafe === 1 ? '' : 's'} and {meditationGoalSafe} meditation
-                        {meditationGoalSafe === 1 ? '' : 's'}, or automatically after {reportJournalGoalSafe} journal
-                        {reportJournalGoalSafe === 1 ? '' : 's'} in the same week. It will be sent automatically to you at the end of the week to your login email.
-                      </div>
+                <>
+                  <div style={{...styles.goalRow, overflow: 'visible', position: 'relative' as const}}>
+                    <div style={{...styles.goalInfo, overflow: 'visible', flex: '1 1 auto', minWidth: 0}}>
+                      <FileText size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                      <span style={styles.goalName}>Weekly Report</span>
+                    </div>
+                    <div style={{...styles.reportStatus, flexShrink: 0}}>
+                      <span style={{
+                        ...styles.statusChip,
+                        backgroundColor: summary?.reportReady ? '#dcfce7' : '#fee2e2',
+                        color: summary?.reportReady ? '#059669' : '#dc2626'
+                      }}>
+                        {reportStatusLabel}
+                      </span>
                     </div>
                   </div>
-                  <div style={{...styles.reportStatus, flexShrink: 0}}>
-                    <span style={{
-                      ...styles.statusChip,
-                      backgroundColor: summary?.reportReady ? '#dcfce7' : '#fee2e2',
-                      color: summary?.reportReady ? '#059669' : '#dc2626'
-                    }}>
-                      {reportStatusLabel}
-                    </span>
+                  <div style={styles.reportDescription}>
+                    Unlock your weekly report by completing {journalGoalSafe} journal
+                    {journalGoalSafe === 1 ? '' : 's'} and {meditationGoalSafe} meditation
+                    {meditationGoalSafe === 1 ? '' : 's'}, or {reportJournalGoalSafe} journal
+                    {reportJournalGoalSafe === 1 ? '' : 's'} in the same week. The report will be sent to your login email after the end of the week.
                   </div>
-                </div>
+                </>
               )}
             </div>
           </>
@@ -596,36 +566,14 @@ const styles = {
     fontWeight: 600,
     boxShadow: '0 2px 4px 0 rgba(220, 38, 38, 0.1)'
   } as React.CSSProperties,
-  infoIconContainer: {
-    position: 'relative' as const,
-    display: 'inline-flex',
-    alignItems: 'center',
-    marginLeft: '0.25rem',
-    cursor: 'help'
-  } as React.CSSProperties,
-  infoIcon: {
-    color: '#9ca3af',
-    flexShrink: 0
-  } as React.CSSProperties,
-  tooltip: {
-    position: 'absolute' as const,
-    top: '100%',
-    left: '0',
-    marginTop: '0.5rem',
-    padding: '0.75rem',
-    backgroundColor: '#1f2937',
-    color: '#ffffff',
+  reportDescription: {
     fontSize: '0.75rem',
-    lineHeight: 1.4,
-    borderRadius: '8px',
-    whiteSpace: 'normal' as const,
-    width: '280px',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-    opacity: 0,
-    visibility: 'hidden' as const,
-    transition: 'opacity 0.2s, visibility 0.2s',
-    zIndex: 1000,
-    pointerEvents: 'none' as const
+    color: '#94a3b8',
+    fontStyle: 'italic' as const,
+    lineHeight: 1.5,
+    marginTop: '-0.5rem',
+    paddingLeft: '0.5rem',
+    paddingRight: '0.5rem'
   } as React.CSSProperties
 };
 

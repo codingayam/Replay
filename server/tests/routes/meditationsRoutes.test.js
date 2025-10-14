@@ -111,6 +111,10 @@ function createMeditationsBuilder(state) {
       return this;
     },
     eq() { return this; },
+    is() { return this; },
+    then(resolve) {
+      return resolve({ data: state.meditations, error: null });
+    },
     single() { return Promise.resolve({ data: this._last, error: null }); },
     order() { return Promise.resolve({ data: state.meditations, error: null }); },
     range() { return Promise.resolve({ data: state.meditations, error: null }); }
@@ -198,6 +202,134 @@ function resolveVoiceSettings() {
 }
 
 const SIMPLE_AUDIO = Buffer.alloc(64, 1);
+
+function createPrunableSupabase(initialState) {
+  const state = {
+    meditations: initialState.meditations.map((entry) => ({ ...entry })),
+    removals: [],
+  };
+
+  function createMeditationsQuery() {
+    let filters = [];
+    let orderSpec = null;
+    let pendingUpdate = null;
+
+    const builder = {
+      select() { return builder; },
+      update(values) {
+        pendingUpdate = { ...values };
+        return builder;
+      },
+      eq(column, value) {
+        filters.push({ type: 'eq', column, value });
+        return builder;
+      },
+      is(column, value) {
+        filters.push({ type: 'is', column, value });
+        return builder;
+      },
+      order(column, options = {}) {
+        const ascending = options?.ascending !== false;
+        orderSpec = { column, ascending };
+        return builder;
+      },
+      range(from, to) {
+        const rows = prepareRows();
+        const data = rows.slice(from, to + 1);
+        reset();
+        return Promise.resolve({ data, error: null });
+      },
+      single() {
+        const rows = prepareRows();
+        const record = rows[0] ?? null;
+        reset();
+        return Promise.resolve({ data: record, error: null });
+      },
+      then(resolve) {
+        const rows = prepareRows();
+        reset();
+        return resolve({ data: rows, error: null });
+      }
+    };
+
+    function applyFilters(entry) {
+      return filters.every((filter) => {
+        if (!entry) {
+          return false;
+        }
+        if (filter.type === 'eq') {
+          return entry[filter.column] === filter.value;
+        }
+        if (filter.type === 'is') {
+          if (filter.value === null) {
+            return entry[filter.column] === null || typeof entry[filter.column] === 'undefined';
+          }
+          return entry[filter.column] === filter.value;
+        }
+        return true;
+      });
+    }
+
+    function prepareRows() {
+      const matched = state.meditations.filter(applyFilters);
+
+      if (pendingUpdate) {
+        matched.forEach((entry) => {
+          Object.assign(entry, pendingUpdate);
+        });
+      }
+
+      let rows = matched.slice();
+      if (orderSpec) {
+        const { column, ascending } = orderSpec;
+        rows.sort((a, b) => {
+          const aValue = a?.[column];
+          const bValue = b?.[column];
+          if (aValue === bValue) {
+            return 0;
+          }
+          if (aValue === undefined || aValue === null) {
+            return ascending ? -1 : 1;
+          }
+          if (bValue === undefined || bValue === null) {
+            return ascending ? 1 : -1;
+          }
+          return aValue > bValue ? (ascending ? 1 : -1) : (ascending ? -1 : 1);
+        });
+      }
+
+      return rows;
+    }
+
+    function reset() {
+      filters = [];
+      orderSpec = null;
+      pendingUpdate = null;
+    }
+
+    return builder;
+  }
+
+  return {
+    state,
+    storage: {
+      from(bucket) {
+        return {
+          async remove(paths) {
+            state.removals.push({ bucket, paths });
+            return { data: {}, error: null };
+          }
+        };
+      }
+    },
+    from(table) {
+      if (table !== 'meditations') {
+        throw new Error(`Unexpected table ${table}`);
+      }
+      return createMeditationsQuery();
+    }
+  };
+}
 
 function stubFsForAudio(t) {
   t.mock.method(fs, 'existsSync', () => false);
@@ -414,6 +546,80 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
   assert.deepEqual(processCalls, ['scheduled', 'run']);
 });
 
+test('GET /api/meditations prunes expired meditations and excludes them from response', async () => {
+  const { app, routes } = createMockApp();
+
+  const now = Date.now();
+  const supabase = createPrunableSupabase({
+    meditations: [
+      {
+        id: 'med-expired',
+        user_id: DEFAULT_USER,
+        title: 'Expired Meditation',
+        created_at: new Date(now - 3600_000).toISOString(),
+        playlist: [{ type: 'continuous', audioUrl: 'signed://expired', duration: 600000 }],
+        audio_storage_path: `${DEFAULT_USER}/expired.mp3`,
+        audio_expires_at: new Date(now - 60000).toISOString(),
+        audio_removed_at: null,
+        is_viewed: false
+      },
+      {
+        id: 'med-active',
+        user_id: DEFAULT_USER,
+        title: 'Active Meditation',
+        created_at: new Date(now).toISOString(),
+        playlist: [{ type: 'continuous', audioUrl: 'signed://active', duration: 600000 }],
+        audio_storage_path: `${DEFAULT_USER}/active.mp3`,
+        audio_expires_at: new Date(now + 3600_000).toISOString(),
+        audio_removed_at: null,
+        is_viewed: false
+      }
+    ]
+  });
+
+  registerMeditationRoutes({
+    app,
+    requireAuth: createRequireAuth(),
+    supabase,
+    uuidv4: () => 'not-used',
+    gemini: { getGenerativeModel: () => ({}) },
+    replicate: { run: async () => ({ url: () => new URL('https://example.com/audio.wav') }) },
+    createSilenceBuffer,
+    mergeAudioBuffers,
+    resolveVoiceSettings,
+    processJobQueue: async () => {}
+  });
+
+  const route = routes.get.find((r) => r.path === '/api/meditations');
+  assert.ok(route);
+
+  const resWrapper = createMockResponse();
+  await runHandlers(route.handlers, {
+    auth: { userId: DEFAULT_USER },
+    headers: {},
+    query: {}
+  }, resWrapper);
+
+  assert.equal(resWrapper.statusCode, 200);
+  assert.ok(resWrapper.json);
+  assert.ok(Array.isArray(resWrapper.json.meditations));
+  assert.equal(resWrapper.json.meditations.length, 1);
+  assert.equal(resWrapper.json.meditations[0].id, 'med-active');
+
+  const expiredRecord = supabase.state.meditations.find((entry) => entry.id === 'med-expired');
+  assert.ok(expiredRecord);
+  assert.equal(expiredRecord.audio_storage_path, null);
+  assert.equal(Array.isArray(expiredRecord.playlist) && expiredRecord.playlist.length, 0);
+  assert.equal(typeof expiredRecord.audio_removed_at, 'string');
+  assert.equal(typeof expiredRecord.deleted_at, 'string');
+
+  assert.equal(supabase.state.removals.length, 1);
+  assert.deepEqual(supabase.state.removals[0], {
+    bucket: 'meditations',
+    paths: [`${DEFAULT_USER}/expired.mp3`]
+  });
+});
+
 test('POST /api/meditations/:id/complete updates weekly progress after completion', async () => {
   const { app, routes } = createMockApp();
 
@@ -436,10 +642,12 @@ test('POST /api/meditations/:id/complete updates weekly progress after completio
             return {
               eq: (column, value) => ({
                 eq: (column2, value2) => ({
-                  single: () => {
-                    const record = state.meditations.find((entry) => entry[column] === value && entry[column2] === value2);
-                    return Promise.resolve({ data: record ? { id: record.id, completed_at: record.completed_at } : null, error: null });
-                  }
+                  is: () => ({
+                    single: () => {
+                      const record = state.meditations.find((entry) => entry[column] === value && entry[column2] === value2);
+                      return Promise.resolve({ data: record ? { id: record.id, completed_at: record.completed_at } : null, error: null });
+                    }
+                  })
                 })
               })
             };
@@ -464,16 +672,18 @@ test('POST /api/meditations/:id/complete updates weekly progress after completio
         },
         update: (values) => ({
           eq: (column, value) => ({
-            eq: (column2, value2) => {
-              state.meditations = state.meditations.map((entry) => {
-                if (entry[column] === value && entry[column2] === value2) {
-                  state.updatedValues = values;
-                  return { ...entry, ...values };
-                }
-                return entry;
-              });
-              return { error: null };
-            }
+            eq: (column2, value2) => ({
+              is: () => {
+                state.meditations = state.meditations.map((entry) => {
+                  if (entry[column] === value && entry[column2] === value2) {
+                    state.updatedValues = values;
+                    return { ...entry, ...values };
+                  }
+                  return entry;
+                });
+                return { error: null };
+              }
+            })
           })
         })
       };

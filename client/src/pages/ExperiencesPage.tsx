@@ -48,6 +48,16 @@ const getNoteImages = (note: Note) => {
     return [];
 };
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+const toIsoWithCurrentTime = (datePart: string) => {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const seconds = now.getSeconds().toString().padStart(2, '0');
+    return new Date(`${datePart}T${hours}:${minutes}:${seconds}`).toISOString();
+};
+
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
     const [currentAudio, setCurrentAudio] = useState<string | null>(null);
@@ -233,6 +243,11 @@ const ExperiencesPage: React.FC = () => {
         if (!value) {
             return new Date().toISOString();
         }
+
+        if (dateOnlyPattern.test(value)) {
+            return toIsoWithCurrentTime(value);
+        }
+
         const parsed = new Date(value);
         if (Number.isNaN(parsed.getTime())) {
             return new Date().toISOString();
@@ -325,6 +340,20 @@ const ExperiencesPage: React.FC = () => {
             } catch (err) {
                 console.error("Error deleting note:", err);
             }
+        }
+    };
+
+    const handleDeleteNoteFromSearch = async (id: string) => {
+        try {
+            await api.delete(`/notes/${id}`);
+            fetchNotes();
+            await refreshWeeklyProgress();
+            // Refresh search results if there's an active search
+            if (searchActive && searchQuery) {
+                handleSearch(searchQuery);
+            }
+        } catch (err) {
+            console.error("Error deleting note:", err);
         }
     };
 
@@ -845,6 +874,7 @@ const ExperiencesPage: React.FC = () => {
                 noteId={selectedNoteId}
                 searchQuery={searchQuery}
                 onPlay={handlePlayNote}
+                onDelete={handleDeleteNoteFromSearch}
             />
 
             {/* Bottom Audio Player */}

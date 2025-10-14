@@ -71,11 +71,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background-color);
   color: var(--text-color);
-  overflow-x: hidden;
+  width: 100%;
 }
 
 * {
   box-sizing: border-box;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
 }
 
 /* Mobile-first responsive design */

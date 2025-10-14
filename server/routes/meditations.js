@@ -93,7 +93,8 @@ export function registerMeditationRoutes(deps) {
         .from('meditations')
         .select('id, audio_expires_at, audio_removed_at')
         .eq('user_id', userId)
-        .is('completed_at', null);
+        .is('completed_at', null)
+        .is('deleted_at', null);
 
       if (error) {
         console.warn('[OneSignal] Failed to query unfinished meditations:', error);
@@ -220,34 +221,110 @@ export function registerMeditationRoutes(deps) {
     };
   };
 
-  const removeMeditationAudio = async (meditationId, userId, storagePath) => {
-    if (!storagePath) {
-      return;
-    }
-
-    try {
-      if (!storagePath.startsWith('default/')) {
-        await supabase.storage.from('meditations').remove([storagePath]);
+  const removeMeditationAudio = async ({
+    meditationId,
+    userId,
+    storagePath,
+    markDeleted = false,
+    skipSync = false,
+    existingAudioRemovedAt = null
+  }) => {
+    if (storagePath) {
+      try {
+        if (!storagePath.startsWith('default/')) {
+          await supabase.storage.from('meditations').remove([storagePath]);
+        }
+      } catch (storageError) {
+        console.error('Failed to remove expired meditation audio:', storageError);
       }
-    } catch (storageError) {
-      console.error('Failed to remove expired meditation audio:', storageError);
     }
 
     try {
+      const removalTimestamp = new Date().toISOString();
+      const updates = {
+        audio_storage_path: null,
+        playlist: []
+      };
+
+      if (existingAudioRemovedAt) {
+        updates.audio_removed_at = existingAudioRemovedAt;
+      } else {
+        updates.audio_removed_at = removalTimestamp;
+      }
+
+      if (markDeleted) {
+        if (!updates.audio_removed_at) {
+          updates.audio_removed_at = removalTimestamp;
+        }
+        updates.deleted_at = removalTimestamp;
+      }
+
       await supabase
         .from('meditations')
-        .update({
-          audio_storage_path: null,
-          audio_removed_at: new Date().toISOString(),
-          playlist: []
-        })
+        .update(updates)
         .eq('id', meditationId)
         .eq('user_id', userId);
     } catch (updateError) {
       console.error('Failed to mark meditation audio as removed:', updateError);
     }
 
-    await syncHasUnfinishedMeditationTag(userId);
+    if (!skipSync) {
+      await syncHasUnfinishedMeditationTag(userId);
+    }
+  };
+
+  const pruneExpiredMeditations = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('meditations')
+        .select('id, audio_storage_path, audio_expires_at, audio_removed_at, deleted_at')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('Failed to load meditations for pruning:', error);
+        return;
+      }
+
+      const now = Date.now();
+      const candidates = (data ?? []).filter((meditation) => {
+        if (!meditation || meditation.deleted_at) {
+          return false;
+        }
+
+        const expiresAtRaw = meditation.audio_expires_at;
+        if (expiresAtRaw) {
+          const expiresAtMs = new Date(expiresAtRaw).getTime();
+          if (!Number.isNaN(expiresAtMs) && expiresAtMs <= now) {
+            return true;
+          }
+        }
+
+        if (!meditation.audio_storage_path && meditation.audio_removed_at) {
+          return true;
+        }
+
+        return false;
+      });
+
+      if (candidates.length === 0) {
+        return;
+      }
+
+      for (const meditation of candidates) {
+        await removeMeditationAudio({
+          meditationId: meditation.id,
+          userId,
+          storagePath: meditation.audio_storage_path,
+          markDeleted: true,
+          skipSync: true,
+          existingAudioRemovedAt: meditation.audio_removed_at
+        });
+      }
+
+      await syncHasUnfinishedMeditationTag(userId);
+    } catch (error) {
+      console.warn('Failed to prune expired meditations:', error instanceof Error ? error.message : error);
+    }
   };
 
   const generateTitleAndSummary = async (script, reflectionType, fallbackTitle) => {
@@ -853,10 +930,13 @@ export function registerMeditationRoutes(deps) {
       await syncOneSignalAlias(req, userId);
       const { limit = 20, offset = 0 } = req.query;
 
+      await pruneExpiredMeditations(userId);
+
       const { data: meditations, error } = await supabase
         .from('meditations')
         .select('*, is_viewed')
         .eq('user_id', userId)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
@@ -896,6 +976,7 @@ export function registerMeditationRoutes(deps) {
         .select('*')
         .eq('id', meditationId)
         .eq('user_id', userId)
+        .is('deleted_at', null)
         .single();
 
       if (fetchError || !meditation) {
@@ -944,6 +1025,7 @@ export function registerMeditationRoutes(deps) {
         .update({ is_viewed: true })
         .eq('id', meditationId)
         .eq('user_id', userId)
+        .is('deleted_at', null)
         .select('id');
 
       if (error) {
@@ -969,6 +1051,8 @@ export function registerMeditationRoutes(deps) {
       await syncOneSignalAlias(req, userId);
       const meditationId = req.params.id;
 
+      await pruneExpiredMeditations(userId);
+
       const { data: meditation, error } = await supabase
         .from('meditations')
         .select('*')
@@ -980,12 +1064,21 @@ export function registerMeditationRoutes(deps) {
         return res.status(404).json({ error: 'Meditation not found' });
       }
 
+      if (meditation.deleted_at) {
+        return res.status(410).json({ error: 'Meditation audio is no longer available', isExpired: true });
+      }
+
       const availability = computeAudioAvailability(meditation);
 
       if (!availability.isAvailable) {
-        if (availability.storagePath && !meditation.audio_removed_at) {
-          await removeMeditationAudio(meditationId, userId, availability.storagePath);
-        }
+        const shouldMarkDeleted = Boolean(meditation.audio_expires_at);
+        await removeMeditationAudio({
+          meditationId,
+          userId,
+          storagePath: availability.storagePath,
+          markDeleted: shouldMarkDeleted,
+          existingAudioRemovedAt: meditation.audio_removed_at ?? null
+        });
         return res.status(410).json({ error: 'Meditation audio is no longer available', isExpired: true });
       }
 
@@ -1043,6 +1136,7 @@ export function registerMeditationRoutes(deps) {
         .select('id, completed_at')
         .eq('id', meditationId)
         .eq('user_id', userId)
+        .is('deleted_at', null)
         .single();
 
       if (fetchError || !meditation) {
@@ -1077,7 +1171,8 @@ export function registerMeditationRoutes(deps) {
         .from('meditations')
         .update(updateData)
         .eq('id', meditationId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .is('deleted_at', null);
 
       if (updateError) {
         console.error('Error updating meditation completion:', updateError);

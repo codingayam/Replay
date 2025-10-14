@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, PlayCircle, Mic, Camera, FileText } from 'lucide-react';
+import { X, PlayCircle, Mic, Camera, FileText, Trash2 } from 'lucide-react';
 import type { Note } from '../types';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 
@@ -9,6 +9,7 @@ interface SearchResultModalProps {
   noteId: string | null;
   searchQuery: string;
   onPlay?: (audioUrl: string) => void;
+  onDelete?: (noteId: string) => void;
 }
 
 const SearchResultModal: React.FC<SearchResultModalProps> = ({
@@ -16,7 +17,8 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
   onClose,
   noteId,
   searchQuery,
-  onPlay
+  onPlay,
+  onDelete
 }) => {
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(false);
@@ -123,6 +125,14 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
     }
   };
 
+  // Handle delete note
+  const handleDelete = () => {
+    if (note && onDelete && window.confirm('Are you sure you want to delete this note?')) {
+      onDelete(note.id);
+      onClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -130,9 +140,16 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
           <h2 style={styles.title}>Note Details</h2>
-          <button onClick={onClose} style={styles.closeButton}>
-            <X size={24} />
-          </button>
+          <div style={styles.headerActions}>
+            {onDelete && (
+              <button onClick={handleDelete} style={styles.deleteButton}>
+                <Trash2 size={20} />
+              </button>
+            )}
+            <button onClick={onClose} style={styles.closeButton}>
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         <div style={styles.content}>
@@ -271,11 +288,28 @@ const styles = {
     color: '#111827',
     margin: 0,
   },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
   closeButton: {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
     color: '#6b7280',
+    padding: '0.5rem',
+    borderRadius: '0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'background-color 0.2s',
+  },
+  deleteButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: '#dc2626',
     padding: '0.5rem',
     borderRadius: '0.5rem',
     display: 'flex',

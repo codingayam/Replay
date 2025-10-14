@@ -12,8 +12,10 @@ interface FloatingUploadButtonProps {
     isUploadingText?: boolean;
 }
 
+const pad = (value: number) => value.toString().padStart(2, '0');
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
 const formatDateInput = (date: Date) => {
-    const pad = (value: number) => value.toString().padStart(2, '0');
     const year = date.getFullYear();
     const month = pad(date.getMonth() + 1);
     const day = pad(date.getDate());
@@ -24,6 +26,13 @@ const ensureIsoString = (value: string) => {
     if (!value) {
         return new Date().toISOString();
     }
+
+    if (dateOnlyPattern.test(value)) {
+        const now = new Date();
+        const timePart = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        return new Date(`${value}T${timePart}`).toISOString();
+    }
+
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
         return new Date().toISOString();
