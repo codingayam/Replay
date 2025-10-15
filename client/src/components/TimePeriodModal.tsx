@@ -58,16 +58,6 @@ const TimePeriodModal: React.FC<TimePeriodModalProps> = ({
     };
 
     const handleContinue = () => {
-        // Validate that the date range is not more than 7 days
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (daysDiff > 6) { // 0-6 days difference = 1-7 days total
-            alert('Please select a date range of no more than 7 days.');
-            return;
-        }
-        
         onSelectDates(startDate, endDate);
     };
 
@@ -127,7 +117,7 @@ const TimePeriodModal: React.FC<TimePeriodModalProps> = ({
 
                 <div style={styles.content}>
                     <p style={styles.description}>
-                        Choose which days you'd like to reflect on (up to 7 days).
+                        Choose which days you'd like to reflect on.
                     </p>
 
                     {/* Quick Select Options */}

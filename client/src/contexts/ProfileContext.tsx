@@ -27,6 +27,7 @@ export interface ProfileRecord {
 interface ProfileContextValue {
   profile: ProfileRecord | null;
   isLoading: boolean;
+  hasLoaded: boolean;
   error: string | null;
   refreshProfile: () => Promise<void>;
   isOnboarded: boolean;
@@ -62,6 +63,7 @@ export const ProfileProvider: React.FC<ProfileProviderProps> = ({ children }) =>
   const api = useAuthenticatedApi();
   const [profile, setProfile] = useState<ProfileRecord | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStepState] = useState<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -89,6 +91,7 @@ export const ProfileProvider: React.FC<ProfileProviderProps> = ({ children }) =>
     if (!user || !authReady) {
       setProfile(null);
       setCurrentStepState(0);
+      setHasLoaded(false);
       return;
     }
 
@@ -118,6 +121,7 @@ export const ProfileProvider: React.FC<ProfileProviderProps> = ({ children }) =>
     } finally {
       if (!controller.signal.aborted) {
         setIsLoading(false);
+        setHasLoaded(true);
       }
     }
   }, [api, authReady, resolveStep, user]);
@@ -168,6 +172,7 @@ export const ProfileProvider: React.FC<ProfileProviderProps> = ({ children }) =>
   const value = useMemo<ProfileContextValue>(() => ({
     profile,
     isLoading,
+    hasLoaded,
     error,
     refreshProfile,
     isOnboarded,
@@ -175,7 +180,7 @@ export const ProfileProvider: React.FC<ProfileProviderProps> = ({ children }) =>
     totalSteps: TOTAL_STEPS,
     setCurrentStep,
     updateLocalProfile
-  }), [currentStep, error, isLoading, isOnboarded, profile, refreshProfile, setCurrentStep, updateLocalProfile]);
+  }), [currentStep, error, hasLoaded, isLoading, isOnboarded, profile, refreshProfile, setCurrentStep, updateLocalProfile]);
 
   if ((globalThis as any).__REPLAY_TEST_PROFILE_CONTEXT__) {
     return <>{children}</>;

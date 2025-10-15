@@ -522,7 +522,7 @@ const ReflectionsPage: React.FC = () => {
                         <div style={styles.emptyIcon}>🧘‍♀️</div>
                         <h3 style={styles.emptyTitle}>No reflections yet</h3>
                         <p style={styles.emptyText}>
-                            Click the "Generate Reflection" button above to create your first personalized reflection session.
+                            Click the "Generate Reflection" button above to create your personalized reflection session.
                         </p>
                     </div>
                 )}

@@ -9,10 +9,10 @@ interface RequireOnboardingProps {
 
 const RequireOnboarding: React.FC<RequireOnboardingProps> = ({ children }) => {
   const location = useLocation();
-  const { isLoading: authLoading } = useAuth();
-  const { isLoading: profileLoading, isOnboarded, totalSteps, currentStep } = useProfile();
+  const { loading: authLoading, authReady } = useAuth();
+  const { hasLoaded: profileLoaded, isOnboarded, totalSteps, currentStep } = useProfile();
 
-  if (authLoading || profileLoading) {
+  if (authLoading || !authReady || !profileLoaded) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div>Loading…</div>

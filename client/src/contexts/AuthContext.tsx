@@ -321,11 +321,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 // Helper components for conditional rendering
 export const SignedIn: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
-  
-  if (loading) {
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  useEffect(() => {
+    if (!loading) {
+      setInitialLoading(false);
+    }
+  }, [loading]);
+
+  if (initialLoading && loading) {
     return <div>Loading...</div>;
   }
-  
+
   return user ? <>{children}</> : null;
 };
 
