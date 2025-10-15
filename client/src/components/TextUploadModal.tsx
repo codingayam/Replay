@@ -44,6 +44,23 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     const streamRef = useRef<MediaStream | null>(null);
 
     const supportsCameraApi = useMemo(() => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia), []);
+    const isMobileDevice = useMemo(() => {
+        if (typeof navigator === 'undefined') {
+            return false;
+        }
+        const ua = navigator.userAgent || navigator.vendor || '';
+        if (/android|iphone|ipad|ipod|iemobile|opera mini/i.test(ua)) {
+            return true;
+        }
+        if (typeof window !== 'undefined' && window.matchMedia) {
+            try {
+                return window.matchMedia('(pointer:coarse)').matches;
+            } catch (error) {
+                console.warn('Pointer media query check failed:', error);
+            }
+        }
+        return false;
+    }, []);
     const remainingSlots = MAX_PHOTOS - selectedImages.length;
     const isValid = title.trim().length > 0
         && content.trim().length >= 10
@@ -123,6 +140,11 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
 
     const triggerCamera = async () => {
         setCameraError(null);
+        if (isMobileDevice) {
+            stopCameraStream();
+            cameraInputRef.current?.click();
+            return;
+        }
         if (!supportsCameraApi) {
             cameraInputRef.current?.click();
             return;
