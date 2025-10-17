@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Image as ImageIcon, Plus, Save, Video, X, Camera } from 'lucide-react';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface TextUploadModalProps {
     isOpen: boolean;
@@ -61,6 +62,8 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
         }
         return false;
     }, []);
+    const { isDesktop } = useResponsive();
+    const allowCameraCapture = !isDesktop;
     const remainingSlots = MAX_PHOTOS - selectedImages.length;
     const isValid = title.trim().length > 0
         && content.trim().length >= 10
@@ -82,6 +85,13 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
             resetForm();
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        if (!allowCameraCapture) {
+            stopCameraStream();
+            setCameraError(null);
+        }
+    }, [allowCameraCapture]);
 
     useEffect(() => {
         if (isOpen) {
@@ -139,6 +149,9 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const triggerCamera = async () => {
+        if (!allowCameraCapture) {
+            return;
+        }
         setCameraError(null);
         if (isMobileDevice) {
             stopCameraStream();
@@ -345,14 +358,16 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                                         <ImageIcon size={16} />
                                         Photo Library
                                     </button>
-                                    <button type="button" style={styles.optionButton} onClick={triggerCamera} disabled={remainingSlots <= 0}>
-                                        <Camera size={16} />
-                                        Camera
-                                    </button>
+                                    {allowCameraCapture && (
+                                        <button type="button" style={styles.optionButton} onClick={triggerCamera} disabled={remainingSlots <= 0}>
+                                            <Camera size={16} />
+                                            Camera
+                                        </button>
+                                    )}
                                 </div>
-                                {cameraError && <div style={styles.errorHint}>{cameraError}</div>}
+                                {allowCameraCapture && cameraError && <div style={styles.errorHint}>{cameraError}</div>}
 
-                                {isCameraActive && (
+                                {allowCameraCapture && isCameraActive && (
                                     <div style={styles.cameraContainer}>
                                         <video ref={videoRef} style={styles.videoPreview} playsInline muted />
                                        <canvas ref={canvasRef} style={styles.hiddenCanvas} />

@@ -68,6 +68,7 @@ const ExperiencesPage: React.FC = () => {
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [isUploadingText, setIsUploadingText] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+    const [noteImageSelections, setNoteImageSelections] = useState<Record<string, number>>({});
     
     // Search state
     const [searchQuery, setSearchQuery] = useState<string>('');
@@ -384,25 +385,43 @@ const ExperiencesPage: React.FC = () => {
         if (!images.length) {
             return null;
         }
+        const activeIndex = Math.min(noteImageSelections[note.id] ?? 0, images.length - 1);
+        const activeImage = images[activeIndex] ?? images[0];
 
         return (
             <div style={styles.photoContainer}>
                 <div style={styles.photoPlaceholder}>
                     <SupabaseImage
-                        src={images[0]}
+                        src={activeImage}
                         alt={note.userTitle || note.title}
                         style={styles.photo}
                     />
                 </div>
                 {images.length > 1 && (
                     <div style={styles.photoThumbnailRow}>
-                        {images.slice(1).map((imageUrl, index) => (
-                            <SupabaseImage
+                        {images.map((imageUrl, index) => (
+                            <button
                                 key={`${note.id}-gallery-${index}`}
-                                src={imageUrl}
-                                alt={`${note.title} thumbnail ${index + 2}`}
-                                style={styles.photoThumbnail}
-                            />
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNoteImageSelections((prev) => ({
+                                        ...prev,
+                                        [note.id]: index
+                                    }));
+                                }}
+                                style={{
+                                    ...styles.photoThumbnailButton,
+                                    ...(index === activeIndex ? styles.activePhotoThumbnailButton : {})
+                                }}
+                                aria-label={`View photo ${index + 1}`}
+                            >
+                                <SupabaseImage
+                                    src={imageUrl}
+                                    alt={`${note.title} thumbnail ${index + 1}`}
+                                    style={styles.photoThumbnail}
+                                />
+                            </button>
                         ))}
                     </div>
                 )}
@@ -1317,12 +1336,25 @@ const styles = {
         gap: '0.5rem',
         marginTop: '0.5rem',
     },
+    photoThumbnailButton: {
+        border: '1px solid rgba(0,0,0,0.08)',
+        borderRadius: '6px',
+        padding: 0,
+        cursor: 'pointer',
+        background: '#fff',
+        lineHeight: 0,
+        transition: 'border-color 0.2s ease, transform 0.2s ease',
+    },
+    activePhotoThumbnailButton: {
+        borderColor: 'var(--primary-color)',
+        transform: 'scale(1.03)',
+        boxShadow: '0 0 0 2px rgba(0, 118, 255, 0.15)',
+    },
     photoThumbnail: {
         width: '56px',
         height: '56px',
         borderRadius: '6px',
         objectFit: 'cover' as const,
-        border: '1px solid rgba(0,0,0,0.08)',
     },
     actionButtons: {
         display: 'flex',

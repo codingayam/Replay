@@ -23,6 +23,7 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const api = useAuthenticatedApi();
 
   // Fetch note details when modal opens
@@ -32,6 +33,7 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
     } else {
       setNote(null);
       setError(null);
+      setActiveImageIndex(0);
     }
   }, [isOpen, noteId]);
 
@@ -105,6 +107,13 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
         ? [note.imageUrl]
         : []
     : [];
+  const activeImage = imageList[Math.min(activeImageIndex, imageList.length - 1)] ?? imageList[0];
+
+  useEffect(() => {
+    if (note?.id && isOpen) {
+      setActiveImageIndex(0);
+    }
+  }, [note?.id, isOpen, imageList.length]);
 
   // Format date
   const formatDate = (dateString: string) => {
@@ -192,19 +201,33 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
               {imageList.length > 0 && (
                 <div style={styles.imageContainer}>
                   <img 
-                    src={getFileUrl(imageList[0])} 
+                    src={getFileUrl(activeImage)} 
                     alt={note.title}
                     style={styles.image}
                   />
                   {imageList.length > 1 && (
                     <div style={styles.thumbnailRow}>
-                      {imageList.slice(1).map((url, index) => (
-                        <img
+                      {imageList.map((url, index) => (
+                        <button
                           key={`${note.id}-thumb-${index}`}
-                          src={getFileUrl(url)}
-                          alt={`Additional photo ${index + 2}`}
-                          style={styles.thumbnailImage}
-                        />
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setActiveImageIndex(index);
+                          }}
+                          style={{
+                            ...styles.thumbnailButton,
+                            ...(activeImageIndex === index ? styles.activeThumbnailButton : {})
+                          }}
+                          aria-label={`View photo ${index + 1}`}
+                        >
+                          <img
+                            src={getFileUrl(url)}
+                            alt={`Thumbnail photo ${index + 1}`}
+                            style={styles.thumbnailImage}
+                          />
+                        </button>
                       ))}
                     </div>
                   )}
@@ -395,12 +418,25 @@ const styles = {
     flexWrap: 'wrap' as const,
     gap: '0.5rem',
   },
+  thumbnailButton: {
+    border: '1px solid rgba(0,0,0,0.08)',
+    borderRadius: '6px',
+    padding: 0,
+    cursor: 'pointer',
+    background: '#fff',
+    lineHeight: 0,
+    transition: 'border-color 0.2s ease, transform 0.2s ease',
+  },
+  activeThumbnailButton: {
+    borderColor: 'var(--primary-color)',
+    transform: 'scale(1.03)',
+    boxShadow: '0 0 0 2px rgba(0, 118, 255, 0.15)',
+  },
   thumbnailImage: {
     width: '60px',
     height: '60px',
     borderRadius: '6px',
     objectFit: 'cover' as const,
-    border: '1px solid rgba(0,0,0,0.08)',
   },
   audioSection: {
     marginBottom: '1.5rem',

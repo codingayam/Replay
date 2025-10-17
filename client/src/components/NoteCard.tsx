@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PlayCircle, Trash2, Edit2, Save, X, ChevronRight } from 'lucide-react';
 import type { Note } from '../types';
 import { getFileUrl } from '../utils/api';
@@ -15,6 +15,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
     const [showDetails, setShowDetails] = useState(false);
     const [isEditingTranscript, setIsEditingTranscript] = useState(false);
     const [editedTranscript, setEditedTranscript] = useState(note.transcript);
+    const [activeImageIndex, setActiveImageIndex] = useState(0);
 
     const isPhotoNote = note.type === 'photo';
     const isAudioNote = note.type === 'audio';
@@ -26,6 +27,11 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
             : [];
     const hasImages = images.length > 0;
 
+    useEffect(() => {
+        if (showDetails) {
+            setActiveImageIndex(0);
+        }
+    }, [note.id, showDetails, images.length]);
 
     // Get emoji based on note type
     const getNoteTypeEmoji = (noteType: 'audio' | 'photo' | 'text') => {
@@ -86,19 +92,32 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                     {(isPhotoNote || isTextNote) && hasImages && (
                         <div style={styles.imageContainer}>
                             <img 
-                                src={getFileUrl(images[0])}
+                                src={getFileUrl(images[activeImageIndex])}
                                 alt={isTextNote && note.userTitle ? note.userTitle : note.title}
                                 style={styles.image}
                             />
                             {images.length > 1 && (
                                 <div style={styles.thumbnailRow}>
-                                    {images.slice(1).map((imageUrl, index) => (
-                                        <img
+                                    {images.map((imageUrl, index) => (
+                                        <button
                                             key={`${note.id}-thumb-${index}`}
-                                            src={getFileUrl(imageUrl)}
-                                            alt={`Additional photo ${index + 2}`}
-                                            style={styles.thumbnailImage}
-                                        />
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveImageIndex(index);
+                                            }}
+                                            style={{
+                                                ...styles.thumbnailButton,
+                                                ...(activeImageIndex === index ? styles.activeThumbnailButton : {})
+                                            }}
+                                            aria-label={`View photo ${index + 1}`}
+                                        >
+                                            <img
+                                                src={getFileUrl(imageUrl)}
+                                                alt={`Thumbnail photo ${index + 1}`}
+                                                style={styles.thumbnailImage}
+                                            />
+                                        </button>
                                     ))}
                                 </div>
                             )}
@@ -262,13 +281,26 @@ const styles = {
         overflowX: 'auto' as const,
         paddingBottom: '0.25rem',
     },
+    thumbnailButton: {
+        border: '1px solid rgba(0,0,0,0.05)',
+        borderRadius: '6px',
+        padding: 0,
+        cursor: 'pointer',
+        flexShrink: 0,
+        background: '#fff',
+        lineHeight: 0,
+        transition: 'border-color 0.2s ease, transform 0.2s ease',
+    },
+    activeThumbnailButton: {
+        borderColor: 'var(--primary-color)',
+        transform: 'scale(1.03)',
+        boxShadow: '0 0 0 2px rgba(0, 118, 255, 0.15)',
+    },
     thumbnailImage: {
         width: '56px',
         height: '56px',
         objectFit: 'cover' as const,
         borderRadius: '6px',
-        flexShrink: 0,
-        border: '1px solid rgba(0,0,0,0.05)',
     },
     transcript: {
         background: '#fff',

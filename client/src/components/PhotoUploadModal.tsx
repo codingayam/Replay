@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Image as ImageIcon, Save, Video, X } from 'lucide-react';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface PhotoUploadModalProps {
     isOpen: boolean;
@@ -45,6 +46,19 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     const remainingSlots = MAX_PHOTOS - selectedFiles.length;
     const hasSelection = selectedFiles.length > 0;
     const supportsCameraApi = useMemo(() => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia), []);
+    const { isDesktop } = useResponsive();
+    const allowCameraCapture = !isDesktop;
+
+    useEffect(() => {
+        if (!allowCameraCapture) {
+            streamRef.current?.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+            setIsCameraActive(false);
+            setIsCapturing(false);
+            setIsVideoReady(false);
+            setCameraError(null);
+        }
+    }, [allowCameraCapture]);
 
     useEffect(() => {
         return () => {
@@ -190,6 +204,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleCameraTrigger = async () => {
+        if (!allowCameraCapture) {
+            return;
+        }
         setCameraError(null);
         setIsVideoReady(false);
         if (supportsCameraApi) {
@@ -320,17 +337,19 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
                             <ImageIcon size={18} />
                             Photo Library
                         </button>
-                        <button type="button" style={styles.optionButton} onClick={handleCameraTrigger} disabled={remainingSlots <= 0}>
-                            <Camera size={18} />
-                            Camera
-                        </button>
+                        {allowCameraCapture && (
+                            <button type="button" style={styles.optionButton} onClick={handleCameraTrigger} disabled={remainingSlots <= 0}>
+                                <Camera size={18} />
+                                Camera
+                            </button>
+                        )}
                     </div>
 
-                    {cameraError && (
+                    {allowCameraCapture && cameraError && (
                         <div style={styles.errorText}>{cameraError}</div>
                     )}
 
-                    {isCameraActive && (
+                    {allowCameraCapture && isCameraActive && (
                         <div style={styles.cameraContainer}>
                             <video ref={videoRef} style={styles.videoPreview} playsInline muted />
                             <canvas ref={canvasRef} style={styles.hiddenCanvas} />
