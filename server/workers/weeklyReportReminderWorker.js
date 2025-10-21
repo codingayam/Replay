@@ -24,9 +24,9 @@ const HTML_RAW_KEYS = new Set(['CTA_URL', 'SUPPORT_EMAIL']);
 const DEFAULT_APP_ORIGIN = process.env.APP_ORIGIN
   ?? process.env.WEB_APP_URL
   ?? process.env.CLIENT_ORIGIN
-  ?? 'https://app.replay.so';
+  ?? 'https://replay-ai.app';
 
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? 'support@replay.so';
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? 'support@replay-ai.app';
 
 const HTML_TEMPLATE = `<!doctype html>
 <html lang="en" style="margin:0;padding:0;">

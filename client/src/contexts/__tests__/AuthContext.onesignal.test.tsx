@@ -46,7 +46,7 @@ beforeAll(() => {
   Object.defineProperty(window, 'location', {
     configurable: true,
     value: {
-      origin: 'https://replay.agrix.ai'
+      origin: 'https://replay-ai.app'
     }
   });
 });
@@ -362,6 +362,6 @@ describe('AuthContext - OneSignal Integration', () => {
     expect(mockOneSignalLogin).not.toHaveBeenCalled();
 
     // Reset for other tests
-    setWindowOrigin('https://replay.agrix.ai');
+    setWindowOrigin('https://replay-ai.app');
   });
 });

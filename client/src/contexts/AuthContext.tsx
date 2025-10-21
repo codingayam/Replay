@@ -91,7 +91,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     const allowedOrigins = [
-      'https://replay.agrix.ai',
+      'https://replay-ai.app',
       'https://localhost:5173',
       'http://localhost:5173'
     ];
