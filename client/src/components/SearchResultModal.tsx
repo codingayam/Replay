@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, PlayCircle, Mic, Camera, FileText, Trash2 } from 'lucide-react';
+import { X, Mic, Camera, FileText, Trash2 } from 'lucide-react';
 import type { Note } from '../types';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 
@@ -8,7 +8,6 @@ interface SearchResultModalProps {
   onClose: () => void;
   noteId: string | null;
   searchQuery: string;
-  onPlay?: (audioUrl: string) => void;
   onDelete?: (noteId: string) => void;
 }
 
@@ -17,7 +16,6 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
   onClose,
   noteId,
   searchQuery,
-  onPlay,
   onDelete
 }) => {
   const [note, setNote] = useState<Note | null>(null);
@@ -127,13 +125,6 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
   };
 
 
-  // Handle play audio
-  const handlePlayAudio = () => {
-    if (note?.audioUrl && onPlay) {
-      onPlay(note.audioUrl);
-    }
-  };
-
   // Handle delete note
   const handleDelete = () => {
     if (note && onDelete && window.confirm('Are you sure you want to delete this note?')) {
@@ -231,19 +222,6 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
                       ))}
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Audio Player */}
-              {note.type === 'audio' && note.audioUrl && (
-                <div style={styles.audioSection}>
-                  <button 
-                    onClick={handlePlayAudio}
-                    style={styles.playButton}
-                  >
-                    <PlayCircle size={20} />
-                    Play Audio
-                  </button>
                 </div>
               )}
 
@@ -437,23 +415,6 @@ const styles = {
     height: '60px',
     borderRadius: '6px',
     objectFit: 'cover' as const,
-  },
-  audioSection: {
-    marginBottom: '1.5rem',
-  },
-  playButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    background: '#3b82f6',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    padding: '0.75rem 1rem',
-    cursor: 'pointer',
-    fontSize: '0.875rem',
-    fontWeight: '500',
-    transition: 'background-color 0.2s',
   },
   transcriptSection: {
     marginBottom: '1rem',

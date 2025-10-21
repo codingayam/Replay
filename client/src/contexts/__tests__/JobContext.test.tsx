@@ -63,13 +63,13 @@ describe('JobContext', () => {
     await act(async () => {
       await result.current.createJob({
         noteIds: ['1'],
-        duration: 5,
         reflectionType: 'Meditation',
       } as any);
     });
 
     const requestConfig = requestMock.mock.calls[1][0];
     expect(requestConfig.url).toBe('/meditate/jobs');
+    expect(requestConfig.data?.duration).toBe(5);
   });
 
   afterEach(() => {

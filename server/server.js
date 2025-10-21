@@ -12,6 +12,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Replicate from 'replicate';
 import { execSync } from 'child_process';
+import {
+  GEMINI_MODELS,
+  REPLICATE_MODELS,
+  buildBackgroundMeditationTitlePrompt,
+  buildBackgroundMeditationScriptPrompt
+} from './config/ai.js';
 import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer, getWavDurationSeconds } from './utils/audio.js';
 import {
   onesignalEnabled,
@@ -78,27 +84,10 @@ const limitSentences = (text, maxSentences) => {
 };
 
 async function generateTitleAndSummary(script, reflectionType, fallbackTitle) {
-  const prompt = `
-    You will receive the full script of a guided meditation or reflection session.
-    Analyse it and respond with JSON only in this shape:
-    {
-      "title": "Short descriptive title",
-      "summary": "At most three sentences summarising the session."
-    }
-
-    Requirements:
-    - The title must be fewer than 12 words.
-    - The summary must be under 350 characters and no more than three sentences.
-    - Do not include markdown or extraneous commentary.
-
-    Script:
-    """
-    ${script}
-    """
-  `;
+  const prompt = buildBackgroundMeditationTitlePrompt(script);
 
   try {
-    const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
     const result = await model.generateContent(prompt);
     const rawText = result.response.text();
     const parsed = extractJson(rawText) || {};
@@ -258,10 +247,12 @@ async function processMeditationJob(job) {
     // Extract job parameters
     const { 
       note_ids: noteIds, 
-      duration, 
+      duration: jobDuration, 
       reflection_type: reflectionType,
       user_id: userId 
     } = job;
+    const parsedDuration = typeof jobDuration === 'number' ? jobDuration : parseInt(jobDuration, 10);
+    const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 5;
 
     // Generate meditation using existing meditation logic
     // Get selected notes and user profile (same as synchronous version)
@@ -282,7 +273,7 @@ async function processMeditationJob(job) {
       .single();
 
     // Generate custom meditation for Day/Night reflections
-    const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
     
     // Build experience text from notes
     const experiencesText = notes.map(note => {
@@ -306,28 +297,12 @@ async function processMeditationJob(job) {
 
     // Use shared audio helpers for silence generation and concatenation
 
-    const getScriptPrompt = () => {
-      const baseInstructions = `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. The guided reflection should feel supportive, with pauses noted as [PAUSE=Xs] where X is the number of seconds. Use the listener's personal context to shape the arc of the session.
-
-      ${profileContext}
-
-      Experiences:
-      ${experiencesText}
-
-      IMPORTANT: Write the script as plain spoken text only. No markdown formatting or asterisks, and do not include pauses after the final segment.`;
-
-      if (reflectionType === 'Day') {
-        return `${baseInstructions}
-
-        Craft a mindful morning experience that grounds the listener, surfaces gratitude from their recent experiences, and sets clear intentions for the day ahead. Encourage gentle breathing, visualization of upcoming moments, and motivation aligned with their values and mission.`;
-      }
-
-      return `${baseInstructions}
-
-      After weaving insights from their experiences into the narrative, include a loving-kindness (metta) segment. Reference specific people, relationships, places, or challenges from their reflections and guide them through sending phrases such as "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy." Begin with the listener, extend to loved ones, then to neutral or challenging figures, and close with any difficult situations mentioned.`;
-    };
-
-    const scriptPrompt = getScriptPrompt();
+    const scriptPrompt = buildBackgroundMeditationScriptPrompt({
+      reflectionType,
+      duration,
+      profileContext,
+      experiencesText
+    });
     const result = await model.generateContent(scriptPrompt);
     const script = result.response.text();
     const fallbackTitle = `${reflectionType} Reflection - ${new Date().toLocaleDateString()}`;
@@ -360,7 +335,7 @@ async function processMeditationJob(job) {
           const voiceSettings = resolveVoiceSettings(reflectionType);
           
           const output = await replicateClient.run(
-            "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+            REPLICATE_MODELS.tts,
             {
               input: {
                 text: segment,

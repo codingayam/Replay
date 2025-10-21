@@ -63,7 +63,6 @@ describe('JobContext auth integration', () => {
     await act(async () => {
       await result.current.createJob({
         noteIds: ['1'],
-        duration: 10,
         reflectionType: 'Meditation',
       } as any);
     });
@@ -72,6 +71,7 @@ describe('JobContext auth integration', () => {
       2,
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer test-bearer' }),
+        data: expect.objectContaining({ duration: 5 }),
       })
     );
   });

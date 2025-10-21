@@ -23,13 +23,14 @@ export interface MeditationJob {
 // Job creation parameters
 export interface JobCreationParams {
   noteIds: string[];
-  duration: number;
   reflectionType: string;
   startDate?: string;
   endDate?: string;
   title?: string;
   summary?: string;
 }
+
+const DEFAULT_JOB_DURATION_MINUTES = 5;
 
 // Context value interface
 interface JobContextValue {
@@ -102,7 +103,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
       
       const response = await makeAuthenticatedRequest('POST', '/meditate/jobs', {
         noteIds: params.noteIds,
-        duration: params.duration,
+        duration: DEFAULT_JOB_DURATION_MINUTES,
         reflectionType: params.reflectionType,
         startDate: params.startDate,
         endDate: params.endDate

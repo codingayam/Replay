@@ -9,7 +9,6 @@ interface ExperienceSelectionModalProps {
     onSelectExperiences: (selectedNoteIds: string[]) => void;
     startDate: string;
     endDate: string;
-    calculateRecommendedDuration: (experienceCount: number) => number;
 }
 
 interface NotesResponse {
@@ -22,7 +21,6 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
     onSelectExperiences,
     startDate,
     endDate,
-    calculateRecommendedDuration,
 }) => {
     const [notesData, setNotesData] = useState<NotesResponse | null>(null);
     const api = useAuthenticatedApi();
@@ -172,13 +170,6 @@ const ExperienceSelectionModal: React.FC<ExperienceSelectionModalProps> = ({
                                     </div>
                                 </div>
                                 
-                                {selectedNoteIds.size > 0 && (
-                                    <div style={styles.recommendationBox}>
-                                        <span style={styles.recommendationText}>
-                                            <strong>Recommended Duration:</strong> {calculateRecommendedDuration(selectedNoteIds.size)} minutes for {selectedNoteIds.size} experience{selectedNoteIds.size !== 1 ? 's' : ''}
-                                        </span>
-                                    </div>
-                                )}
                             </div>
 
                             {notesData.availableNotes.length === 0 ? (
@@ -378,18 +369,6 @@ const styles = {
     sessionDetail: {
         fontSize: '0.85rem',
         color: 'var(--text-secondary)',
-    },
-    recommendationBox: {
-        padding: '0.75rem 1rem',
-        backgroundColor: 'rgba(var(--primary-color-rgb), 0.05)',
-        borderRadius: '8px',
-        border: '1px solid rgba(var(--primary-color-rgb), 0.1)',
-        marginTop: '1rem',
-    },
-    recommendationText: {
-        fontSize: '0.9rem',
-        color: 'var(--primary-color)',
-        fontWeight: '500',
     },
     experiencesSection: {
         marginBottom: '1rem',

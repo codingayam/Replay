@@ -40,7 +40,6 @@ describe('ExperienceSelectionModal', () => {
     onSelectExperiences: jest.fn(),
     startDate: '2025-09-01',
     endDate: '2025-09-01',
-    calculateRecommendedDuration: jest.fn(() => 5),
   };
 
   beforeEach(() => {

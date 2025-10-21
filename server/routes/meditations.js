@@ -16,6 +16,13 @@ import {
   buildProgressSummary as buildProgressSummaryDefault
 } from '../utils/weeklyProgress.js';
 import { DEFAULT_TIMEZONE } from '../utils/week.js';
+import {
+  GEMINI_MODELS,
+  REPLICATE_MODELS,
+  buildMeditationTitlePrompt,
+  buildReflectionSummaryPrompt,
+  buildSynchronousMeditationScriptPrompt
+} from '../config/ai.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -328,28 +335,10 @@ export function registerMeditationRoutes(deps) {
   };
 
   const generateTitleAndSummary = async (script, reflectionType, fallbackTitle) => {
-    const prompt = `
-      You will receive the full script of a guided meditation session.
-      Analyse the content and respond with a concise JSON object using this shape:
-      {
-        "title": "Short, evocative meditation title",
-        "summary": "A short overview, maximum three sentences."
-      }
-
-      Requirements:
-      - The title must be fewer than 12 words.
-      - The summary must not exceed three sentences and should stay under 350 characters.
-      - Capture the core themes, tone, and intent of the meditation.
-      - Do not include markdown, quotes, or escape sequences.
-
-      Meditation script:
-      """
-      ${script}
-      """
-    `;
+    const prompt = buildMeditationTitlePrompt(script);
 
     try {
-      const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
       const result = await model.generateContent(prompt);
       const rawText = result.response.text();
       const parsed = extractJson(rawText) || {};
@@ -407,7 +396,7 @@ export function registerMeditationRoutes(deps) {
         .single();
 
       try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
       
         const experiencesText = notes.map(note => {
           // For photo notes, construct combined caption from separate fields for meditation generation
@@ -430,24 +419,11 @@ export function registerMeditationRoutes(deps) {
           Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
         ` : '';
 
-        const summaryPrompt = `
-          Create a thoughtful reflection summary for a guided meditation based on these personal experiences:
-        
-          ${profileContext}
-        
-          Experiences:
-          ${experiencesText}
-        
-          Time of reflection: ${timeOfReflection || 'Now'}
-        
-          Generate a warm, personal reflection that:
-          1. Identifies key themes and patterns
-          2. Highlights growth and insights
-          3. Connects experiences to values and mission
-          4. Prepares the mind for meditation
-        
-          Keep it meaningful but concise (2-3 paragraphs).
-        `;
+        const summaryPrompt = buildReflectionSummaryPrompt({
+          profileContext,
+          experiencesText,
+          timeOfReflection
+        });
 
         const result = await model.generateContent(summaryPrompt);
         const summary = result.response.text();
@@ -474,7 +450,9 @@ export function registerMeditationRoutes(deps) {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
-      const { noteIds, duration = 10, title, reflectionType } = req.body;
+      const { noteIds, duration: durationInput, title, reflectionType } = req.body;
+      const parsedDuration = typeof durationInput === 'number' ? durationInput : parseInt(durationInput, 10);
+      const durationMinutes = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 5;
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
         return res.status(400).json({ error: 'noteIds array is required' });
@@ -503,7 +481,7 @@ export function registerMeditationRoutes(deps) {
         .single();
 
       try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
       
         const experiencesText = notes.map(note => {
           // For photo notes, construct combined caption from separate fields for meditation generation
@@ -526,39 +504,12 @@ export function registerMeditationRoutes(deps) {
           Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
         ` : '';
 
-        // Create different prompts based on reflection type
-        const getScriptPrompt = (type) => {
-          const baseInstructions = `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Ideally, only add pauses to moments where it makes sense to do so, for instance when what was said provides a good opportunity to pause and reflect.
-          
-            ${profileContext}
-          
-            Experiences:
-            ${experiencesText}
-          
-            Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for rest and recharge.
-          
-            IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
-          `;
-
-          if (type === 'Day') {
-            return `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Ideally, only add pauses to moments where it makes sense to do so, for instance when what was said provides a good opportunity to pause and reflect.
-          
-            ${profileContext}
-          
-            Experiences:
-            ${experiencesText}
-
-            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead. Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for the day ahead.
-            
-            IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
-          }
-
-          return baseInstructions;
-        };
-
-        const scriptPrompt = getScriptPrompt(reflectionType);
+        const scriptPrompt = buildSynchronousMeditationScriptPrompt({
+          reflectionType,
+          duration: durationMinutes,
+          profileContext,
+          experiencesText
+        });
 
         const result = await model.generateContent(scriptPrompt);
         const script = result.response.text();
@@ -578,7 +529,7 @@ export function registerMeditationRoutes(deps) {
           }
 
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const logFileName = `${timestamp}_${userId.substring(0, 8)}_${duration}min.txt`;
+          const logFileName = `${timestamp}_${userId.substring(0, 8)}_${durationMinutes}min.txt`;
           const logFilePath = join(logsDir, logFileName);
 
           // Parse segments for logging
@@ -596,7 +547,7 @@ export function registerMeditationRoutes(deps) {
   ====================
   Generated: ${new Date().toISOString()}
   User ID: ${userId}
-  Duration: ${duration} minutes
+      Duration: ${durationMinutes} minutes
   Profile: ${profile?.name || 'Unknown'}
   Selected Experiences: ${noteIds?.length || 0}
 
@@ -657,14 +608,11 @@ export function registerMeditationRoutes(deps) {
                 };
               
                 console.log('📤 Replicate API call:', {
-                  model: "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
+                  model: REPLICATE_MODELS.tts,
                   input: replicateInput
                 });
               
-                const output = await replicate.run(
-                  "jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13",
-                  { input: replicateInput }
-                );
+                const output = await replicate.run(REPLICATE_MODELS.tts, { input: replicateInput });
 
                 // Get the audio URL from the response
                 const audioUrl = output.url().toString();
@@ -717,7 +665,7 @@ export function registerMeditationRoutes(deps) {
 
           let audioResult;
           try {
-            audioResult = await transcodeAudio(finalAudioBuffer, { reflectionType, duration });
+            audioResult = await transcodeAudio(finalAudioBuffer, { reflectionType, duration: durationMinutes });
           } catch (transcodeError) {
             console.warn('Audio transcode threw unexpectedly, using WAV fallback:', transcodeError.message);
             audioResult = {
@@ -827,8 +775,8 @@ export function registerMeditationRoutes(deps) {
         }
 
         // Ensure we have a minimum valid duration (fallback to requested duration in seconds)
-        if (totalDuration <= 0 && duration) {
-          totalDuration = duration * 60; // Convert minutes to seconds
+        if (totalDuration <= 0 && durationMinutes) {
+          totalDuration = durationMinutes * 60; // Convert minutes to seconds
         }
 
         // Final fallback if everything fails
@@ -1290,14 +1238,16 @@ export function registerMeditationRoutes(deps) {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
-      const { noteIds, duration, reflectionType, startDate, endDate } = req.body;
+      const { noteIds, duration: durationInput, reflectionType, startDate, endDate } = req.body;
+      const parsedDuration = typeof durationInput === 'number' ? durationInput : parseInt(durationInput, 10);
+      const durationMinutes = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 5;
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
         return res.status(400).json({ error: 'noteIds array is required' });
       }
 
-      if (!duration || !reflectionType) {
-        return res.status(400).json({ error: 'duration and reflectionType are required' });
+      if (!reflectionType) {
+        return res.status(400).json({ error: 'reflectionType is required' });
       }
 
       // Create job record
@@ -1308,7 +1258,7 @@ export function registerMeditationRoutes(deps) {
           status: 'pending',
           job_type: reflectionType.toLowerCase(),
           note_ids: noteIds,
-          duration: parseInt(duration),
+          duration: durationMinutes,
           reflection_type: reflectionType,
           start_date: startDate || null,
           end_date: endDate || null

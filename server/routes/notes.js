@@ -10,6 +10,14 @@ import {
   sendOneSignalEvent as sendOneSignalEventDefault,
   attachExternalIdToSubscription as attachExternalIdToSubscriptionDefault
 } from '../utils/onesignal.js';
+import {
+  GEMINI_MODELS,
+  AUDIO_TRANSCRIPTION_PROMPT,
+  buildAudioNoteTitlePrompt,
+  PHOTO_VISION_PROMPT,
+  buildPhotoTitlePrompt,
+  TEXT_NOTE_VISION_PROMPT
+} from '../config/ai.js';
 
 export function registerNotesRoutes(deps) {
   const { app, requireAuth, supabase, upload, uuidv4, gemini } = deps;
@@ -479,35 +487,15 @@ export function registerNotesRoutes(deps) {
         return res.status(400).json({ error: 'Audio file is required' });
       }
 
-      // Generate unique filename
       const noteId = uuidv4();
-      const fileExtension = req.file.originalname.split('.').pop();
-      const fileName = `${noteId}.${fileExtension}`;
-
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('audio')
-        .upload(`${userId}/${fileName}`, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Storage upload error:', uploadError);
-        return res.status(500).json({ error: 'Failed to upload audio file' });
-      }
-
-      // Get signed URL for the uploaded file
-      const { data: urlData } = await supabase.storage
-        .from('audio')
-        .createSignedUrl(`${userId}/${fileName}`, 3600 * 24 * 365); // 1 year
+      // Audio is processed for transcription only; do not persist the raw recording.
 
       // Transcribe audio using Gemini 2.0 Flash Lite
       let transcript = '';
       let title = '';
     
       try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.transcription });
       
         // Convert audio buffer to base64 for Gemini
         const audioBase64 = req.file.buffer.toString('base64');
@@ -520,17 +508,14 @@ export function registerNotesRoutes(deps) {
               mimeType: req.file.mimetype
             }
           },
-          'Please transcribe this audio recording. Return only the transcribed text without any additional formatting or commentary.'
+          AUDIO_TRANSCRIPTION_PROMPT
         ]);
       
         transcript = transcribeResult.response.text().trim();
       
         // Generate title from transcript
         if (transcript && transcript !== 'Transcription failed') {
-          const titleResult = await model.generateContent(
-            `Generate a short, meaningful title (max 50 characters) for this transcribed note: "${transcript}". 
-            Return only the title text itself. Do not include quotes, labels, explanations, punctuation before/after, or any other text.`
-          );
+          const titleResult = await model.generateContent(buildAudioNoteTitlePrompt(transcript));
           title = titleResult.response.text().trim().substring(0, 50);
         } else {
           title = 'Audio Note';
@@ -553,7 +538,7 @@ export function registerNotesRoutes(deps) {
           transcript,
           type: 'audio',
           date: date || new Date().toISOString(),
-          audio_url: urlData?.signedUrl || `${userId}/${fileName}`,
+          audio_url: null,
           duration: 0 // You'd calculate this from the audio file
         }])
         .select()
@@ -670,8 +655,8 @@ export function registerNotesRoutes(deps) {
       let title = 'Photo Note';
 
       try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const visionPrompt = `Analyze this image in detail. Describe what you see including: objects, people, setting, colors, lighting, mood, and notable details. Provide a concise description in 1-3 sentences tailored for personal reflection.`;
+        const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
+        const visionPrompt = PHOTO_VISION_PROMPT;
 
         for (const file of files) {
           try {
@@ -721,7 +706,7 @@ export function registerNotesRoutes(deps) {
 
         if (combinedAiDescription) {
           try {
-            const titlePrompt = `Create a short, meaningful title (max 50 characters) for this combined photo description: "${combinedAiDescription}". Return only the title.`;
+            const titlePrompt = buildPhotoTitlePrompt(combinedAiDescription);
             const titleResult = await model.generateContent(titlePrompt);
             const generatedTitle = titleResult.response.text().trim();
             if (generatedTitle) {
@@ -873,8 +858,8 @@ export function registerNotesRoutes(deps) {
         }
 
         try {
-          const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
-          const visionPrompt = `Analyze this supporting image for a written journal entry. Describe key visual elements, mood, and context in 1-2 sentences useful for reflection.`;
+          const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
+          const visionPrompt = TEXT_NOTE_VISION_PROMPT;
 
           const descriptions = [];
           for (const file of files) {

@@ -1,17 +1,16 @@
 
 import React, { useEffect, useState } from 'react';
-import { PlayCircle, Trash2, Edit2, Save, X, ChevronRight } from 'lucide-react';
+import { Trash2, Edit2, Save, X, ChevronRight } from 'lucide-react';
 import type { Note } from '../types';
 import { getFileUrl } from '../utils/api';
 
 interface NoteCardProps {
     note: Note;
-    onPlay: (audioUrl: string) => void;
     onDelete: (id: string) => void;
     onUpdateTranscript?: (id: string, transcript: string) => void;
 }
 
-const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTranscript }) => {
+const NoteCard: React.FC<NoteCardProps> = ({ note, onDelete, onUpdateTranscript }) => {
     const [showDetails, setShowDetails] = useState(false);
     const [isEditingTranscript, setIsEditingTranscript] = useState(false);
     const [editedTranscript, setEditedTranscript] = useState(note.transcript);
@@ -185,18 +184,6 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, onPlay, onDelete, onUpdateTra
                     
                     {/* Controls */}
                     <div style={styles.controls}>
-                        {isAudioNote && note.audioUrl && (
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onPlay(note.audioUrl!);
-                                }} 
-                                style={styles.button}
-                            >
-                                <PlayCircle />
-                                Play Audio
-                            </button>
-                        )}
                         <button 
                             onClick={(e) => {
                                 e.stopPropagation();

@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { PlayCircle, Trash2, Edit, Image as ImageIcon, X, Play, Mic, FileText } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Trash2, Edit, Image as ImageIcon, Mic, FileText } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
 import Header from '../components/Header';
 import SearchResults from '../components/SearchResults';
 import SearchResultModal from '../components/SearchResultModal';
-import DurationSelectorModal from '../components/DurationSelectorModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
 import MeditationPlayer from '../components/MeditationPlayer';
@@ -19,24 +18,10 @@ interface PlaylistItem {
 }
 import { useAuthenticatedApi } from '../utils/api';
 import { groupNotesByDate, sortDateGroups } from '../utils/dateUtils';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 import { useResponsive } from '../hooks/useResponsive';
 import useWeeklyProgress from '../hooks/useWeeklyProgress';
 import { useJobs } from '../contexts/JobContext';
 import { compressImage } from '../utils/compressImage';
-
-type AudioContextConstructor = typeof AudioContext;
-
-const getAudioContextConstructor = (): AudioContextConstructor | undefined => {
-    if (typeof window === 'undefined') {
-        return undefined;
-    }
-    const browserWindow = window as Window & {
-        webkitAudioContext?: AudioContextConstructor;
-    };
-    return browserWindow.AudioContext || browserWindow.webkitAudioContext;
-};
 
 const getNoteImages = (note: Note) => {
     if (note.imageUrls && note.imageUrls.length > 0) {
@@ -58,13 +43,10 @@ const toIsoWithCurrentTime = (datePart: string) => {
     return new Date(`${datePart}T${hours}:${minutes}:${seconds}`).toISOString();
 };
 
+const DEFAULT_DURATION_MINUTES = 5;
+
 const ExperiencesPage: React.FC = () => {
     const [notes, setNotes] = useState<Note[]>([]);
-    const [currentAudio, setCurrentAudio] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const audioRef = useRef<HTMLAudioElement>(null);
-    const audioUnlockedRef = useRef(false);
-    const audioContextRef = useRef<AudioContext | null>(null);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [isUploadingText, setIsUploadingText] = useState(false);
     const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -89,28 +71,16 @@ const ExperiencesPage: React.FC = () => {
     const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
     
     // Meditative replay state
-    const [showDurationModal, setShowDurationModal] = useState(false);
     const [showReadyToBeginModal, setShowReadyToBeginModal] = useState(false);
     const [showMeditationGeneratingModal, setShowMeditationGeneratingModal] = useState(false);
     const [meditationPlaylist, setMeditationPlaylist] = useState<PlaylistItem[] | null>(null);
     const [currentMeditationId, setCurrentMeditationId] = useState<string | null>(null);
-    const [selectedDuration, setSelectedDuration] = useState(5);
-    const [recommendedDuration, setRecommendedDuration] = useState(5);
     const api = useAuthenticatedApi();
-    const { user } = useAuth();
     const { isDesktop } = useResponsive();
     const { refresh: refreshWeeklyProgress } = useWeeklyProgress();
     const { createJob } = useJobs();
     
-    // Calculate recommended duration based on number of experiences
-    const calculateRecommendedDuration = (experienceCount: number): number => {
-        if (experienceCount <= 3) return 5;
-        if (experienceCount <= 6) return 10;
-        if (experienceCount <= 9) return 15;
-        return 20;
-    };
-
-    const fetchNotes = async () => {
+    const fetchNotes = useCallback(async () => {
         try {
             const res = await api.get('/notes');
             // Sort notes by date, most recent first
@@ -121,124 +91,11 @@ const ExperiencesPage: React.FC = () => {
         } catch (err) {
             console.error("Error fetching notes:", err);
         }
-    };
+    }, [api]);
 
     useEffect(() => {
         fetchNotes();
-    }, []);
-
-    useEffect(() => {
-        const AudioContextClass = getAudioContextConstructor();
-        // Tiny silent WAV; keeps fallback broadly compatible if AudioContext resume fails.
-        const unlockSrc = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-
-        const tryResumeAudioContext = () => {
-            if (!AudioContextClass) {
-                return Promise.resolve(false);
-            }
-
-            if (!audioContextRef.current) {
-                try {
-                    audioContextRef.current = new AudioContextClass();
-                } catch (error) {
-                    console.warn('Unable to create AudioContext:', error);
-                    return Promise.resolve(false);
-                }
-            }
-
-            const audioContext = audioContextRef.current;
-            if (!audioContext) {
-                return Promise.resolve(false);
-            }
-
-            if (audioContext.state === 'running') {
-                return Promise.resolve(true);
-            }
-
-            try {
-                const resumeResult = audioContext.resume();
-                if (resumeResult && typeof resumeResult.then === 'function') {
-                    return resumeResult
-                        .then(() => true)
-                        .catch((error) => {
-                            console.warn('AudioContext resume failed:', error);
-                            return false;
-                        });
-                }
-                return Promise.resolve(audioContext.state === 'running');
-            } catch (error) {
-                console.warn('AudioContext resume threw an error:', error);
-                return Promise.resolve(false);
-            }
-        };
-
-        const tryUnlockWithAudioElement = () => {
-            const audio = audioRef.current;
-            if (!audio) {
-                return Promise.resolve(false);
-            }
-
-            audio.muted = true;
-            audio.src = unlockSrc;
-            const playPromise = audio.play();
-
-            if (playPromise && typeof playPromise.then === 'function') {
-                return playPromise
-                    .then(() => true)
-                    .catch((error) => {
-                        console.warn('Audio element unlock failed:', error);
-                        return false;
-                    })
-                    .finally(() => {
-                        audio.pause();
-                        audio.currentTime = 0;
-                        audio.src = '';
-                        audio.muted = false;
-                    });
-            }
-
-            // Older browsers may not return a promise; assume unlock succeeded
-            audio.pause();
-            audio.currentTime = 0;
-            audio.src = '';
-            audio.muted = false;
-            return Promise.resolve(true);
-        };
-
-        const finalizeUnlock = () => {
-            audioUnlockedRef.current = true;
-            window.removeEventListener('pointerdown', unlockAudio, true);
-        };
-
-        const unlockAudio = () => {
-            if (audioUnlockedRef.current) {
-                return;
-            }
-
-            tryResumeAudioContext()
-                .then((contextUnlocked) => {
-                    if (contextUnlocked) {
-                        finalizeUnlock();
-                        return true;
-                    }
-                    return tryUnlockWithAudioElement().then((elementUnlocked) => {
-                        if (elementUnlocked) {
-                            finalizeUnlock();
-                        }
-                        return elementUnlocked;
-                    });
-                })
-                .catch((error) => {
-                    console.warn('Audio unlock attempt failed:', error);
-                });
-        };
-
-        window.addEventListener('pointerdown', unlockAudio, true);
-
-        return () => {
-            window.removeEventListener('pointerdown', unlockAudio, true);
-        };
-    }, []);
+    }, [fetchNotes]);
 
     const normalizeNoteDate = (value?: string) => {
         if (!value) {
@@ -429,84 +286,6 @@ const ExperiencesPage: React.FC = () => {
         );
     };
 
-    const handlePlayNote = async (audioUrl: string) => {
-        console.log('🎵 handlePlayNote called with audioUrl:', audioUrl);
-        const audioElement = audioRef.current;
-        if (!audioElement) {
-            console.error('❌ Audio element is not available');
-            return;
-        }
-
-        if (audioUrl && user) {
-            try {
-                let signedUrl = '';
-                
-                // Check if this is a Supabase Storage path or server path
-                if (audioUrl.startsWith('/audio/')) {
-                    console.log('🔍 Processing server path:', audioUrl);
-                    // Extract the file path from server URL format: /audio/userId/filename
-                    const pathParts = audioUrl.split('/');
-                    console.log('📂 Path parts:', pathParts);
-                    if (pathParts.length >= 4) {
-                        const userId = pathParts[2];
-                        const filename = pathParts.slice(3).join('/');
-                        const storagePath = `${userId}/${filename}`;
-                        console.log('🗂️ Storage path:', storagePath);
-                        
-                        // Generate signed URL from Supabase Storage
-                        const { data, error } = await supabase.storage
-                            .from('audio')
-                            .createSignedUrl(storagePath, 3600); // 1 hour expiry
-                            
-                        if (error) {
-                            console.error('❌ Error creating signed URL:', error);
-                            return;
-                        }
-                        
-                        signedUrl = data.signedUrl;
-                        console.log('✅ Generated signed URL:', signedUrl);
-                    } else {
-                        console.error('❌ Invalid path parts length:', pathParts.length);
-                    }
-                } else {
-                    console.log('🌐 Using direct URL:', audioUrl);
-                    // If it's already a full URL, use it directly
-                    signedUrl = audioUrl;
-                }
-                
-                console.log('🎯 Final signedUrl:', signedUrl);
-                setCurrentAudio(signedUrl);
-
-                // Update the singleton audio element immediately
-                if (signedUrl) {
-                    console.log('▶️ Setting audio src and playing');
-                    audioElement.pause();
-                    audioElement.currentTime = 0;
-                    audioElement.src = signedUrl;
-                    audioElement.load();
-                    audioElement.muted = false;
-                    try {
-                        await audioElement.play();
-                        console.log('✅ Audio play succeeded');
-                        setIsPlaying(true);
-                    } catch (e) {
-                        console.error('❌ Audio play failed:', e);
-                        setIsPlaying(false);
-                    }
-                } else {
-                    console.error('❌ No signedUrl available');
-                }
-            } catch (error) {
-                console.error('❌ Error preparing audio for playback:', error);
-            }
-        } else {
-            console.error('❌ Missing audioUrl or user:', { audioUrl, user: !!user });
-        }
-    };
-
-
-
-
     const handleToggleExpand = (noteId: string) => {
         setExpandedNoteId(expandedNoteId === noteId ? null : noteId);
     };
@@ -584,23 +363,12 @@ const ExperiencesPage: React.FC = () => {
         if (selectedNoteIds.size === 0) {
             return;
         }
-
-        const calculatedDuration = calculateRecommendedDuration(selectedNoteIds.size);
-        setRecommendedDuration(calculatedDuration);
-        setSelectedDuration(calculatedDuration);
-        setShowDurationModal(true);
-    };
-
-    // Meditative replay modal handlers
-    const handleDurationSelection = (duration: number) => {
-        setSelectedDuration(duration);
-        setShowDurationModal(false);
         setShowReadyToBeginModal(true);
     };
 
+    // Meditative replay modal handlers
     const handleReadyToBeginBack = () => {
         setShowReadyToBeginModal(false);
-        setShowDurationModal(true);
     };
 
     const handleReadyToBeginStart = async () => {
@@ -611,7 +379,6 @@ const ExperiencesPage: React.FC = () => {
             console.log('🧘 Queuing background meditation job from selected experiences...');
             const jobResponse = await createJob({
                 noteIds: Array.from(selectedNoteIds),
-                duration: selectedDuration,
                 reflectionType: 'Night'
             });
 
@@ -653,10 +420,6 @@ const ExperiencesPage: React.FC = () => {
     if (meditationPlaylist) {
         return <MeditationPlayer playlist={meditationPlaylist} onFinish={handleMeditationFinish} meditationId={currentMeditationId || undefined} />;
     }
-
-    const bottomPlayerStyle = currentAudio
-        ? styles.bottomPlayerContainer
-        : { ...styles.bottomPlayerContainer, display: 'none' };
 
     return (
         <div style={isDesktop ? styles.desktopContainer : styles.container}>
@@ -718,7 +481,7 @@ const ExperiencesPage: React.FC = () => {
             ) : (
                 <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
                     <div style={styles.timeline}>
-                    {sortedDateGroups.map((dateGroup, groupIndex) => {
+                    {sortedDateGroups.map((dateGroup) => {
                         const groupNotes = groupedNotes[dateGroup].sort((a, b) => 
                             new Date(b.date).getTime() - new Date(a.date).getTime()
                         );
@@ -728,7 +491,7 @@ const ExperiencesPage: React.FC = () => {
                                 {/* Date category header */}
                                 <h2 style={styles.dateHeader}>{dateGroup}</h2>
                                 
-                                {groupNotes.map((note, noteIndex) => {
+                                {groupNotes.map((note) => {
                                     const isExpanded = expandedNoteId === note.id;
                                     const isSelected = selectedNoteIds.has(note.id);
                                     
@@ -809,15 +572,6 @@ const ExperiencesPage: React.FC = () => {
                                                                 <div style={styles.transcript}>
                                                                     <p style={styles.transcriptText}>{note.transcript}</p>
                                                                 </div>
-                                                                <div style={styles.audioControls}>
-                                                                    <button 
-                                                                        onClick={() => handlePlayNote(note.audioUrl!)}
-                                                                        style={styles.playButton}
-                                                                    >
-                                                                        <PlayCircle size={16} />
-                                                                        Play Audio
-                                                                    </button>
-                                                                </div>
                                                             </div>
                                                         ) : note.type === 'text' ? (
                                                             <div>
@@ -892,49 +646,11 @@ const ExperiencesPage: React.FC = () => {
                 onClose={handleCloseModal}
                 noteId={selectedNoteId}
                 searchQuery={searchQuery}
-                onPlay={handlePlayNote}
                 onDelete={handleDeleteNoteFromSearch}
             />
 
-            {/* Bottom Audio Player */}
-            <div style={bottomPlayerStyle}>
-                <div style={styles.playerHeader}>
-                    <div style={styles.playerIndicator}>
-                        {isPlaying ? (
-                                <Play size={16} style={{ color: '#3b82f6' }} />
-                            ) : (
-                                <PlayCircle size={16} style={{ color: '#3b82f6' }} />
-                            )}
-                            <span style={styles.playingText}>Playing Note</span>
-                        </div>
-                        <button 
-                            onClick={() => {
-                                setCurrentAudio(null);
-                                setIsPlaying(false);
-                                if (audioRef.current) {
-                                    audioRef.current.pause();
-                                    audioRef.current.src = '';
-                                }
-                            }}
-                            style={styles.closeButton}
-                        >
-                            <X size={16} />
-                        </button>
-                    <audio
-                        ref={audioRef}
-                        controls
-                        style={styles.bottomAudioPlayer}
-                        preload="none"
-                        playsInline
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
-                        onEnded={() => setIsPlaying(false)}
-                    />
-                </div>
-            </div>
-
             {/* Selection Bar */}
-            {selectionMode && !showDurationModal && !showReadyToBeginModal && !showMeditationGeneratingModal && (
+            {selectionMode && !showReadyToBeginModal && !showMeditationGeneratingModal && (
                 <div style={styles.selectionBar}>
                     <div style={styles.selectionBarContent}>
                         <span style={styles.selectionCount}>{selectedNoteIds.size} selected</span>
@@ -963,14 +679,6 @@ const ExperiencesPage: React.FC = () => {
                     </button>
                 </div>
             )}
-            {/* Duration Selection Modal */}
-            <DurationSelectorModal
-                isOpen={showDurationModal}
-                onClose={() => setShowDurationModal(false)}
-                onSelectDuration={handleDurationSelection}
-                recommendedDuration={recommendedDuration}
-            />
-
             {/* Ready to Begin Modal */}
             <ReadyToBeginModal
                 isOpen={showReadyToBeginModal}
@@ -980,7 +688,7 @@ const ExperiencesPage: React.FC = () => {
                 reflectionType="Night Meditation"
                 period="Selected Experiences"
                 experienceCount={selectedNoteIds.size}
-                duration={selectedDuration}
+                duration={DEFAULT_DURATION_MINUTES}
             />
 
             {/* Meditation Generating Modal */}
@@ -1092,51 +800,6 @@ const styles = {
         maxWidth: '100%',
         margin: '-1rem auto 0 auto',
         boxSizing: 'border-box',
-    },
-    bottomPlayerContainer: {
-        position: 'fixed' as const,
-        bottom: '80px', // Above bottom navigation
-        left: '0',
-        right: '0',
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(10px)',
-        borderTop: '1px solid #e5e7eb',
-        padding: '12px 16px',
-        zIndex: 1000,
-        boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.1)',
-    },
-    playerHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '8px',
-    },
-    playerIndicator: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-    },
-    closeButton: {
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        padding: '4px',
-        borderRadius: '4px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#6b7280',
-        transition: 'color 0.2s, background-color 0.2s',
-    },
-    playingText: {
-        fontSize: '0.85rem',
-        fontWeight: '500',
-        color: '#3b82f6',
-        fontFamily: 'var(--font-family)',
-    },
-    bottomAudioPlayer: {
-        width: '100%',
-        height: '32px',
     },
     timeline: {
         position: 'relative' as const,
@@ -1292,24 +955,6 @@ const styles = {
         fontSize: '0.9rem',
         lineHeight: '1.6',
         color: '#374151',
-    },
-    audioControls: {
-        marginBottom: '1rem',
-    },
-    playButton: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        padding: '0.75rem 1.5rem',
-        backgroundColor: '#3b82f6',
-        color: 'white',
-        border: 'none',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        fontSize: '0.9rem',
-        fontWeight: '500',
-        transition: 'background-color 0.2s',
-        fontFamily: 'var(--font-family)',
     },
     photoContainer: {
         marginBottom: '1rem',

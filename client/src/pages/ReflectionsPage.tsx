@@ -5,7 +5,6 @@ import MeditationPlayer from '../components/MeditationPlayer';
 import MeditationSubTypeModal from '../components/MeditationSubTypeModal';
 import TimePeriodModal from '../components/TimePeriodModal';
 import ReadyToBeginModal from '../components/ReadyToBeginModal';
-import DurationSelectorModal from '../components/DurationSelectorModal';
 import ExperienceSelectionModal from '../components/ExperienceSelectionModal';
 import MeditationGenerationModal from '../components/MeditationGenerationModal';
 import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
@@ -45,6 +44,8 @@ type ApiMeditation = SavedMeditation & {
     audio_seconds_remaining?: number;
 };
 
+const DEFAULT_DURATION_MINUTES = 5;
+
 const ReflectionsPage: React.FC = () => {
     const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>([]);
     const [isLoadingMeditation, setIsLoadingMeditation] = useState(false);
@@ -74,7 +75,6 @@ const ReflectionsPage: React.FC = () => {
     const [showMeditationSubTypeModal, setShowMeditationSubTypeModal] = useState(false);
     const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
     const [showExperienceModal, setShowExperienceModal] = useState(false);
-    const [showDurationModal, setShowDurationModal] = useState(false);
     const [showReadyToBeginModal, setShowReadyToBeginModal] = useState(false);
     const [showGenerationModal, setShowGenerationModal] = useState(false);
     const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
@@ -84,8 +84,6 @@ const ReflectionsPage: React.FC = () => {
     const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night'>('Day');
     const [selectedStartDate, setSelectedStartDate] = useState('');
     const [selectedEndDate, setSelectedEndDate] = useState('');
-    const [selectedDuration, setSelectedDuration] = useState(5);
-    const [recommendedDuration, setRecommendedDuration] = useState(5);
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
     const [generatedSummary, setGeneratedSummary] = useState<string>('');
     const [generatedPlaylist, setGeneratedPlaylist] = useState<PlaylistItem[] | null>(null);
@@ -213,35 +211,15 @@ const ReflectionsPage: React.FC = () => {
         setShowTimePeriodModal(false);
         setShowExperienceModal(true);
     };
-
-
-
-    // Calculate recommended duration based on number of experiences
-    const calculateRecommendedDuration = (experienceCount: number): number => {
-        if (experienceCount <= 3) return 5;
-        if (experienceCount <= 6) return 10;
-        if (experienceCount <= 9) return 15;
-        return 20;
-    };
-
     const handleExperienceSelection = (noteIds: string[]) => {
         setSelectedNoteIds(noteIds);
-        const calculatedDuration = calculateRecommendedDuration(noteIds.length);
-        setRecommendedDuration(calculatedDuration);
-        setSelectedDuration(calculatedDuration);
         setShowExperienceModal(false);
-        setShowDurationModal(true);
-    };
-
-    const handleDurationSelection = (duration: number) => {
-        setSelectedDuration(duration);
-        setShowDurationModal(false);
         setShowReadyToBeginModal(true);
     };
 
     const handleReadyToBeginBack = () => {
         setShowReadyToBeginModal(false);
-        setShowDurationModal(true);
+        setShowExperienceModal(true);
     };
 
     const handleReadyToBeginStart = async () => {
@@ -253,7 +231,6 @@ const ReflectionsPage: React.FC = () => {
             console.log('🧘 Queuing background meditation job...');
             const jobResponse = await createJob({
                 noteIds: selectedNoteIds,
-                duration: selectedDuration,
                 reflectionType: selectedReflectionType,
                 startDate: selectedStartDate,
                 endDate: selectedEndDate
@@ -269,7 +246,6 @@ const ReflectionsPage: React.FC = () => {
             setSelectedReflectionType('Day');
             setSelectedStartDate('');
             setSelectedEndDate('');
-            setSelectedDuration(5);
             setSelectedNoteIds([]);
         } catch (err) {
             console.error('Error queuing meditation job:', err);
@@ -304,7 +280,6 @@ const ReflectionsPage: React.FC = () => {
         setSelectedReflectionType('Day');
         setSelectedStartDate('');
         setSelectedEndDate('');
-        setSelectedDuration(5);
         setSelectedNoteIds([]);
         setGeneratedSummary('');
         setGeneratedPlaylist(null);
@@ -319,7 +294,6 @@ const ReflectionsPage: React.FC = () => {
         setSelectedReflectionType('Day');
         setSelectedStartDate('');
         setSelectedEndDate('');
-        setSelectedDuration(5);
         setSelectedNoteIds([]);
         setGeneratedSummary('');
         fetchSavedMeditations(); // Refresh the saved meditations list
@@ -397,8 +371,7 @@ const ReflectionsPage: React.FC = () => {
                     <div style={styles.desktopHeaderContent}>
                         <div style={styles.desktopTitleSection}>
                             <h1 style={styles.desktopTitle}>Reflections</h1>
-                            <p style={styles.desktopSubtitle}>Your completed meditation and reflection sessions</p>
-                            <span style={styles.sessionCount}>{savedMeditations.length} sessions</span>
+                            <p style={styles.desktopSubtitle}>Your meditation and reflection sessions</p>
                         </div>
                     </div>
                 </div>
@@ -546,14 +519,6 @@ const ReflectionsPage: React.FC = () => {
                 onSelectExperiences={handleExperienceSelection}
                 startDate={selectedStartDate}
                 endDate={selectedEndDate}
-                calculateRecommendedDuration={calculateRecommendedDuration}
-            />
-            
-            <DurationSelectorModal
-                isOpen={showDurationModal}
-                onClose={() => setShowDurationModal(false)}
-                onSelectDuration={handleDurationSelection}
-                recommendedDuration={recommendedDuration}
             />
             
             <ReadyToBeginModal
@@ -564,7 +529,7 @@ const ReflectionsPage: React.FC = () => {
                 reflectionType={selectedReflectionType}
                 period={formatDateRange()}
                 experienceCount={selectedNoteIds.length}
-                duration={selectedDuration}
+                duration={DEFAULT_DURATION_MINUTES}
             />
             
             
@@ -573,7 +538,7 @@ const ReflectionsPage: React.FC = () => {
                 onClose={() => setShowGenerationModal(false)}
                 onPlayNow={handlePlayNow}
                 onSaveLater={handleSaveLater}
-                duration={selectedDuration}
+                duration={DEFAULT_DURATION_MINUTES}
                 noteCount={selectedNoteIds.length}
                 summary={generatedSummary}
             />
