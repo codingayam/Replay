@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { AxiosError } from 'axios';
 import { Trash2, Edit, Image as ImageIcon, Mic, FileText } from 'lucide-react';
 import FloatingUploadButton from '../components/FloatingUploadButton';
 import SupabaseImage from '../components/SupabaseImage';
@@ -22,6 +23,7 @@ import { useResponsive } from '../hooks/useResponsive';
 import useWeeklyProgress from '../hooks/useWeeklyProgress';
 import { useJobs } from '../contexts/JobContext';
 import { compressImage } from '../utils/compressImage';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 const getNoteImages = (note: Note) => {
     if (note.imageUrls && note.imageUrls.length > 0) {
@@ -79,6 +81,9 @@ const ExperiencesPage: React.FC = () => {
     const { isDesktop } = useResponsive();
     const { refresh: refreshWeeklyProgress } = useWeeklyProgress();
     const { createJob } = useJobs();
+    const { isPremium, meditations, showPaywall, refresh: refreshSubscription } = useSubscription();
+    const remainingMeditations = meditations?.remaining ?? null;
+    const weeklyMeditationLimit = meditations?.weeklyLimit ?? null;
     
     const fetchNotes = useCallback(async () => {
         try {
@@ -152,8 +157,15 @@ const ExperiencesPage: React.FC = () => {
             fetchNotes();
             await refreshWeeklyProgress();
         } catch (err) {
-            console.error("Error saving photo note:", err);
-            alert('Failed to save photo note. See console for details.');
+            const axiosError = err as AxiosError<{ message?: string; code?: string }>;
+            if (axiosError.response?.status === 402) {
+                const message = axiosError.response.data?.message || 'Photo notes are available with Replay Premium.';
+                alert(message);
+                showPaywall();
+            } else {
+                console.error('Error saving photo note:', err);
+                alert('Failed to save photo note. See console for details.');
+            }
         } finally {
             setIsUploadingPhoto(false);
         }
@@ -182,8 +194,15 @@ const ExperiencesPage: React.FC = () => {
             fetchNotes();
             await refreshWeeklyProgress();
         } catch (err) {
-            console.error("Error saving text note:", err);
-            alert('Failed to save text note. See console for details.');
+            const axiosError = err as AxiosError<{ message?: string; code?: string }>;
+            if (axiosError.response?.status === 402) {
+                const message = axiosError.response.data?.message || 'Photo attachments in text notes require Replay Premium.';
+                alert(message);
+                showPaywall();
+            } else {
+                console.error('Error saving text note:', err);
+                alert('Failed to save text note. See console for details.');
+            }
         } finally {
             setIsUploadingText(false);
         }
@@ -363,6 +382,11 @@ const ExperiencesPage: React.FC = () => {
         if (selectedNoteIds.size === 0) {
             return;
         }
+        if (!isPremium && meditations && meditations.remaining <= 0) {
+            alert('You have reached the weekly limit of 2 meditation generations on the free plan. Upgrade to Replay Premium for unlimited sessions.');
+            showPaywall();
+            return;
+        }
         setShowReadyToBeginModal(true);
     };
 
@@ -388,11 +412,20 @@ const ExperiencesPage: React.FC = () => {
             setMeditationPlaylist(null);
             setCurrentMeditationId(null);
             handleClearSelection();
+            await refreshSubscription();
 
             alert('Your meditation is being generated in the background. We’ll notify you when it is ready.');
         } catch (err) {
-            console.error('Error queuing meditation job:', err);
-            alert('Failed to start meditation generation. Please try again.');
+            const axiosError = err as AxiosError<{ message?: string; code?: string }>;
+            if (axiosError.response?.status === 402) {
+                const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue generating meditations.';
+                alert(message);
+                showPaywall();
+                await refreshSubscription();
+            } else {
+                console.error('Error queuing meditation job:', err);
+                alert('Failed to start meditation generation. Please try again.');
+            }
             setShowMeditationGeneratingModal(false);
         }
     };
@@ -670,6 +703,27 @@ const ExperiencesPage: React.FC = () => {
             {/* Replay Button */}
             {selectedNoteIds.size > 0 && (
                 <div style={styles.replayButtonContainer}>
+                    {!isPremium && meditations && (
+                        <div style={styles.replayInfoRow}>
+                            <p style={styles.meditationCreditText}>
+                                {typeof remainingMeditations === 'number'
+                                    ? (remainingMeditations > 0
+                                        ? `You have ${remainingMeditations} meditation${remainingMeditations === 1 ? '' : 's'} remaining this week.`
+                                        : 'You have used all free meditations this week.')
+                                    : 'Checking your weekly balance...'}
+                                {meditations.weekResetAt && typeof remainingMeditations === 'number' && (
+                                    <span style={styles.meditationResetText}>
+                                        {' '}Resets {new Date(meditations.weekResetAt).toLocaleDateString()}.
+                                    </span>
+                                )}
+                            </p>
+                            {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
+                                <button type="button" style={styles.upgradeLinkButton} onClick={showPaywall}>
+                                    Unlock Premium
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <button 
                         onClick={handleGenerateFromSelection}
                         style={styles.replayButton}
@@ -689,6 +743,37 @@ const ExperiencesPage: React.FC = () => {
                 period="Selected Experiences"
                 experienceCount={selectedNoteIds.size}
                 duration={DEFAULT_DURATION_MINUTES}
+                extraContent={isPremium
+                    ? <span>You’re on Replay Premium—enjoy unlimited meditation generations.</span>
+                    : (
+                        <div>
+                            <p style={{ margin: 0 }}>
+                                {typeof remainingMeditations === 'number'
+                                    ? (remainingMeditations > 0
+                                        ? `You have ${remainingMeditations} of ${weeklyMeditationLimit ?? 2} meditations remaining this week.`
+                                        : 'You have used all free meditations this week.')
+                                    : 'Checking your weekly balance...'}
+                            </p>
+                            {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
+                                <button
+                                    type="button"
+                                    onClick={showPaywall}
+                                    style={{
+                                        marginTop: '0.75rem',
+                                        border: 'none',
+                                        borderRadius: '999px',
+                                        padding: '0.5rem 1.1rem',
+                                        backgroundColor: 'var(--primary-color)',
+                                        color: '#fff',
+                                        fontWeight: 600,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Upgrade to Premium
+                                </button>
+                            )}
+                        </div>
+                    )}
             />
 
             {/* Meditation Generating Modal */}
@@ -1151,6 +1236,36 @@ const styles = {
         left: '20px',
         right: '20px',
         zIndex: 1000,
+    },
+    replayInfoRow: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
+        marginBottom: '0.75rem',
+        background: 'rgba(99, 102, 241, 0.1)',
+        borderRadius: '16px',
+        padding: '0.9rem 1rem'
+    },
+    meditationCreditText: {
+        margin: 0,
+        color: '#312e81',
+        fontSize: '0.95rem',
+        fontWeight: 600
+    },
+    meditationResetText: {
+        color: '#4338ca',
+        fontWeight: 500,
+        fontSize: '0.9rem'
+    },
+    upgradeLinkButton: {
+        alignSelf: 'flex-start',
+        border: 'none',
+        background: 'var(--primary-color)',
+        color: '#fff',
+        borderRadius: '999px',
+        padding: '0.45rem 1rem',
+        fontWeight: 600,
+        cursor: 'pointer'
     },
     replayButton: {
         width: '100%',

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { AuthProvider, SignedIn, SignedOut } from './contexts/AuthContext';
 import { JobProvider } from './contexts/JobContext';
+import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import ExperiencesPage from './pages/ExperiencesPage';
 import ReflectionsPage from './pages/ReflectionsPage';
 import ProfilePage from './pages/ProfilePage';
@@ -10,6 +11,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import OnboardingPage from './pages/OnboardingPage';
 import EmailConfirmationPage from './pages/EmailConfirmationPage';
+import HomePage from './pages/HomePage';
 import BottomTabNavigation from './components/BottomTabNavigation';
 import DesktopLayout from './components/DesktopLayout';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
@@ -22,9 +24,10 @@ import RequireOnboarding from './components/RequireOnboarding';
 function App() {
   return (
     <AuthProvider>
-      <ProfileProvider>
-        <WeeklyProgressProvider>
-          <JobProvider>
+      <SubscriptionProvider>
+        <ProfileProvider>
+          <WeeklyProgressProvider>
+            <JobProvider>
             <Router>
         <Routes>
           {/* Public Routes - Authentication */}
@@ -57,6 +60,10 @@ function App() {
           <Route
             path="/confirm-email"
             element={<EmailConfirmationPage />}
+          />
+          <Route
+            path="/home"
+            element={<HomePage />}
           />
           <Route
             path="/forgot-password"
@@ -151,11 +158,12 @@ function App() {
               </>
             } 
           />
-            </Routes>
-          </Router>
-        </JobProvider>
-      </WeeklyProgressProvider>
+              </Routes>
+            </Router>
+          </JobProvider>
+        </WeeklyProgressProvider>
       </ProfileProvider>
+    </SubscriptionProvider>
     </AuthProvider>
   );
 }

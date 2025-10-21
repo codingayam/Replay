@@ -10,6 +10,7 @@ interface ReadyToBeginModalProps {
     period: string;
     experienceCount: number;
     duration: number;
+    extraContent?: React.ReactNode;
 }
 
 const ReadyToBeginModal: React.FC<ReadyToBeginModalProps> = ({
@@ -21,6 +22,7 @@ const ReadyToBeginModal: React.FC<ReadyToBeginModalProps> = ({
     period,
     experienceCount,
     duration,
+    extraContent,
 }) => {
     if (!isOpen) return null;
 
@@ -71,6 +73,10 @@ const ReadyToBeginModal: React.FC<ReadyToBeginModalProps> = ({
                             <span style={styles.summaryValue}>{duration}min</span>
                         </div>
                     </div>
+
+                    {extraContent && (
+                        <div style={styles.extraContent}>{extraContent}</div>
+                    )}
 
                     <button onClick={onStart} style={styles.startButton}>
                         Start Reflection
@@ -189,6 +195,17 @@ const styles = {
         fontSize: '1rem',
         color: 'var(--text-color)',
         fontWeight: '600',
+    },
+    extraContent: {
+        width: '100%',
+        marginBottom: '1.5rem',
+        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+        borderRadius: '12px',
+        padding: '0.85rem 1rem',
+        color: '#1e3a8a',
+        fontSize: '0.95rem',
+        fontWeight: 500,
+        textAlign: 'left' as const,
     },
     startButton: {
         width: '100%',

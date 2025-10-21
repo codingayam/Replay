@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Image as ImageIcon, Plus, Save, Video, X, Camera } from 'lucide-react';
+import { FileText, Image as ImageIcon, Plus, Save, Video, X, Camera, Lock } from 'lucide-react';
 import { useResponsive } from '../hooks/useResponsive';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 interface TextUploadModalProps {
     isOpen: boolean;
@@ -29,6 +30,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     noteDate,
     onDateChange,
 }) => {
+    const { isPremium, showPaywall } = useSubscription();
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
@@ -70,6 +72,14 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
         && content.trim().length <= 5000
         && title.trim().length <= 100
         && Boolean(noteDate);
+
+    const requirePhotoAccess = () => {
+        if (isPremium) {
+            return true;
+        }
+        showPaywall();
+        return false;
+    };
 
     useEffect(() => {
         return () => {
@@ -124,6 +134,9 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const addImages = (files: File[]) => {
+        if (!requirePhotoAccess()) {
+            return;
+        }
         if (!files.length) {
             return;
         }
@@ -139,6 +152,9 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const triggerLibraryInput = () => {
+        if (!requirePhotoAccess()) {
+            return;
+        }
         libraryInputRef.current?.click();
     };
 
@@ -149,6 +165,9 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const triggerCamera = async () => {
+        if (!requirePhotoAccess()) {
+            return;
+        }
         if (!allowCameraCapture) {
             return;
         }
@@ -179,6 +198,10 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const handleFallbackCamera = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!requirePhotoAccess()) {
+            event.target.value = '';
+            return;
+        }
         const files = event.target.files ? Array.from(event.target.files) : [];
         addImages(files);
         event.target.value = '';
@@ -342,24 +365,47 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
 
                     <div style={styles.imageSection}>
                         {!showImageUpload && selectedImages.length === 0 ? (
-                            <button onClick={() => setShowImageUpload(true)} style={styles.addImageButton} type="button">
+                            <button
+                                onClick={() => {
+                                    setShowImageUpload(true);
+                                    requirePhotoAccess();
+                                }}
+                                style={styles.addImageButton}
+                                type="button"
+                            >
                                 <Plus size={16} />
                                 Add Photos (Optional)
                             </button>
                         ) : (
                             <div style={styles.imageContainer}>
                                 <label style={styles.label}>Attach Photos (Optional)</label>
+                                {!isPremium && (
+                                    <div style={styles.lockedNotice}>
+                                        <Lock size={14} />
+                                        <span>Upgrade to Replay Premium to attach photos to your notes.</span>
+                                    </div>
+                                )}
                                 <div style={styles.imageUploadMeta}>
                                     <span>{selectedImages.length} / {MAX_PHOTOS} photos selected</span>
                                     {remainingSlots === 0 && <span style={styles.limitNotice}>Maximum reached</span>}
                                 </div>
                                 <div style={styles.actionRow}>
-                                    <button type="button" style={styles.optionButton} onClick={triggerLibraryInput} disabled={remainingSlots <= 0}>
+                                    <button
+                                        type="button"
+                                        style={styles.optionButton}
+                                        onClick={triggerLibraryInput}
+                                        disabled={remainingSlots <= 0 || !isPremium}
+                                    >
                                         <ImageIcon size={16} />
                                         Photo Library
                                     </button>
                                     {allowCameraCapture && (
-                                        <button type="button" style={styles.optionButton} onClick={triggerCamera} disabled={remainingSlots <= 0}>
+                                        <button
+                                            type="button"
+                                            style={styles.optionButton}
+                                            onClick={triggerCamera}
+                                            disabled={remainingSlots <= 0 || !isPremium}
+                                        >
                                             <Camera size={16} />
                                             Camera
                                         </button>
@@ -375,7 +421,12 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                                            <button type="button" style={styles.secondaryButton} onClick={stopCameraStream}>
                                                Cancel
                                            </button>
-                                            <button type="button" style={styles.primaryButton} onClick={handleCapturePhoto} disabled={isCapturing}>
+                                            <button
+                                                type="button"
+                                                style={styles.primaryButton}
+                                                onClick={handleCapturePhoto}
+                                                disabled={isCapturing || !isPremium}
+                                            >
                                                 <Video size={16} />
                                                 {isCapturing ? 'Capturing...' : 'Capture Photo'}
                                             </button>
@@ -397,7 +448,12 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                                 )}
 
                                 <div style={styles.imageActionsRow}>
-                                    <button onClick={triggerLibraryInput} style={styles.changeImageButton} type="button">
+                                    <button
+                                        onClick={triggerLibraryInput}
+                                        style={styles.changeImageButton}
+                                        type="button"
+                                        disabled={!isPremium}
+                                    >
                                         Add More
                                     </button>
                                     {selectedImages.length > 0 && (
@@ -578,6 +634,15 @@ const styles: Record<string, React.CSSProperties> = {
         justifyContent: 'space-between',
         fontSize: '0.8rem',
         color: '#555',
+    },
+    lockedNotice: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        color: 'var(--primary-color)',
+        fontSize: '0.85rem',
+        fontWeight: 600,
+        marginBottom: '0.25rem'
     },
     actionRow: {
         display: 'flex',

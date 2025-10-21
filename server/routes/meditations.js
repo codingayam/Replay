@@ -23,6 +23,7 @@ import {
   buildReflectionSummaryPrompt,
   buildSynchronousMeditationScriptPrompt
 } from '../config/ai.js';
+import { getMeditationWeeklyUsage, invalidateMeditationUsage } from '../utils/quota.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,7 @@ export function registerMeditationRoutes(deps) {
   const {
     app,
     requireAuth,
+    attachEntitlements,
     supabase,
     uuidv4,
     gemini,
@@ -92,6 +94,36 @@ export function registerMeditationRoutes(deps) {
         error: error instanceof Error ? error.message : error,
       });
     }
+  };
+
+  const sendMeditationLimitResponse = (res, usage) => {
+    return res.status(402).json({
+      code: 'meditation_limit_reached',
+      message: 'Free plan users can generate up to 2 meditations per week. Upgrade to unlock unlimited sessions.',
+      weeklyLimit: usage.weeklyLimit,
+      weeklyCount: usage.weeklyCount,
+      remaining: usage.remaining,
+      weekResetAt: usage.weekResetAt
+    });
+  };
+
+  const ensureMeditationQuota = async (req, res) => {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      return { allowed: false, usage: null };
+    }
+
+    if (req.entitlements?.isPremium) {
+      return { allowed: true, usage: null };
+    }
+
+    const usage = await getMeditationWeeklyUsage({ supabase, userId });
+    if (usage.remaining <= 0) {
+      sendMeditationLimitResponse(res, usage);
+      return { allowed: false, usage };
+    }
+
+    return { allowed: true, usage };
   };
 
   const hasUnfinishedMeditations = async (userId) => {
@@ -446,7 +478,7 @@ export function registerMeditationRoutes(deps) {
   });
 
   // POST /api/meditate - Generate meditation from experiences
-  app.post('/api/meditate', requireAuth(), async (req, res) => {
+  app.post('/api/meditate', requireAuth(), attachEntitlements, async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
@@ -456,6 +488,13 @@ export function registerMeditationRoutes(deps) {
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
         return res.status(400).json({ error: 'noteIds array is required' });
+      }
+
+      if (!req.entitlements?.isPremium) {
+        const quota = await ensureMeditationQuota(req, res);
+        if (!quota.allowed) {
+          return;
+        }
       }
 
       // Use shared audio helpers for silence generation and concatenation
@@ -852,12 +891,22 @@ export function registerMeditationRoutes(deps) {
           return res.status(500).json({ error: 'Failed to save meditation' });
         }
 
+        if (!req.entitlements?.isPremium) {
+          invalidateMeditationUsage(userId);
+        }
+
+        let usageSummary = null;
+        if (!req.entitlements?.isPremium) {
+          usageSummary = await getMeditationWeeklyUsage({ supabase, userId });
+        }
+
         res.status(201).json({ 
           playlist: signedPlaybackPlaylist,
           summary: generatedSummary,
           title: generatedTitle,
           expiresAt: audioStoragePath ? audioExpiresAt.toISOString() : null,
-          meditation
+          meditation,
+          usage: usageSummary
         });
 
       } catch (aiError) {
@@ -1234,7 +1283,7 @@ export function registerMeditationRoutes(deps) {
   });
 
   // POST /api/meditate/jobs - Create background meditation job
-  app.post('/api/meditate/jobs', jobCreationLimiter, requireAuth(), async (req, res) => {
+  app.post('/api/meditate/jobs', jobCreationLimiter, requireAuth(), attachEntitlements, async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
@@ -1248,6 +1297,15 @@ export function registerMeditationRoutes(deps) {
 
       if (!reflectionType) {
         return res.status(400).json({ error: 'reflectionType is required' });
+      }
+
+      let usageSummary = null;
+      if (!req.entitlements?.isPremium) {
+        const quota = await ensureMeditationQuota(req, res);
+        if (!quota.allowed) {
+          return;
+        }
+        usageSummary = quota.usage;
       }
 
       // Create job record
@@ -1285,7 +1343,8 @@ export function registerMeditationRoutes(deps) {
         jobId: job.id,
         status: job.status,
         estimatedDuration: 120, // 2 minutes estimate
-        message: 'Generation started. You can close this modal and continue using the app.'
+        message: 'Generation started. You can close this modal and continue using the app.',
+        usage: usageSummary
       });
 
     } catch (error) {

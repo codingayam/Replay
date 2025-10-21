@@ -16,6 +16,7 @@ import { useAuthenticatedApi } from '../utils/api';
 import { useJobs } from '../contexts/JobContext';
 import { useResponsive } from '../hooks/useResponsive';
 import useWeeklyProgress from '../hooks/useWeeklyProgress';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -56,6 +57,9 @@ const ReflectionsPage: React.FC = () => {
     const api = useAuthenticatedApi();
     const { createJob } = useJobs();
     const { isDesktop } = useResponsive();
+    const { isPremium, meditations, showPaywall, refresh: refreshSubscription } = useSubscription();
+    const remainingMeditations = meditations?.remaining ?? null;
+    const weeklyMeditationLimit = meditations?.weeklyLimit ?? null;
     const {
         summary: weeklyProgress,
         thresholds: progressThresholds,
@@ -228,6 +232,12 @@ const ReflectionsPage: React.FC = () => {
         setIsMeditationApiComplete(false);
 
         try {
+            if (!isPremium && meditations && meditations.remaining <= 0) {
+                setIsGeneratingMeditation(false);
+                alert('You have reached the weekly limit of meditation generations on the free plan. Upgrade to Replay Premium for unlimited sessions.');
+                showPaywall();
+                return;
+            }
             console.log('🧘 Queuing background meditation job...');
             const jobResponse = await createJob({
                 noteIds: selectedNoteIds,
@@ -247,11 +257,20 @@ const ReflectionsPage: React.FC = () => {
             setSelectedStartDate('');
             setSelectedEndDate('');
             setSelectedNoteIds([]);
+            await refreshSubscription();
         } catch (err) {
-            console.error('Error queuing meditation job:', err);
+            const axiosError = err as AxiosError<{ message?: string; code?: string }>;
+            if (axiosError.response?.status === 402) {
+                const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue generating meditations.';
+                alert(message);
+                showPaywall();
+                await refreshSubscription();
+            } else {
+                console.error('Error queuing meditation job:', err);
+                alert('Failed to start meditation generation. Please try again.');
+            }
             setIsGeneratingMeditation(false);
             setIsMeditationApiComplete(false);
-            alert('Failed to start meditation generation. Please try again.');
         }
     };
 
@@ -530,6 +549,37 @@ const ReflectionsPage: React.FC = () => {
                 period={formatDateRange()}
                 experienceCount={selectedNoteIds.length}
                 duration={DEFAULT_DURATION_MINUTES}
+                extraContent={isPremium
+                    ? <span>You’re on Replay Premium—enjoy unlimited meditation generations.</span>
+                    : (
+                        <div>
+                            <p style={{ margin: 0 }}>
+                                {typeof remainingMeditations === 'number'
+                                    ? (remainingMeditations > 0
+                                        ? `You have ${remainingMeditations} of ${weeklyMeditationLimit ?? 2} meditations remaining this week.`
+                                        : 'You have used all free meditations this week.')
+                                    : 'Checking your weekly balance...'}
+                            </p>
+                            {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
+                                <button
+                                    type="button"
+                                    onClick={showPaywall}
+                                    style={{
+                                        marginTop: '0.75rem',
+                                        border: 'none',
+                                        borderRadius: '999px',
+                                        padding: '0.5rem 1.1rem',
+                                        backgroundColor: 'var(--primary-color)',
+                                        color: '#fff',
+                                        fontWeight: 600,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Upgrade to Premium
+                                </button>
+                            )}
+                        </div>
+                    )}
             />
             
             

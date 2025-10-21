@@ -130,12 +130,12 @@ jobs:
       - name: Health check frontend
         run: |
           echo "Checking frontend deployment..."
-          curl -f https://replay.agrix.ai/
+          curl -f https://replay-ai.app
           
       - name: API connectivity test
         run: |
           echo "Testing API connectivity..."
-          curl -f https://replay.agrix.ai/api/health || echo "API endpoint check failed - this may be expected if auth is required"
+          curl -f https://replay-ai.app/api/health || echo "API endpoint check failed - this may be expected if auth is required"
           
   notify:
     needs: [deploy-frontend, deploy-backend, verify-deployment]
@@ -147,7 +147,7 @@ jobs:
         if: needs.verify-deployment.result == 'success'
         run: |
           echo "✅ Deployment successful!"
-          echo "🌐 Frontend: https://replay.agrix.ai/"
+          echo "🌐 Frontend: https://replay-ai.app"
           echo "🔧 Backend: https://replay-production-fab1.up.railway.app/health"
           
       - name: Notify on failure

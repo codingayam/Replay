@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { validatePasswordStrength } from '../utils/passwordPolicy';
+import { initializeRevenueCat, resetRevenueCatUser } from '../lib/revenuecat';
 
 declare global {
   interface Window {
@@ -84,6 +85,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !authReady) {
+      return;
+    }
+
+    const syncRevenueCat = async () => {
+      try {
+        if (user?.id) {
+          await initializeRevenueCat(user.id);
+        } else {
+          await resetRevenueCatUser();
+        }
+      } catch (error) {
+        console.error('[RevenueCat] Failed to synchronize session:', error);
+      }
+    };
+
+    void syncRevenueCat();
+  }, [authReady, user?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -224,7 +245,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      await resetRevenueCatUser();
+    }
   };
 
   const signInWithGoogle = async (): Promise<{ error: any | null }> => {

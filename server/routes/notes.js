@@ -20,7 +20,7 @@ import {
 } from '../config/ai.js';
 
 export function registerNotesRoutes(deps) {
-  const { app, requireAuth, supabase, upload, uuidv4, gemini } = deps;
+  const { app, requireAuth, attachEntitlements, supabase, upload, uuidv4, gemini } = deps;
   const { weeklyProgressOverrides = {} } = deps;
   const onesignalOverrides = deps.onesignalOverrides ?? {};
 
@@ -32,6 +32,15 @@ export function registerNotesRoutes(deps) {
   const updateOneSignalUser = onesignalOverrides.updateOneSignalUser ?? updateOneSignalUserDefault;
   const sendOneSignalEvent = onesignalOverrides.sendOneSignalEvent ?? sendOneSignalEventDefault;
   const attachExternalIdToSubscription = onesignalOverrides.attachExternalIdToSubscription ?? attachExternalIdToSubscriptionDefault;
+
+  const sendUpgradeRequired = (res, feature, details = {}) => {
+    return res.status(402).json({
+      code: 'upgrade_required',
+      feature,
+      message: 'Upgrade to Replay Premium to unlock this feature.',
+      ...details
+    });
+  };
 
   const getOneSignalSubscriptionId = (req) => {
     const header = req.headers['x-onesignal-subscription-id'];
@@ -477,7 +486,7 @@ export function registerNotesRoutes(deps) {
   });
 
   // POST /api/notes - Create audio note with file upload
-  app.post('/api/notes', requireAuth(), upload.single('audio'), async (req, res) => {
+  app.post('/api/notes', requireAuth(), attachEntitlements, upload.single('audio'), async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
@@ -595,7 +604,7 @@ export function registerNotesRoutes(deps) {
   });
 
   // POST /api/notes/photo - Create photo note with image upload
-  app.post('/api/notes/photo', requireAuth(), upload.array('images', 10), async (req, res) => {
+  app.post('/api/notes/photo', requireAuth(), attachEntitlements, upload.array('images', 10), async (req, res) => {
     const cleanupUploadedImages = async (paths) => {
       if (!paths.length) {
         return;
@@ -612,6 +621,9 @@ export function registerNotesRoutes(deps) {
       await syncOneSignalAlias(req, userId);
       const { caption, date } = req.body;
       const files = Array.isArray(req.files) ? req.files : [];
+      if (!req.entitlements?.isPremium) {
+        return sendUpgradeRequired(res, 'photo_note');
+      }
 
       if (!files.length) {
         return res.status(400).json({ error: 'At least one image file is required' });
@@ -787,7 +799,7 @@ export function registerNotesRoutes(deps) {
   });
 
   // POST /api/notes/text - Create text note with optional image upload
-  app.post('/api/notes/text', requireAuth(), upload.array('images', 10), async (req, res) => {
+  app.post('/api/notes/text', requireAuth(), attachEntitlements, upload.array('images', 10), async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
@@ -813,6 +825,10 @@ export function registerNotesRoutes(deps) {
       // Generate unique note ID
       const noteId = uuidv4();
       const files = Array.isArray(req.files) ? req.files : [];
+
+      if (files.length > 0 && !req.entitlements?.isPremium) {
+        return sendUpgradeRequired(res, 'text_note_images', { maxAttachments: 0 });
+      }
       const uploadedImageUrls = [];
       const storagePaths = [];
       let aiImageDescription = null;

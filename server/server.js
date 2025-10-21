@@ -26,6 +26,8 @@ import {
   sendOneSignalEvent,
   fetchOneSignalUserByExternalId,
 } from './utils/onesignal.js';
+import { attachEntitlements } from './middleware/entitlements.js';
+import { invalidateMeditationUsage } from './utils/quota.js';
 
 function createSilenceBuffer(durationSeconds = 0.35) {
   const buffer = generateSilenceBuffer(durationSeconds);
@@ -175,6 +177,7 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerProgressRoutes } from './routes/progress.js';
+import { registerSubscriptionRoutes } from './routes/subscription.js';
 import createWeeklyReportWorker from './workers/weeklyReportWorker.js';
 import { createWeeklyReportReminderWorker } from './workers/weeklyReportReminderWorker.js';
 
@@ -552,6 +555,7 @@ async function processMeditationJob(job) {
       });
     }
 
+    invalidateMeditationUsage(userId);
     console.log(`✅ Background job ${job.id} completed successfully`);
 
   } catch (error) {
@@ -741,6 +745,7 @@ app.get('/api/debug/ffmpeg', requireAuth(), (req, res) => {
 registerNotesRoutes({
   app,
   requireAuth,
+  attachEntitlements,
   supabase,
   upload,
   uuidv4,
@@ -787,6 +792,7 @@ registerProgressRoutes({
 registerMeditationRoutes({
   app,
   requireAuth,
+  attachEntitlements,
   supabase,
   uuidv4,
   gemini,
@@ -798,6 +804,13 @@ registerMeditationRoutes({
   transcodeAudio: transcodeMeditationAudio,
   measureAudioDuration: getWavDurationSeconds,
   ffmpegPathResolver: getFFmpegPath
+});
+
+registerSubscriptionRoutes({
+  app,
+  requireAuth,
+  attachEntitlements,
+  supabase
 });
 
 // Error handling middleware

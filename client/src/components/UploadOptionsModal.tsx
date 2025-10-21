@@ -1,5 +1,6 @@
 import React from 'react';
-import { Mic, Camera, X, FileText } from 'lucide-react';
+import { Mic, Camera, X, FileText, Lock } from 'lucide-react';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 interface UploadOptionsModalProps {
     isOpen: boolean;
@@ -16,7 +17,17 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
     onSelectPhoto,
     onSelectText,
 }) => {
+    const { isPremium, showPaywall } = useSubscription();
+
     if (!isOpen) return null;
+
+    const handlePhotoClick = () => {
+        if (!isPremium) {
+            showPaywall();
+            return;
+        }
+        onSelectPhoto();
+    };
 
     return (
         <div style={styles.backdrop} onClick={onClose}>
@@ -53,15 +64,29 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
                         </div>
                     </button>
                     
-                    <button onClick={onSelectPhoto} style={styles.optionButton}>
+                    <button
+                        onClick={handlePhotoClick}
+                        style={{
+                            ...styles.optionButton,
+                            ...(isPremium ? {} : styles.lockedOption)
+                        }}
+                    >
                         <div style={styles.optionIcon}>
                             <Camera size={32} />
                         </div>
                         <div style={styles.optionContent}>
                             <h4 style={styles.optionTitle}>Upload Photo</h4>
                             <p style={styles.optionDescription}>
-                                Upload a photo with your caption for AI-enhanced journaling
+                                {isPremium
+                                    ? 'Upload a photo with your caption for AI-enhanced journaling'
+                                    : 'Replay Premium members can upload photo-only reflections.'}
                             </p>
+                            {!isPremium && (
+                                <div style={styles.lockedLabel}>
+                                    <Lock size={14} />
+                                    <span>Upgrade to unlock</span>
+                                </div>
+                            )}
                         </div>
                     </button>
                 </div>
@@ -159,6 +184,20 @@ const styles = {
         color: '#666',
         lineHeight: 1.4,
     },
+    lockedOption: {
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        opacity: 0.85
+    },
+    lockedLabel: {
+        marginTop: '0.5rem',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+        fontSize: '0.8rem',
+        color: 'var(--primary-color)',
+        fontWeight: 600
+    }
 };
 
 export default UploadOptionsModal;

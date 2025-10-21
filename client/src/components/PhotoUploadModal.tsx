@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Image as ImageIcon, Save, Video, X } from 'lucide-react';
+import { Camera, Image as ImageIcon, Lock, Save, Video, X } from 'lucide-react';
 import { useResponsive } from '../hooks/useResponsive';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 interface PhotoUploadModalProps {
     isOpen: boolean;
@@ -30,6 +31,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     noteDate,
     onDateChange,
 }) => {
+    const { isPremium, showPaywall } = useSubscription();
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [caption, setCaption] = useState('');
@@ -48,6 +50,13 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     const supportsCameraApi = useMemo(() => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia), []);
     const { isDesktop } = useResponsive();
     const allowCameraCapture = !isDesktop;
+    const requirePremiumAccess = () => {
+        if (isPremium) {
+            return true;
+        }
+        showPaywall();
+        return false;
+    };
 
     useEffect(() => {
         if (!allowCameraCapture) {
@@ -104,6 +113,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const addFiles = (files: File[]) => {
+        if (!requirePremiumAccess()) {
+            return;
+        }
         if (!files.length) {
             return;
         }
@@ -118,6 +130,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleLibrarySelect = () => {
+        if (!requirePremiumAccess()) {
+            return;
+        }
         fileInputRef.current?.click();
     };
 
@@ -204,6 +219,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleCameraTrigger = async () => {
+        if (!requirePremiumAccess()) {
+            return;
+        }
         if (!allowCameraCapture) {
             return;
         }
@@ -241,6 +259,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleCaptureFrame = () => {
+        if (!requirePremiumAccess()) {
+            return;
+        }
         if (!videoRef.current || !canvasRef.current) {
             return;
         }
@@ -298,6 +319,9 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleUpload = () => {
+        if (!requirePremiumAccess()) {
+            return;
+        }
         if (!hasSelection || !caption.trim() || !noteDate || isUploading) {
             return;
         }
@@ -314,6 +338,33 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
 
     if (!isOpen) {
         return null;
+    }
+
+    if (!isPremium) {
+        return (
+            <div style={styles.backdrop} onClick={handleClose}>
+                <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+                    <div style={styles.header}>
+                        <h3 style={styles.title}>Upload Photos</h3>
+                        <button onClick={handleClose} style={styles.closeButton}>
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div style={styles.lockedContent}>
+                        <div style={styles.lockIconWrapper}>
+                            <Lock size={40} />
+                        </div>
+                        <h4 style={styles.lockedTitle}>Unlock photo journaling</h4>
+                        <p style={styles.lockedDescription}>
+                            Photo-only notes are available for Replay Premium members. Upgrade to add rich visuals to your reflections.
+                        </p>
+                        <button type="button" style={styles.upgradeButton} onClick={() => showPaywall()}>
+                            Upgrade to Premium
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -500,6 +551,46 @@ const styles: Record<string, React.CSSProperties> = {
         display: 'flex',
         flexDirection: 'column',
         gap: '1.25rem',
+    },
+    lockedContent: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        gap: '1rem',
+        padding: '2rem 1rem'
+    },
+    lockIconWrapper: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '50%',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--primary-color)'
+    },
+    lockedTitle: {
+        margin: 0,
+        fontSize: '1.2rem',
+        fontWeight: 600,
+        color: 'var(--text-color)'
+    },
+    lockedDescription: {
+        margin: 0,
+        color: '#666',
+        fontSize: '0.95rem',
+        maxWidth: '320px'
+    },
+    upgradeButton: {
+        padding: '0.75rem 1.5rem',
+        borderRadius: '999px',
+        border: 'none',
+        backgroundColor: 'var(--primary-color)',
+        color: '#fff',
+        fontWeight: 600,
+        cursor: 'pointer',
+        fontSize: '0.95rem'
     },
     uploadSummary: {
         display: 'flex',
