@@ -18,6 +18,28 @@ const initialFormState: FormState = {
   focus: ''
 };
 
+const sanitizeValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const stringValue = typeof value === 'string' ? value : String(value);
+  const trimmed = stringValue.trim();
+
+  if (!trimmed) {
+    return '';
+  }
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
+};
+
 const cleanValues = (raw: string | string[] | null | undefined): string[] => {
   if (!raw) {
     return [];
@@ -25,14 +47,29 @@ const cleanValues = (raw: string | string[] | null | undefined): string[] => {
 
   if (Array.isArray(raw)) {
     return raw
-      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .map(value => sanitizeValue(value))
       .filter(Boolean);
+  }
+
+  const trimmedRaw = raw.trim();
+
+  if (trimmedRaw.startsWith('[') && trimmedRaw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmedRaw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map(value => sanitizeValue(value))
+          .filter((value): value is string => Boolean(value));
+      }
+    } catch (error) {
+      // Fall back to comma split below
+    }
   }
 
   return raw
     .split(',')
-    .map(value => value.trim())
-    .filter(Boolean);
+    .map(value => sanitizeValue(value))
+    .filter((value): value is string => Boolean(value));
 };
 
 const totalSteps = 6;

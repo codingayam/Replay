@@ -67,6 +67,13 @@ function createRequireAuth(userId = DEFAULT_USER, email = `${DEFAULT_USER}@examp
   };
 }
 
+function createAttachEntitlements(entitlements = { isPremium: true }) {
+  return (req, _res, next) => {
+    req.entitlements = entitlements;
+    next();
+  };
+}
+
 function createNotesBuilder(data) {
   return {
     select() { return this; },
@@ -387,6 +394,7 @@ test('POST /api/meditate generates custom day meditation and uploads audio', asy
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
+    attachEntitlements: createAttachEntitlements(),
     supabase,
     uuidv4: () => 'meditation-day',
     gemini,
@@ -470,6 +478,7 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
+    attachEntitlements: createAttachEntitlements(),
     supabase,
     uuidv4: () => 'meditation-night',
     gemini,
@@ -502,6 +511,87 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   assert.equal(typeof resWrapper.json.summary, 'string');
 });
 
+test('POST /api/meditate handles varied pause token formatting', async (t) => {
+  const { app, routes } = createMockApp();
+  const supabase = createSupabaseMock({
+    notes: [
+      { id: 'note-1', transcript: 'Mixed pause tokens', title: 'Formatting', type: 'text', date: '2025-02-02' }
+    ],
+    profile: { name: 'Riley', values: 'Empathy', mission: 'Support others', thinking_about: 'Consistency' }
+  });
+
+  const modelScript = 'Settle in.[ pause = 2S ]Notice your breath.[PAUSE:3 sec]Feel grounded.[PaUsE : 4 Seconds]Finish with gratitude.';
+
+  const gemini = {
+    getGenerativeModel: () => ({
+      generateContent: async () => ({ response: { text: () => modelScript } })
+    })
+  };
+
+  const replicateCalls = [];
+  const replicate = {
+    async run(model, input) {
+      replicateCalls.push({ model, input });
+      return {
+        url: () => new URL('https://example.com/varied-audio.wav')
+      };
+    }
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+
+  stubFsForAudio(t);
+
+  const silenceDurations = [];
+  const trackedSilenceBuffer = (seconds = 0.35) => {
+    silenceDurations.push(seconds);
+    return Buffer.alloc(44, 0);
+  };
+
+  const transcodeAudio = async (buffer) => ({
+    buffer,
+    contentType: 'audio/mpeg',
+    extension: 'mp3'
+  });
+
+  registerMeditationRoutes({
+    app,
+    requireAuth: createRequireAuth(),
+    attachEntitlements: createAttachEntitlements(),
+    supabase,
+    uuidv4: () => 'meditation-varied',
+    gemini,
+    replicate,
+    createSilenceBuffer: trackedSilenceBuffer,
+    mergeAudioBuffers,
+    resolveVoiceSettings,
+    processJobQueue: async () => {},
+    transcodeAudio
+  });
+
+  const route = routes.post.find((r) => r.path === '/api/meditate');
+  assert.ok(route);
+
+  const resWrapper = createMockResponse();
+  await runHandlers(route.handlers, {
+    auth: null,
+    body: { noteIds: ['note-1'], reflectionType: 'Day', duration: 8, title: 'Formatting Flexibility' }
+  }, resWrapper);
+
+  assert.equal(resWrapper.statusCode, 201);
+  assert.equal(replicateCalls.length, 4);
+  for (const call of replicateCalls) {
+    const spoken = call.input.input.text;
+    assert.equal(/\[/g.test(spoken), false);
+    assert.equal(/pause/gi.test(spoken), false);
+  }
+  assert.deepEqual(silenceDurations, [2, 3, 4]);
+});
+
 test('POST /api/meditate/jobs creates background job and triggers queue processing', async (t) => {
   const { app, routes } = createMockApp();
   const supabase = createSupabaseMock();
@@ -520,6 +610,7 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
+    attachEntitlements: createAttachEntitlements(),
     supabase,
     uuidv4: () => 'job-meditation',
     gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
@@ -580,6 +671,7 @@ test('GET /api/meditations prunes expired meditations and excludes them from res
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
+    attachEntitlements: createAttachEntitlements(),
     supabase,
     uuidv4: () => 'not-used',
     gemini: { getGenerativeModel: () => ({}) },
@@ -730,6 +822,7 @@ test('POST /api/meditations/:id/complete updates weekly progress after completio
   registerMeditationRoutes({
     app,
     requireAuth: createRequireAuth(),
+    attachEntitlements: createAttachEntitlements(),
     supabase,
     uuidv4: () => 'meditation-1',
     gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },

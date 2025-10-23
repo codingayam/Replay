@@ -1,83 +1,108 @@
-import { getUserTimezone, getWeekStart, getUtcFromLocalDate, getNextWeekStart } from './week.js';
+const FREE_USAGE_LIMITS = Object.freeze({
+  journals: 10,
+  meditations: 2
+});
 
-const DEFAULT_WEEKLY_LIMIT = 2;
 const usageCache = new Map();
-const USAGE_CACHE_TTL_MS = 60 * 1000; // 1 minute cache to reduce repeated queries within same request burst
+const USAGE_CACHE_TTL_MS = 60 * 1000;
 
 function usageCacheKey(userId) {
-  return `meditations:${userId}`;
+  return `usage:${userId}`;
 }
 
-function getCachedUsage(userId) {
-  const key = usageCacheKey(userId);
-  const entry = usageCache.get(key);
+function getCachedSummary(userId) {
+  const entry = usageCache.get(usageCacheKey(userId));
   if (!entry) {
     return null;
   }
   if (entry.expiresAt <= Date.now()) {
-    usageCache.delete(key);
+    usageCache.delete(usageCacheKey(userId));
     return null;
   }
   return entry.value;
 }
 
-function setCachedUsage(userId, value) {
-  const key = usageCacheKey(userId);
-  usageCache.set(key, {
+function setCachedSummary(userId, summary) {
+  usageCache.set(usageCacheKey(userId), {
     expiresAt: Date.now() + USAGE_CACHE_TTL_MS,
-    value
+    value: summary
   });
 }
 
-export function invalidateMeditationUsage(userId) {
+function formatUsageRow(row) {
+  const journalTotal = Math.max(row?.journal_total ?? 0, 0);
+  const meditationTotal = Math.max(row?.meditation_total ?? 0, 0);
+
+  return {
+    journals: {
+      total: journalTotal,
+      limit: FREE_USAGE_LIMITS.journals,
+      remaining: Math.max(FREE_USAGE_LIMITS.journals - journalTotal, 0)
+    },
+    meditations: {
+      total: meditationTotal,
+      limit: FREE_USAGE_LIMITS.meditations,
+      remaining: Math.max(FREE_USAGE_LIMITS.meditations - meditationTotal, 0)
+    },
+    updatedAt: row?.updated_at ?? null,
+    source: row ? 'db' : 'default'
+  };
+}
+
+export function invalidateUsageSummary(userId) {
   usageCache.delete(usageCacheKey(userId));
 }
 
-export async function getMeditationWeeklyUsage({ supabase, userId }) {
+export async function getUsageSummary({ supabase, userId, bypassCache = false }) {
   if (!userId || !supabase) {
-    return {
-      weeklyCount: 0,
-      weeklyLimit: DEFAULT_WEEKLY_LIMIT,
-      remaining: DEFAULT_WEEKLY_LIMIT,
-      weekStart: null,
-      weekResetAt: null
-    };
+    return formatUsageRow(null);
   }
 
-  const cached = getCachedUsage(userId);
-  if (cached) {
-    return cached;
+  if (!bypassCache) {
+    const cached = getCachedSummary(userId);
+    if (cached) {
+      return cached;
+    }
   }
 
-  const timezone = await getUserTimezone(supabase, userId);
-  const weekStartLocal = getWeekStart(new Date(), timezone);
-  const weekStartUtc = getUtcFromLocalDate(weekStartLocal, timezone, '00:00:00');
-  const nextWeekLocal = getNextWeekStart(weekStartLocal);
-  const weekResetAt = getUtcFromLocalDate(nextWeekLocal, timezone, '00:00:00');
-
-  const { count, error } = await supabase
-    .from('meditations')
-    .select('id', { count: 'exact', head: true })
+  const { data, error } = await supabase
+    .from('usage_counters')
+    .select('user_id, journal_total, meditation_total, updated_at')
     .eq('user_id', userId)
-    .is('deleted_at', null)
-    .gte('created_at', weekStartUtc);
+    .maybeSingle();
 
   if (error) {
-    console.warn('[Quota] Failed to calculate meditation usage:', error.message);
+    console.warn('[Usage] Failed to load usage counters:', error.message);
   }
 
-  const weeklyCount = count ?? 0;
-  const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
-  const remaining = Math.max(weeklyLimit - weeklyCount, 0);
-
-  const usage = {
-    weeklyCount,
-    weeklyLimit,
-    remaining,
-    weekStart: weekStartLocal,
-    weekResetAt
-  };
-
-  setCachedUsage(userId, usage);
-  return usage;
+  const summary = formatUsageRow(data ?? null);
+  setCachedSummary(userId, summary);
+  return summary;
 }
+
+export async function incrementUsageCounters({ supabase, userId, journalDelta = 0, meditationDelta = 0 }) {
+  if (!supabase || !userId) {
+    return null;
+  }
+
+  if (!journalDelta && !meditationDelta) {
+    return getUsageSummary({ supabase, userId });
+  }
+
+  const { data, error } = await supabase.rpc('increment_usage_counters', {
+    p_user_id: userId,
+    journal_delta: journalDelta,
+    meditation_delta: meditationDelta
+  });
+
+  if (error) {
+    throw new Error(`[Usage] Failed to increment counters: ${error.message}`);
+  }
+
+  invalidateUsageSummary(userId);
+  const summary = formatUsageRow(data ?? null);
+  setCachedSummary(userId, summary);
+  return summary;
+}
+
+export { FREE_USAGE_LIMITS };

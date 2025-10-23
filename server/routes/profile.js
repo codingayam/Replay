@@ -44,17 +44,54 @@ export function registerProfileRoutes(deps) {
         onboarding_completed
       } = req.body;
 
+      const sanitizeValue = (value) => {
+        if (value === null || value === undefined) {
+          return '';
+        }
+
+        const stringValue = typeof value === 'string' ? value : String(value);
+        const trimmed = stringValue.trim();
+
+        if (!trimmed) {
+          return '';
+        }
+
+        if (
+          (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+          (trimmed.startsWith("'") && trimmed.endsWith("'"))
+        ) {
+          return trimmed.slice(1, -1).trim();
+        }
+
+        return trimmed;
+      };
+
       const normalizeValues = (rawValues) => {
         if (Array.isArray(rawValues)) {
           return rawValues
-            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .map((value) => sanitizeValue(value))
             .filter(Boolean);
         }
 
         if (typeof rawValues === 'string') {
-          return rawValues
+          const trimmedRaw = rawValues.trim();
+
+          if (trimmedRaw.startsWith('[') && trimmedRaw.endsWith(']')) {
+            try {
+              const parsed = JSON.parse(trimmedRaw);
+              if (Array.isArray(parsed)) {
+                return parsed
+                  .map((value) => sanitizeValue(value))
+                  .filter(Boolean);
+              }
+            } catch (parseError) {
+              // Ignore JSON parse errors and fall back to comma separation
+            }
+          }
+
+          return trimmedRaw
             .split(',')
-            .map((value) => value.trim())
+            .map((value) => sanitizeValue(value))
             .filter(Boolean);
         }
 

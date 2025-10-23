@@ -27,7 +27,7 @@ import {
   fetchOneSignalUserByExternalId,
 } from './utils/onesignal.js';
 import { attachEntitlements } from './middleware/entitlements.js';
-import { invalidateMeditationUsage } from './utils/quota.js';
+import { incrementUsageCounters } from './utils/quota.js';
 
 function createSilenceBuffer(durationSeconds = 0.35) {
   const buffer = generateSilenceBuffer(durationSeconds);
@@ -58,6 +58,27 @@ function resolveVoiceSettings(_reflectionType) {
 }
 
 const AUDIO_AVAILABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PAUSE_TOKEN_PATTERN = '\\[\\s*pause\\s*(?:=|:)\\s*(\\d+)\\s*(?:s(?:ec(?:onds?)?)?)?\\s*\\]';
+
+function splitScriptIntoSegments(script) {
+  if (typeof script !== 'string' || script.length === 0) {
+    return [''];
+  }
+
+  const regex = new RegExp(PAUSE_TOKEN_PATTERN, 'gi');
+  const segments = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(script)) !== null) {
+    segments.push(script.slice(lastIndex, match.index));
+    segments.push(match[1] ?? '');
+    lastIndex = match.index + match[0].length;
+  }
+
+  segments.push(script.slice(lastIndex));
+  return segments;
+}
 
 const extractJson = (rawText) => {
   if (!rawText) return null;
@@ -318,7 +339,7 @@ async function processMeditationJob(job) {
     // Generate TTS and process audio (simplified for background processing)
     const meditationId = uuidv4();
     const audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
-    const segments = script.split(/\[PAUSE=(\d+)s\]/);
+    const segments = splitScriptIntoSegments(script);
     const tempDir = path.join(__dirname, 'temp', meditationId);
     
     if (!fs.existsSync(tempDir)) {
@@ -466,6 +487,12 @@ async function processMeditationJob(job) {
       throw new Error(`Failed to save meditation: ${saveError.message}`);
     }
 
+    try {
+      await incrementUsageCounters({ supabase, userId, meditationDelta: 1 });
+    } catch (usageError) {
+      console.error('[Usage] Failed to increment meditation counters:', usageError);
+    }
+
     // Clean up temp files
     fs.rmSync(tempDir, { recursive: true, force: true });
 
@@ -555,7 +582,6 @@ async function processMeditationJob(job) {
       });
     }
 
-    invalidateMeditationUsage(userId);
     console.log(`✅ Background job ${job.id} completed successfully`);
 
   } catch (error) {

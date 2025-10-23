@@ -1,4 +1,4 @@
-import { getMeditationWeeklyUsage } from '../utils/quota.js';
+import { getUsageSummary } from '../utils/quota.js';
 
 export function registerSubscriptionRoutes(deps) {
   const { app, requireAuth, attachEntitlements, supabase } = deps;
@@ -12,7 +12,7 @@ export function registerSubscriptionRoutes(deps) {
         expiresAt: null
       };
 
-      const usage = await getMeditationWeeklyUsage({ supabase, userId });
+      const usage = await getUsageSummary({ supabase, userId });
 
       res.json({
         entitlements: {
@@ -22,7 +22,8 @@ export function registerSubscriptionRoutes(deps) {
           source: entitlements.source ?? 'unknown'
         },
         limits: {
-          meditations: usage,
+          meditations: usage.meditations,
+          journals: usage.journals,
           photoNotes: {
             allowed: Boolean(entitlements.isPremium),
             remaining: entitlements.isPremium ? null : 0,

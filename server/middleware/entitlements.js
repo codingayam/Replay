@@ -13,7 +13,14 @@ export async function attachEntitlements(req, _res, next) {
   }
 
   try {
-    const entitlements = await getRevenuecatEntitlements(userId);
+    const rawForceParam = req.query?.forceRefresh ?? req.headers?.['x-revenuecat-force-refresh'];
+    const forceRefresh = Array.isArray(rawForceParam)
+      ? rawForceParam.some((value) => typeof value === 'string' && (value === '1' || value.toLowerCase() === 'true'))
+      : typeof rawForceParam === 'string'
+        ? rawForceParam === '1' || rawForceParam.toLowerCase() === 'true'
+        : false;
+
+    const entitlements = await getRevenuecatEntitlements(userId, { forceRefresh });
     req.entitlements = entitlements;
   } catch (error) {
     console.error('[RevenueCat] attachEntitlements failed:', error);

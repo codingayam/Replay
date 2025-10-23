@@ -98,7 +98,8 @@ async function fetchEntitlements(userId) {
   return parseEntitlements(payload);
 }
 
-export async function getRevenuecatEntitlements(userId) {
+export async function getRevenuecatEntitlements(userId, options = {}) {
+  const { forceRefresh = false } = options;
   if (!revenuecatEnabled() || !userId) {
     return {
       isPremium: false,
@@ -108,9 +109,11 @@ export async function getRevenuecatEntitlements(userId) {
     };
   }
 
-  const cached = getCachedEntitlements(userId);
-  if (cached) {
-    return { ...cached, source: 'cache' };
+  if (!forceRefresh) {
+    const cached = getCachedEntitlements(userId);
+    if (cached) {
+      return { ...cached, source: 'cache' };
+    }
   }
 
   try {

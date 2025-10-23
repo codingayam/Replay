@@ -81,9 +81,11 @@ const ExperiencesPage: React.FC = () => {
     const { isDesktop } = useResponsive();
     const { refresh: refreshWeeklyProgress } = useWeeklyProgress();
     const { createJob } = useJobs();
-    const { isPremium, meditations, showPaywall, refresh: refreshSubscription } = useSubscription();
+    const { isPremium, meditations, journals, showPaywall, refresh: refreshSubscription } = useSubscription();
     const remainingMeditations = meditations?.remaining ?? null;
-    const weeklyMeditationLimit = meditations?.weeklyLimit ?? null;
+    const meditationLimit = meditations?.limit ?? null;
+    const remainingJournals = journals?.remaining ?? null;
+    const journalLimit = journals?.limit ?? null;
     
     const fetchNotes = useCallback(async () => {
         try {
@@ -130,9 +132,18 @@ const ExperiencesPage: React.FC = () => {
             });
             fetchNotes();
             await refreshWeeklyProgress();
+            await refreshSubscription({ force: true });
         } catch (err) {
-            console.error("Error saving audio note:", err);
-            alert('Failed to save audio note. See console for details.');
+            const axiosError = err as AxiosError<{ message?: string; code?: string }>;
+            if (axiosError.response?.status === 402) {
+                const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue journaling.';
+                alert(message);
+                showPaywall();
+                await refreshSubscription({ force: true });
+            } else {
+                console.error("Error saving audio note:", err);
+                alert('Failed to save audio note. See console for details.');
+            }
         }
     };
 
@@ -156,12 +167,14 @@ const ExperiencesPage: React.FC = () => {
             });
             fetchNotes();
             await refreshWeeklyProgress();
+            await refreshSubscription({ force: true });
         } catch (err) {
             const axiosError = err as AxiosError<{ message?: string; code?: string }>;
             if (axiosError.response?.status === 402) {
                 const message = axiosError.response.data?.message || 'Photo notes are available with Replay Premium.';
                 alert(message);
                 showPaywall();
+                await refreshSubscription({ force: true });
             } else {
                 console.error('Error saving photo note:', err);
                 alert('Failed to save photo note. See console for details.');
@@ -193,12 +206,14 @@ const ExperiencesPage: React.FC = () => {
             });
             fetchNotes();
             await refreshWeeklyProgress();
+            await refreshSubscription({ force: true });
         } catch (err) {
             const axiosError = err as AxiosError<{ message?: string; code?: string }>;
             if (axiosError.response?.status === 402) {
-                const message = axiosError.response.data?.message || 'Photo attachments in text notes require Replay Premium.';
+                const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue journaling.';
                 alert(message);
                 showPaywall();
+                await refreshSubscription({ force: true });
             } else {
                 console.error('Error saving text note:', err);
                 alert('Failed to save text note. See console for details.');
@@ -383,7 +398,7 @@ const ExperiencesPage: React.FC = () => {
             return;
         }
         if (!isPremium && meditations && meditations.remaining <= 0) {
-            alert('You have reached the weekly limit of 2 meditation generations on the free plan. Upgrade to Replay Premium for unlimited sessions.');
+            alert('You have used all free meditations on the Replay free plan. Upgrade to Replay Premium for unlimited sessions.');
             showPaywall();
             return;
         }
@@ -412,7 +427,7 @@ const ExperiencesPage: React.FC = () => {
             setMeditationPlaylist(null);
             setCurrentMeditationId(null);
             handleClearSelection();
-            await refreshSubscription();
+            await refreshSubscription({ force: true });
 
             alert('Your meditation is being generated in the background. We’ll notify you when it is ready.');
         } catch (err) {
@@ -421,7 +436,7 @@ const ExperiencesPage: React.FC = () => {
                 const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue generating meditations.';
                 alert(message);
                 showPaywall();
-                await refreshSubscription();
+                await refreshSubscription({ force: true });
             } else {
                 console.error('Error queuing meditation job:', err);
                 alert('Failed to start meditation generation. Please try again.');
@@ -665,6 +680,14 @@ const ExperiencesPage: React.FC = () => {
                 </div>
             )}
 
+            {!isPremium && typeof remainingJournals === 'number' && (
+                <div style={styles.journalLimitNotice}>
+                    {remainingJournals > 0
+                        ? `You have ${remainingJournals} of ${journalLimit ?? 10} free journal${remainingJournals === 1 ? '' : 's'} remaining.`
+                        : 'You have used all free journals. Upgrade to continue journaling.'}
+                </div>
+            )}
+
             <FloatingUploadButton 
                 onSaveAudio={handleSaveAudioNote}
                 onSavePhoto={handleSavePhotoNote}
@@ -708,14 +731,9 @@ const ExperiencesPage: React.FC = () => {
                             <p style={styles.meditationCreditText}>
                                 {typeof remainingMeditations === 'number'
                                     ? (remainingMeditations > 0
-                                        ? `You have ${remainingMeditations} meditation${remainingMeditations === 1 ? '' : 's'} remaining this week.`
-                                        : 'You have used all free meditations this week.')
-                                    : 'Checking your weekly balance...'}
-                                {meditations.weekResetAt && typeof remainingMeditations === 'number' && (
-                                    <span style={styles.meditationResetText}>
-                                        {' '}Resets {new Date(meditations.weekResetAt).toLocaleDateString()}.
-                                    </span>
-                                )}
+                                        ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
+                                        : 'You have used all free meditations.')
+                                    : 'Checking your free balance...'}
                             </p>
                             {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
                                 <button type="button" style={styles.upgradeLinkButton} onClick={showPaywall}>
@@ -750,9 +768,9 @@ const ExperiencesPage: React.FC = () => {
                             <p style={{ margin: 0 }}>
                                 {typeof remainingMeditations === 'number'
                                     ? (remainingMeditations > 0
-                                        ? `You have ${remainingMeditations} of ${weeklyMeditationLimit ?? 2} meditations remaining this week.`
-                                        : 'You have used all free meditations this week.')
-                                    : 'Checking your weekly balance...'}
+                                        ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
+                                        : 'You have used all free meditations.')
+                                    : 'Checking your free balance...'}
                             </p>
                             {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
                                 <button
@@ -874,6 +892,16 @@ const styles = {
         maxWidth: '100%',
         margin: '0',
         boxSizing: 'border-box',
+    },
+    journalLimitNotice: {
+        margin: '1rem 1rem 0',
+        padding: '0.75rem 1rem',
+        backgroundColor: '#eef2ff',
+        color: '#4338ca',
+        borderRadius: '12px',
+        fontSize: '0.95rem',
+        fontWeight: 500,
+        textAlign: 'center',
     },
     contentContainer: {
         padding: '1.5rem 1rem',

@@ -59,7 +59,7 @@ const ReflectionsPage: React.FC = () => {
     const { isDesktop } = useResponsive();
     const { isPremium, meditations, showPaywall, refresh: refreshSubscription } = useSubscription();
     const remainingMeditations = meditations?.remaining ?? null;
-    const weeklyMeditationLimit = meditations?.weeklyLimit ?? null;
+    const meditationLimit = meditations?.limit ?? null;
     const {
         summary: weeklyProgress,
         thresholds: progressThresholds,
@@ -234,7 +234,7 @@ const ReflectionsPage: React.FC = () => {
         try {
             if (!isPremium && meditations && meditations.remaining <= 0) {
                 setIsGeneratingMeditation(false);
-                alert('You have reached the weekly limit of meditation generations on the free plan. Upgrade to Replay Premium for unlimited sessions.');
+                alert('You have used all free meditations on the Replay free plan. Upgrade to Replay Premium for unlimited sessions.');
                 showPaywall();
                 return;
             }
@@ -257,14 +257,14 @@ const ReflectionsPage: React.FC = () => {
             setSelectedStartDate('');
             setSelectedEndDate('');
             setSelectedNoteIds([]);
-            await refreshSubscription();
+            await refreshSubscription({ force: true });
         } catch (err) {
             const axiosError = err as AxiosError<{ message?: string; code?: string }>;
             if (axiosError.response?.status === 402) {
                 const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue generating meditations.';
                 alert(message);
                 showPaywall();
-                await refreshSubscription();
+                await refreshSubscription({ force: true });
             } else {
                 console.error('Error queuing meditation job:', err);
                 alert('Failed to start meditation generation. Please try again.');
@@ -556,9 +556,9 @@ const ReflectionsPage: React.FC = () => {
                             <p style={{ margin: 0 }}>
                                 {typeof remainingMeditations === 'number'
                                     ? (remainingMeditations > 0
-                                        ? `You have ${remainingMeditations} of ${weeklyMeditationLimit ?? 2} meditations remaining this week.`
-                                        : 'You have used all free meditations this week.')
-                                    : 'Checking your weekly balance...'}
+                                        ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
+                                        : 'You have used all free meditations.')
+                                    : 'Checking your free balance...'}
                             </p>
                             {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
                                 <button

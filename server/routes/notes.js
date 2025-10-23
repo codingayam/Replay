@@ -18,6 +18,7 @@ import {
   buildPhotoTitlePrompt,
   TEXT_NOTE_VISION_PROMPT
 } from '../config/ai.js';
+import { getUsageSummary, incrementUsageCounters } from '../utils/quota.js';
 
 export function registerNotesRoutes(deps) {
   const { app, requireAuth, attachEntitlements, supabase, upload, uuidv4, gemini } = deps;
@@ -39,6 +40,17 @@ export function registerNotesRoutes(deps) {
       feature,
       message: 'Upgrade to Replay Premium to unlock this feature.',
       ...details
+    });
+  };
+
+  const sendJournalLimitResponse = (res, usage) => {
+    return res.status(402).json({
+      code: 'journal_limit_reached',
+      feature: 'journal_limit',
+      message: `Free plan users can create up to ${usage.limit} journal entries. Upgrade to continue journaling.`,
+      limit: usage.limit,
+      total: usage.total,
+      remaining: usage.remaining
     });
   };
 
@@ -179,6 +191,27 @@ export function registerNotesRoutes(deps) {
       });
     }
   }
+
+  const ensureJournalQuota = async (req, res) => {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      return { allowed: false, usage: null };
+    }
+
+    if (req.entitlements?.isPremium) {
+      return { allowed: true, usage: null };
+    }
+
+    const usageSummary = await getUsageSummary({ supabase, userId });
+    const journalUsage = usageSummary.journals;
+
+    if (journalUsage.remaining <= 0) {
+      sendJournalLimitResponse(res, journalUsage);
+      return { allowed: false, usage: journalUsage };
+    }
+
+    return { allowed: true, usage: journalUsage };
+  };
 
   async function emitJournalEvent({ userId, eventName, payload }) {
     console.log('[OneSignal] emitJournalEvent called:', { userId, eventName, payload });
@@ -496,6 +529,11 @@ export function registerNotesRoutes(deps) {
         return res.status(400).json({ error: 'Audio file is required' });
       }
 
+      const quota = await ensureJournalQuota(req, res);
+      if (!quota.allowed) {
+        return;
+      }
+
       const noteId = uuidv4();
       // Audio is processed for transcription only; do not persist the raw recording.
 
@@ -556,6 +594,12 @@ export function registerNotesRoutes(deps) {
       if (noteError) {
         console.error('Error creating note:', noteError);
         return res.status(500).json({ error: 'Failed to create note' });
+      }
+
+      try {
+        await incrementUsageCounters({ supabase, userId, journalDelta: 1 });
+      } catch (usageError) {
+        console.error('[Usage] Failed to increment journal counters:', usageError);
       }
 
       const weeklyProgress = await updateProgressAfterJournal({
@@ -762,6 +806,12 @@ export function registerNotesRoutes(deps) {
         return res.status(500).json({ error: 'Failed to create photo note' });
       }
 
+      try {
+        await incrementUsageCounters({ supabase, userId, journalDelta: 1 });
+      } catch (usageError) {
+        console.error('[Usage] Failed to increment journal counters:', usageError);
+      }
+
       const weeklyProgress = await updateProgressAfterJournal({
         userId,
         noteDate: noteData.date
@@ -828,6 +878,11 @@ export function registerNotesRoutes(deps) {
 
       if (files.length > 0 && !req.entitlements?.isPremium) {
         return sendUpgradeRequired(res, 'text_note_images', { maxAttachments: 0 });
+      }
+
+      const quota = await ensureJournalQuota(req, res);
+      if (!quota.allowed) {
+        return;
       }
       const uploadedImageUrls = [];
       const storagePaths = [];
@@ -939,6 +994,12 @@ export function registerNotesRoutes(deps) {
         console.error('Error creating text note:', noteError);
         await cleanupUploadedImages();
         return res.status(500).json({ error: 'Failed to create text note' });
+      }
+
+      try {
+        await incrementUsageCounters({ supabase, userId, journalDelta: 1 });
+      } catch (usageError) {
+        console.error('[Usage] Failed to increment journal counters:', usageError);
       }
 
       const weeklyProgress = await updateProgressAfterJournal({

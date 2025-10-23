@@ -23,7 +23,7 @@ import {
   buildReflectionSummaryPrompt,
   buildSynchronousMeditationScriptPrompt
 } from '../config/ai.js';
-import { getMeditationWeeklyUsage, invalidateMeditationUsage } from '../utils/quota.js';
+import { getUsageSummary, incrementUsageCounters } from '../utils/quota.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,6 +49,31 @@ export function registerMeditationRoutes(deps) {
   } = deps;
 
   const AUDIO_AVAILABILITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const PAUSE_TOKEN_PATTERN = '\\[\\s*pause\\s*(?:=|:)\\s*(\\d+)\\s*(?:s(?:ec(?:onds?)?)?)?\\s*\\]';
+
+  const entitlementsMiddleware = typeof attachEntitlements === 'function'
+    ? attachEntitlements
+    : (_req, _res, next) => next();
+
+  const splitScriptIntoSegments = (script) => {
+    if (typeof script !== 'string' || script.length === 0) {
+      return [''];
+    }
+
+    const regex = new RegExp(PAUSE_TOKEN_PATTERN, 'gi');
+    const segments = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(script)) !== null) {
+      segments.push(script.slice(lastIndex, match.index));
+      segments.push(match[1] ?? '');
+      lastIndex = match.index + match[0].length;
+    }
+
+    segments.push(script.slice(lastIndex));
+    return segments;
+  };
 
   const loadUserTimezone = weeklyProgressOverrides.loadUserTimezone ?? loadUserTimezoneDefault;
   const incrementMeditationProgress = weeklyProgressOverrides.incrementMeditationProgress ?? incrementMeditationProgressDefault;
@@ -99,11 +124,11 @@ export function registerMeditationRoutes(deps) {
   const sendMeditationLimitResponse = (res, usage) => {
     return res.status(402).json({
       code: 'meditation_limit_reached',
-      message: 'Free plan users can generate up to 2 meditations per week. Upgrade to unlock unlimited sessions.',
-      weeklyLimit: usage.weeklyLimit,
-      weeklyCount: usage.weeklyCount,
-      remaining: usage.remaining,
-      weekResetAt: usage.weekResetAt
+      feature: 'meditation_generation',
+      message: `Free plan users can generate up to ${usage.limit} meditations. Upgrade to unlock unlimited sessions.`,
+      limit: usage.limit,
+      total: usage.total,
+      remaining: usage.remaining
     });
   };
 
@@ -117,13 +142,15 @@ export function registerMeditationRoutes(deps) {
       return { allowed: true, usage: null };
     }
 
-    const usage = await getMeditationWeeklyUsage({ supabase, userId });
-    if (usage.remaining <= 0) {
-      sendMeditationLimitResponse(res, usage);
-      return { allowed: false, usage };
+    const usageSummary = await getUsageSummary({ supabase, userId });
+    const meditationsUsage = usageSummary.meditations;
+
+    if (meditationsUsage.remaining <= 0) {
+      sendMeditationLimitResponse(res, meditationsUsage);
+      return { allowed: false, usage: meditationsUsage };
     }
 
-    return { allowed: true, usage };
+    return { allowed: true, usage: meditationsUsage };
   };
 
   const hasUnfinishedMeditations = async (userId) => {
@@ -478,7 +505,7 @@ export function registerMeditationRoutes(deps) {
   });
 
   // POST /api/meditate - Generate meditation from experiences
-  app.post('/api/meditate', requireAuth(), attachEntitlements, async (req, res) => {
+  app.post('/api/meditate', requireAuth(), entitlementsMiddleware, async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);
@@ -572,7 +599,7 @@ export function registerMeditationRoutes(deps) {
           const logFilePath = join(logsDir, logFileName);
 
           // Parse segments for logging
-          const segments = script.split(/\[PAUSE=(\d+)s\]/);
+          const segments = splitScriptIntoSegments(script);
           const segmentAnalysis = segments.map((seg, i) => {
             if (seg.trim() && isNaN(seg)) {
               return `Speech Segment ${Math.floor(i/2)}: "${seg.trim().slice(0, 100)}${seg.trim().length > 100 ? '...' : ''}"`;
@@ -609,7 +636,7 @@ export function registerMeditationRoutes(deps) {
         }
 
         // Generate TTS for meditation segments and create continuous audio file
-        const segments = script.split(/\[PAUSE=(\d+)s\]/);
+        const segments = splitScriptIntoSegments(script);
         const tempAudioFiles = [];
         const tempDir = join(__dirname, 'temp', meditationId);
       
@@ -793,7 +820,7 @@ export function registerMeditationRoutes(deps) {
         }
 
         // Calculate total duration from the original segments for database storage
-        const originalSegments = script.split(/\[PAUSE=(\d+)s\]/);
+        const originalSegments = splitScriptIntoSegments(script);
 
         let totalDuration = measuredDurationSeconds;
         let estimatedDuration = 0;
@@ -891,13 +918,18 @@ export function registerMeditationRoutes(deps) {
           return res.status(500).json({ error: 'Failed to save meditation' });
         }
 
-        if (!req.entitlements?.isPremium) {
-          invalidateMeditationUsage(userId);
-        }
-
         let usageSummary = null;
-        if (!req.entitlements?.isPremium) {
-          usageSummary = await getMeditationWeeklyUsage({ supabase, userId });
+        try {
+          const updatedSummary = await incrementUsageCounters({
+            supabase,
+            userId,
+            meditationDelta: 1
+          });
+          if (!req.entitlements?.isPremium) {
+            usageSummary = updatedSummary?.meditations ?? null;
+          }
+        } catch (usageError) {
+          console.error('[Usage] Failed to increment meditation counters:', usageError);
         }
 
         res.status(201).json({ 
@@ -1283,7 +1315,7 @@ export function registerMeditationRoutes(deps) {
   });
 
   // POST /api/meditate/jobs - Create background meditation job
-  app.post('/api/meditate/jobs', jobCreationLimiter, requireAuth(), attachEntitlements, async (req, res) => {
+  app.post('/api/meditate/jobs', jobCreationLimiter, requireAuth(), entitlementsMiddleware, async (req, res) => {
     try {
       const userId = req.auth.userId;
       await syncOneSignalAlias(req, userId);

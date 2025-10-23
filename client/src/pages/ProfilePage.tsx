@@ -34,6 +34,35 @@ const defaultProfile: Profile = {
     profileImageUrl: '',
 };
 
+type StatusTone = 'success' | 'error';
+
+interface StatusMessage {
+    text: string;
+    tone: StatusTone;
+}
+
+const sanitizeValue = (value: unknown): string => {
+    if (value === null || value === undefined) {
+        return '';
+    }
+
+    const stringValue = typeof value === 'string' ? value : String(value);
+    const trimmed = stringValue.trim();
+
+    if (!trimmed) {
+        return '';
+    }
+
+    if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+        return trimmed.slice(1, -1).trim();
+    }
+
+    return trimmed;
+};
+
 const mapProfileResponse = (profileData?: ProfileApiResponse | null): Profile => {
     if (!profileData) {
         return { ...defaultProfile };
@@ -42,13 +71,30 @@ const mapProfileResponse = (profileData?: ProfileApiResponse | null): Profile =>
     const rawValues = profileData.values;
     const values = Array.isArray(rawValues)
         ? rawValues
-            .map(value => (typeof value === 'string' ? value.trim() : ''))
+            .map(value => sanitizeValue(value))
             .filter((value): value is string => Boolean(value))
         : typeof rawValues === 'string'
-            ? rawValues
-                .split(',')
-                .map(value => value.trim())
-                .filter(Boolean)
+            ? (() => {
+                const trimmedRaw = rawValues.trim();
+
+                if (trimmedRaw.startsWith('[') && trimmedRaw.endsWith(']')) {
+                    try {
+                        const parsed = JSON.parse(trimmedRaw);
+                        if (Array.isArray(parsed)) {
+                            return parsed
+                                .map(value => sanitizeValue(value))
+                                .filter((value): value is string => Boolean(value));
+                        }
+                    } catch (error) {
+                        // Fall back to comma split below
+                    }
+                }
+
+                return trimmedRaw
+                    .split(',')
+                    .map(value => sanitizeValue(value))
+                    .filter((value): value is string => Boolean(value));
+            })()
             : [];
 
     return {
@@ -62,7 +108,7 @@ const mapProfileResponse = (profileData?: ProfileApiResponse | null): Profile =>
 
 const ProfilePage: React.FC = () => {
     const [profile, setProfile] = useState<Profile>(() => ({ ...defaultProfile }));
-    const [status, setStatus] = useState('');
+    const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -114,6 +160,18 @@ const ProfilePage: React.FC = () => {
     }, [api]);
 
     useEffect(() => {
+        if (!statusMessage || statusMessage.tone !== 'success') {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setStatusMessage(null);
+        }, 3200);
+
+        return () => window.clearTimeout(timer);
+    }, [statusMessage]);
+
+    useEffect(() => {
         return () => {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
@@ -157,10 +215,10 @@ const ProfilePage: React.FC = () => {
             });
 
             setProfile(prev => ({ ...prev, profileImageUrl: response.data.profileImageUrl }));
-            setStatus('Profile picture updated successfully!');
+            setStatusMessage({ text: 'Profile picture updated successfully!', tone: 'success' });
         } catch (error) {
             console.error('Error uploading profile picture:', error);
-            setStatus('Error uploading profile picture.');
+            setStatusMessage({ text: 'Error uploading profile picture.', tone: 'error' });
         }
     };
 
@@ -182,7 +240,7 @@ const ProfilePage: React.FC = () => {
             }
         } catch (error) {
             console.error('Error accessing camera:', error);
-            setStatus('Error accessing camera. Please try uploading a photo instead.');
+            setStatusMessage({ text: 'Error accessing camera. Please try uploading a photo instead.', tone: 'error' });
         }
     };
 
@@ -227,11 +285,11 @@ const ProfilePage: React.FC = () => {
                 });
 
                 setProfile(prev => ({ ...prev, profileImageUrl: response.data.profileImageUrl }));
-                setStatus('Profile picture updated successfully!');
+                setStatusMessage({ text: 'Profile picture updated successfully!', tone: 'success' });
                 stopCamera();
             } catch (error) {
                 console.error('Error uploading profile picture:', error);
-                setStatus('Error uploading profile picture.');
+                setStatusMessage({ text: 'Error uploading profile picture.', tone: 'error' });
             }
         }, 'image/jpeg', 0.9);
     };
@@ -263,7 +321,7 @@ const ProfilePage: React.FC = () => {
             await api.post('/profile', profileToSave);
         } catch (error) {
             console.error('Error removing tag:', error);
-            setStatus('Error removing tag.');
+            setStatusMessage({ text: 'Error removing tag.', tone: 'error' });
         }
     };
 
@@ -309,9 +367,9 @@ const ProfilePage: React.FC = () => {
             await api.post('/profile', profileToSave);
         } catch (error) {
             console.error('Error saving tags:', error);
-            setStatus('Error saving tags.');
+            setStatusMessage({ text: 'Error saving tags.', tone: 'error' });
         }
-        
+
         setTagInput('');
     };
 
@@ -319,11 +377,11 @@ const ProfilePage: React.FC = () => {
     const handleLogout = async () => {
         try {
             await signOut();
-            setStatus('Logged out successfully!');
+            setStatusMessage({ text: 'Logged out successfully!', tone: 'success' });
             navigate('/', { replace: true });
         } catch (error) {
             console.error('Error logging out:', error);
-            setStatus('Error logging out.');
+            setStatusMessage({ text: 'Error logging out.', tone: 'error' });
         }
     };
 
@@ -383,12 +441,22 @@ const ProfilePage: React.FC = () => {
         };
         
         api.post('/profile', profileToSave)
-            .then(() => setStatus('Profile saved successfully!'))
-            .catch(() => setStatus('Error saving profile.'));
+            .then(() => setStatusMessage({ text: 'Profile saved successfully!', tone: 'success' }))
+            .catch(() => setStatusMessage({ text: 'Error saving profile.', tone: 'error' }));
     };
 
     return (
         <div style={isDesktop ? styles.desktopContainer : styles.container}>
+            <style>
+                {`
+                    @keyframes profileStatusFade {
+                        0% { opacity: 0; transform: translateY(8px); }
+                        10% { opacity: 1; transform: translateY(0); }
+                        90% { opacity: 1; transform: translateY(0); }
+                        100% { opacity: 0; transform: translateY(-6px); }
+                    }
+                `}
+            </style>
             {/* Mobile Header and Tabs */}
             {!isDesktop && <Header title="Profile" />}
 
@@ -596,6 +664,21 @@ const ProfilePage: React.FC = () => {
                         ✏️ Save Profile
                     </button>
 
+                    {statusMessage && (
+                        <div
+                            role="status"
+                            aria-live={statusMessage.tone === 'error' ? 'assertive' : 'polite'}
+                            style={{
+                                ...styles.statusBanner,
+                                ...(statusMessage.tone === 'success'
+                                    ? { ...styles.statusSuccess, ...styles.statusSuccessAnimation }
+                                    : styles.statusError),
+                            }}
+                        >
+                            {statusMessage.text}
+                        </div>
+                    )}
+
                     {/* Log Out Button */}
                     <button type="button" onClick={handleLogout} style={styles.logoutButton}>
                         <LogOut size={20} color="#ef4444" />
@@ -672,8 +755,6 @@ const ProfilePage: React.FC = () => {
                         )}
                     </div>
                 </div>
-
-                        {status && <p style={styles.status}>{status}</p>}
 
             </div>
         </div>
@@ -1003,16 +1084,30 @@ const styles = {
         backgroundColor: '#fee2e2',
         color: '#b91c1c',
     },
-    status: {
-        marginTop: '1rem',
-        color: '#7c3aed',
+    statusBanner: {
+        marginTop: '1.5rem',
         textAlign: 'center' as const,
-        fontSize: '0.9rem',
-        fontWeight: '500',
+        fontSize: '0.95rem',
+        fontWeight: 500,
         backgroundColor: 'white',
-        padding: '1rem',
+        padding: '1rem 1.25rem',
         borderRadius: '12px',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        boxShadow: '0 10px 30px rgba(99, 102, 241, 0.12)',
+        border: '1px solid transparent',
+        lineHeight: 1.5,
+    },
+    statusSuccess: {
+        backgroundColor: 'rgba(var(--success-color-rgb), 0.12)',
+        color: '#047857',
+        borderColor: 'rgba(var(--success-color-rgb), 0.25)',
+    },
+    statusError: {
+        backgroundColor: '#fee2e2',
+        color: '#b91c1c',
+        borderColor: '#fecaca',
+    },
+    statusSuccessAnimation: {
+        animation: 'profileStatusFade 3.2s ease-in-out forwards',
     },
     dangerZone: {
         backgroundColor: 'white',

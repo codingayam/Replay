@@ -1,21 +1,24 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthenticatedApi } from '../utils/api';
 import { useAuth } from './AuthContext';
 
-interface MeditationUsage {
-  weeklyCount: number;
-  weeklyLimit: number;
+interface UsageDetails {
+  total: number;
+  limit: number;
   remaining: number;
-  weekStart: string | null;
-  weekResetAt: string | null;
+}
+
+interface RefreshOptions {
+  force?: boolean;
 }
 
 interface SubscriptionContextValue {
   isPremium: boolean;
   isLoading: boolean;
   expiresAt: string | null;
-  meditations: MeditationUsage | null;
-  refresh: () => Promise<void>;
+  meditations: UsageDetails | null;
+  journals: UsageDetails | null;
+  refresh: (options?: RefreshOptions) => Promise<void>;
   showPaywall: () => void;
   lastUpdated: string | null;
 }
@@ -39,7 +42,8 @@ const getEnv = (key: string): string | undefined => {
 interface ProviderState {
   isPremium: boolean;
   expiresAt: string | null;
-  meditations: MeditationUsage | null;
+  meditations: UsageDetails | null;
+  journals: UsageDetails | null;
   isLoading: boolean;
   lastUpdated: string | null;
 }
@@ -48,6 +52,7 @@ const initialState: ProviderState = {
   isPremium: false,
   expiresAt: null,
   meditations: null,
+  journals: null,
   isLoading: false,
   lastUpdated: null
 };
@@ -56,12 +61,14 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const api = useAuthenticatedApi();
   const { user, authReady, loading: authLoading } = useAuth();
   const [state, setState] = useState<ProviderState>(initialState);
+  const paywallRefreshPendingRef = useRef(false);
+  const paywallRefreshTimerRef = useRef<number | null>(null);
 
   const resetState = useCallback(() => {
     setState(initialState);
   }, []);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (options?: RefreshOptions) => {
     if (!authReady || authLoading || !user) {
       resetState();
       return;
@@ -69,15 +76,22 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     try {
       setState((prev) => ({ ...prev, isLoading: true }));
-      const response = await api.get('/subscription/status');
+      const response = await api.get('/subscription/status', {
+        params: options?.force ? { forceRefresh: 'true' } : undefined
+      });
       const { entitlements, limits } = response.data ?? {};
-      const meditations: MeditationUsage | null = limits?.meditations
+      const meditations: UsageDetails | null = limits?.meditations
         ? {
-            weeklyCount: limits.meditations.weeklyCount ?? 0,
-            weeklyLimit: limits.meditations.weeklyLimit ?? 0,
-            remaining: limits.meditations.remaining ?? 0,
-            weekStart: limits.meditations.weekStart ?? null,
-            weekResetAt: limits.meditations.weekResetAt ?? null
+            total: limits.meditations.total ?? 0,
+            limit: limits.meditations.limit ?? 0,
+            remaining: limits.meditations.remaining ?? 0
+          }
+        : null;
+      const journals: UsageDetails | null = limits?.journals
+        ? {
+            total: limits.journals.total ?? 0,
+            limit: limits.journals.limit ?? 0,
+            remaining: limits.journals.remaining ?? 0
           }
         : null;
 
@@ -85,6 +99,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         isPremium: Boolean(entitlements?.isPremium),
         expiresAt: entitlements?.expiresAt ?? null,
         meditations,
+        journals,
         isLoading: false,
         lastUpdated: new Date().toISOString()
       });
@@ -105,6 +120,35 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     void fetchStatus();
   }, [authReady, authLoading, user, fetchStatus, resetState]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleFocus = () => {
+      if (!paywallRefreshPendingRef.current) {
+        return;
+      }
+      paywallRefreshPendingRef.current = false;
+      const timerId = paywallRefreshTimerRef.current;
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        paywallRefreshTimerRef.current = null;
+      }
+      void fetchStatus({ force: true });
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      const timerId = paywallRefreshTimerRef.current;
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        paywallRefreshTimerRef.current = null;
+      }
+    };
+  }, [fetchStatus]);
+
   const showPaywall = useCallback(() => {
     const link = getEnv('VITE_REVENUECAT_WEB_PURCHASE_LINK');
     if (!link) {
@@ -121,25 +165,33 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     let resolvedUrl = link;
     try {
       const url = new URL(link, window.location.origin);
+      const encodedUserId = encodeURIComponent(user.id);
 
       if (url.pathname.includes(':app_user_id')) {
-        url.pathname = url.pathname.replace(':app_user_id', encodeURIComponent(user.id));
+        url.pathname = url.pathname.replace(':app_user_id', encodedUserId);
       } else {
         const trimmedPath = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
-        url.pathname = `${trimmedPath}/${encodeURIComponent(user.id)}`;
+        url.pathname = `${trimmedPath}/${encodedUserId}`;
       }
 
-      url.searchParams.delete('app_user_id');
+      url.searchParams.set('app_user_id', user.id);
       resolvedUrl = url.toString();
     } catch (error) {
       console.warn('[Subscription] Provided paywall link appears relative; applying path fallback.', error);
-      const separator = link.endsWith('/') ? '' : '/';
-      resolvedUrl = `${link}${separator}${encodeURIComponent(user.id)}`;
+      const encodedUserId = encodeURIComponent(user.id);
+      const linkWithPath = link.includes(':app_user_id')
+        ? link.replace(':app_user_id', encodedUserId)
+        : `${link}${link.endsWith('/') ? '' : '/'}${encodedUserId}`;
+      const joiner = linkWithPath.includes('?') ? '&' : '?';
+      resolvedUrl = `${linkWithPath}${joiner}app_user_id=${encodedUserId}`;
     }
 
     window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-    setTimeout(() => {
-      void fetchStatus();
+    paywallRefreshPendingRef.current = true;
+    paywallRefreshTimerRef.current = window.setTimeout(() => {
+      paywallRefreshPendingRef.current = false;
+      void fetchStatus({ force: true });
+      paywallRefreshTimerRef.current = null;
     }, 4000);
   }, [fetchStatus, user?.id]);
 
@@ -148,6 +200,7 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     isLoading: state.isLoading,
     expiresAt: state.expiresAt,
     meditations: state.meditations,
+    journals: state.journals,
     refresh: fetchStatus,
     showPaywall,
     lastUpdated: state.lastUpdated
