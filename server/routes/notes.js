@@ -665,8 +665,10 @@ export function registerNotesRoutes(deps) {
       await syncOneSignalAlias(req, userId);
       const { caption, date } = req.body;
       const files = Array.isArray(req.files) ? req.files : [];
-      if (!req.entitlements?.isPremium) {
-        return sendUpgradeRequired(res, 'photo_note');
+
+      const quota = await ensureJournalQuota(req, res);
+      if (!quota.allowed) {
+        return;
       }
 
       if (!files.length) {
@@ -875,10 +877,6 @@ export function registerNotesRoutes(deps) {
       // Generate unique note ID
       const noteId = uuidv4();
       const files = Array.isArray(req.files) ? req.files : [];
-
-      if (files.length > 0 && !req.entitlements?.isPremium) {
-        return sendUpgradeRequired(res, 'text_note_images', { maxAttachments: 0 });
-      }
 
       const quota = await ensureJournalQuota(req, res);
       if (!quota.allowed) {

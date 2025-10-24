@@ -57,7 +57,13 @@ const DesktopSidebar: React.FC = () => {
       {/* Logo and tagline */}
       <div style={styles.logoSection}>
         <div style={styles.logoContainer}>
-          <div style={styles.logo}>📱</div>
+          <div style={styles.logo}>
+            <img
+              src="/replay-icon-official.png"
+              alt="Replay Logo"
+              style={styles.logoImage}
+            />
+          </div>
           <h1 style={styles.appName}>Replay</h1>
         </div>
         <p style={styles.tagline}>Your mindful journey</p>
@@ -146,14 +152,16 @@ const styles = {
     marginBottom: '0.5rem',
   },
   logo: {
-    fontSize: '2rem',
-    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-    borderRadius: '12px',
     width: '48px',
     height: '48px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain' as const,
   },
   appName: {
     fontSize: '1.75rem',

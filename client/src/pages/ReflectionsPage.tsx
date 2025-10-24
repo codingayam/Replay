@@ -559,6 +559,10 @@ const ReflectionsPage: React.FC = () => {
                                         ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
                                         : 'You have used all free meditations.')
                                     : 'Checking your free balance...'}
+                                {' '}
+                                <button type="button" style={styles.inlineUpsellLink} onClick={showPaywall}>
+                                    Subscribe to Replay Premium today to unlock unlimited usage
+                                </button>
                             </p>
                             {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
                                 <button
@@ -734,6 +738,17 @@ const styles = {
         transition: 'all 0.3s ease',
         position: 'relative',
     } as React.CSSProperties,
+    inlineUpsellLink: {
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        margin: '0.35rem 0 0',
+        fontSize: '0.9rem',
+        color: '#6366f1',
+        textDecoration: 'underline',
+        cursor: 'pointer',
+        display: 'inline'
+    },
     reflectionsSection: {
         backgroundColor: 'white',
         padding: '24px',

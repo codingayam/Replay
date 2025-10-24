@@ -17,12 +17,15 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
     onSelectPhoto,
     onSelectText,
 }) => {
-    const { isPremium, showPaywall } = useSubscription();
+    const { isPremium, journals, showPaywall } = useSubscription();
+    const remainingJournals = journals?.remaining ?? null;
+    const outOfFreeJournals = !isPremium && typeof remainingJournals === 'number' && remainingJournals <= 0;
 
     if (!isOpen) return null;
 
     const handlePhotoClick = () => {
-        if (!isPremium) {
+        if (outOfFreeJournals) {
+            alert('You have used all free journals. Upgrade to Replay Premium to continue journaling.');
             showPaywall();
             return;
         }
@@ -68,7 +71,7 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
                         onClick={handlePhotoClick}
                         style={{
                             ...styles.optionButton,
-                            ...(isPremium ? {} : styles.lockedOption)
+                            ...(outOfFreeJournals ? styles.lockedOption : {})
                         }}
                     >
                         <div style={styles.optionIcon}>
@@ -77,11 +80,11 @@ const UploadOptionsModal: React.FC<UploadOptionsModalProps> = ({
                         <div style={styles.optionContent}>
                             <h4 style={styles.optionTitle}>Upload Photo</h4>
                             <p style={styles.optionDescription}>
-                                {isPremium
-                                    ? 'Upload a photo with your caption for AI-enhanced journaling'
-                                    : 'Replay Premium members can upload photo-only reflections.'}
+                                {outOfFreeJournals
+                                    ? 'Upgrade to keep capturing photo reflections after the free limit.'
+                                    : 'Upload a photo with your caption for AI-enhanced journaling.'}
                             </p>
-                            {!isPremium && (
+                            {outOfFreeJournals && (
                                 <div style={styles.lockedLabel}>
                                     <Lock size={14} />
                                     <span>Upgrade to unlock</span>

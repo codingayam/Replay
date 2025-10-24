@@ -31,7 +31,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     noteDate,
     onDateChange,
 }) => {
-    const { isPremium, showPaywall } = useSubscription();
+    const { isPremium, journals, showPaywall } = useSubscription();
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [caption, setCaption] = useState('');
@@ -46,18 +46,23 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     const streamRef = useRef<MediaStream | null>(null);
 
     const remainingSlots = MAX_PHOTOS - selectedFiles.length;
+    const hasFreeJournalQuota = isPremium || (journals?.remaining ?? 0) > 0;
+
+    const ensureJournalAccess = () => {
+        if (isPremium) {
+            return true;
+        }
+        if ((journals?.remaining ?? 0) > 0) {
+            return true;
+        }
+        alert('You have used all free journals. Upgrade to Replay Premium to continue journaling.');
+        showPaywall();
+        return false;
+    };
     const hasSelection = selectedFiles.length > 0;
     const supportsCameraApi = useMemo(() => typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia), []);
     const { isDesktop } = useResponsive();
     const allowCameraCapture = !isDesktop;
-    const requirePremiumAccess = () => {
-        if (isPremium) {
-            return true;
-        }
-        showPaywall();
-        return false;
-    };
-
     useEffect(() => {
         if (!allowCameraCapture) {
             streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -113,7 +118,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const addFiles = (files: File[]) => {
-        if (!requirePremiumAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         if (!files.length) {
@@ -130,7 +135,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleLibrarySelect = () => {
-        if (!requirePremiumAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         fileInputRef.current?.click();
@@ -219,7 +224,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleCameraTrigger = async () => {
-        if (!requirePremiumAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         if (!allowCameraCapture) {
@@ -259,7 +264,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleCaptureFrame = () => {
-        if (!requirePremiumAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         if (!videoRef.current || !canvasRef.current) {
@@ -319,7 +324,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
     };
 
     const handleUpload = () => {
-        if (!requirePremiumAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         if (!hasSelection || !caption.trim() || !noteDate || isUploading) {
@@ -340,7 +345,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
         return null;
     }
 
-    if (!isPremium) {
+    if (!hasFreeJournalQuota) {
         return (
             <div style={styles.backdrop} onClick={handleClose}>
                 <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -356,7 +361,7 @@ const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
                         </div>
                         <h4 style={styles.lockedTitle}>Unlock photo journaling</h4>
                         <p style={styles.lockedDescription}>
-                            Photo-only notes are available for Replay Premium members. Upgrade to add rich visuals to your reflections.
+                            You have used all free journals. Upgrade to keep capturing photo reflections.
                         </p>
                         <button type="button" style={styles.upgradeButton} onClick={() => showPaywall()}>
                             Upgrade to Premium

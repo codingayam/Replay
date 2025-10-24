@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mic, Camera, FileText, Trash2 } from 'lucide-react';
+import { X, Mic, Camera, FileText, Trash2, Edit } from 'lucide-react';
 import type { Note } from '../types';
 import { useAuthenticatedApi, getFileUrl } from '../utils/api';
 
@@ -9,6 +9,7 @@ interface SearchResultModalProps {
   noteId: string | null;
   searchQuery: string;
   onDelete?: (noteId: string) => void;
+  onEdit?: (note: Note) => void;
 }
 
 const SearchResultModal: React.FC<SearchResultModalProps> = ({
@@ -16,7 +17,8 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
   onClose,
   noteId,
   searchQuery,
-  onDelete
+  onDelete,
+  onEdit
 }) => {
   const [note, setNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(false);
@@ -133,6 +135,12 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
     }
   };
 
+  const handleEdit = () => {
+    if (note && onEdit) {
+      onEdit(note);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -141,6 +149,11 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
         <div style={styles.header}>
           <h2 style={styles.title}>Note Details</h2>
           <div style={styles.headerActions}>
+            {onEdit && note && (
+              <button onClick={handleEdit} style={styles.editButton}>
+                <Edit size={20} />
+              </button>
+            )}
             {onDelete && (
               <button onClick={handleDelete} style={styles.deleteButton}>
                 <Trash2 size={20} />
@@ -311,6 +324,18 @@ const styles = {
     border: 'none',
     cursor: 'pointer',
     color: '#dc2626',
+    padding: '0.5rem',
+    borderRadius: '0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'background-color 0.2s',
+  },
+  editButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: '#6366f1',
     padding: '0.5rem',
     borderRadius: '0.5rem',
     display: 'flex',

@@ -171,7 +171,7 @@ const ExperiencesPage: React.FC = () => {
         } catch (err) {
             const axiosError = err as AxiosError<{ message?: string; code?: string }>;
             if (axiosError.response?.status === 402) {
-                const message = axiosError.response.data?.message || 'Photo notes are available with Replay Premium.';
+                const message = axiosError.response.data?.message || 'Upgrade to Replay Premium to continue journaling.';
                 alert(message);
                 showPaywall();
                 await refreshSubscription({ force: true });
@@ -258,6 +258,9 @@ const ExperiencesPage: React.FC = () => {
         try {
             await api.put(`/notes/${noteId}`, updates);
             fetchNotes(); // Refresh the notes list
+            if (searchActive && searchQuery.trim()) {
+                handleSearch(searchQuery);
+            }
             setEditModalOpen(false);
             setNoteToEdit(null);
         } catch (err) {
@@ -352,6 +355,12 @@ const ExperiencesPage: React.FC = () => {
     const handleSearchResultClick = (noteId: string) => {
         setSelectedNoteId(noteId);
         setModalOpen(true);
+    };
+
+    const handleEditNoteFromSearch = (note: Note) => {
+        handleEditNote(note);
+        setModalOpen(false);
+        setSelectedNoteId(null);
     };
 
     const handleCloseModal = () => {
@@ -680,13 +689,18 @@ const ExperiencesPage: React.FC = () => {
                 </div>
             )}
 
-            {!isPremium && typeof remainingJournals === 'number' && (
-                <div style={styles.journalLimitNotice}>
-                    {remainingJournals > 0
-                        ? `You have ${remainingJournals} of ${journalLimit ?? 10} free journal${remainingJournals === 1 ? '' : 's'} remaining.`
-                        : 'You have used all free journals. Upgrade to continue journaling.'}
-                </div>
-            )}
+    {!isPremium && typeof remainingJournals === 'number' && (
+        <div style={styles.journalLimitNotice}>
+            <span>
+                {remainingJournals > 0
+                    ? `You have ${remainingJournals} of ${journalLimit ?? 10} free journal${remainingJournals === 1 ? '' : 's'} remaining.`
+                    : 'You have used all free journals.'}
+            </span>
+            <button type="button" style={styles.inlineUpsellLink} onClick={showPaywall}>
+                Subscribe to Replay Premium today to unlock unlimited usage
+            </button>
+        </div>
+    )}
 
             <FloatingUploadButton 
                 onSaveAudio={handleSaveAudioNote}
@@ -703,6 +717,7 @@ const ExperiencesPage: React.FC = () => {
                 noteId={selectedNoteId}
                 searchQuery={searchQuery}
                 onDelete={handleDeleteNoteFromSearch}
+                onEdit={handleEditNoteFromSearch}
             />
 
             {/* Selection Bar */}
@@ -729,11 +744,17 @@ const ExperiencesPage: React.FC = () => {
                     {!isPremium && meditations && (
                         <div style={styles.replayInfoRow}>
                             <p style={styles.meditationCreditText}>
-                                {typeof remainingMeditations === 'number'
-                                    ? (remainingMeditations > 0
-                                        ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
-                                        : 'You have used all free meditations.')
-                                    : 'Checking your free balance...'}
+                                <span>
+                                    {typeof remainingMeditations === 'number'
+                                        ? (remainingMeditations > 0
+                                            ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
+                                            : 'You have used all free meditations.')
+                                        : 'Checking your free balance...'}
+                                </span>
+                                {' '}
+                                <button type="button" style={styles.inlineUpsellLink} onClick={showPaywall}>
+                                    Subscribe to Replay Premium today to unlock unlimited usage
+                                </button>
                             </p>
                             {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
                                 <button type="button" style={styles.upgradeLinkButton} onClick={showPaywall}>
@@ -766,11 +787,17 @@ const ExperiencesPage: React.FC = () => {
                     : (
                         <div>
                             <p style={{ margin: 0 }}>
-                                {typeof remainingMeditations === 'number'
-                                    ? (remainingMeditations > 0
-                                        ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
-                                        : 'You have used all free meditations.')
-                                    : 'Checking your free balance...'}
+                                <span>
+                                    {typeof remainingMeditations === 'number'
+                                        ? (remainingMeditations > 0
+                                            ? `You have ${remainingMeditations} of ${meditationLimit ?? 2} free meditation${remainingMeditations === 1 ? '' : 's'} remaining.`
+                                            : 'You have used all free meditations.')
+                                        : 'Checking your free balance...'}
+                                </span>
+                                {' '}
+                                <button type="button" style={styles.inlineUpsellLink} onClick={showPaywall}>
+                                    Subscribe to Replay Premium today to unlock unlimited usage
+                                </button>
                             </p>
                             {typeof remainingMeditations === 'number' && remainingMeditations <= 0 && (
                                 <button
@@ -902,6 +929,21 @@ const styles = {
         fontSize: '0.95rem',
         fontWeight: 500,
         textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '0.35rem',
+    },
+    inlineUpsellLink: {
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        margin: 0,
+        fontSize: '0.9rem',
+        color: '#6366f1',
+        textDecoration: 'underline',
+        cursor: 'pointer',
+        alignSelf: 'center',
+        display: 'inline'
     },
     contentContainer: {
         padding: '1.5rem 1rem',

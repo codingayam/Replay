@@ -30,7 +30,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     noteDate,
     onDateChange,
 }) => {
-    const { isPremium, showPaywall } = useSubscription();
+    const { isPremium, journals, showPaywall } = useSubscription();
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
@@ -73,10 +73,15 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
         && title.trim().length <= 100
         && Boolean(noteDate);
 
-    const requirePhotoAccess = () => {
+    const hasFreeJournalQuota = isPremium || (journals?.remaining ?? 0) > 0;
+    const ensureJournalAccess = () => {
         if (isPremium) {
             return true;
         }
+        if ((journals?.remaining ?? 0) > 0) {
+            return true;
+        }
+        alert('You have used all free journals. Upgrade to Replay Premium to continue journaling.');
         showPaywall();
         return false;
     };
@@ -134,7 +139,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const addImages = (files: File[]) => {
-        if (!requirePhotoAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         if (!files.length) {
@@ -152,7 +157,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const triggerLibraryInput = () => {
-        if (!requirePhotoAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         libraryInputRef.current?.click();
@@ -165,7 +170,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const triggerCamera = async () => {
-        if (!requirePhotoAccess()) {
+        if (!ensureJournalAccess()) {
             return;
         }
         if (!allowCameraCapture) {
@@ -198,7 +203,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const handleFallbackCamera = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (!requirePhotoAccess()) {
+        if (!ensureJournalAccess()) {
             event.target.value = '';
             return;
         }
@@ -275,6 +280,9 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
     };
 
     const handleUpload = () => {
+        if (!ensureJournalAccess()) {
+            return;
+        }
         if (!isValid || isUploading) {
             return;
         }
@@ -291,6 +299,33 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
 
     if (!isOpen) {
         return null;
+    }
+
+    if (!hasFreeJournalQuota) {
+        return (
+            <div style={styles.backdrop} onClick={onClose}>
+                <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+                    <div style={styles.header}>
+                        <h3 style={styles.title}>Write Text Entry</h3>
+                        <button onClick={onClose} style={styles.closeButton}>
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div style={styles.lockedContent}>
+                        <div style={styles.lockIconWrapper}>
+                            <Lock size={40} />
+                        </div>
+                        <h4 style={styles.lockedTitle}>Unlock unlimited journaling</h4>
+                        <p style={styles.lockedDescription}>
+                            You have used all free journals. Upgrade to Replay Premium to keep writing and attaching photos.
+                        </p>
+                        <button type="button" style={styles.upgradeButton} onClick={() => showPaywall()}>
+                            Upgrade to Premium
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -367,8 +402,10 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                         {!showImageUpload && selectedImages.length === 0 ? (
                             <button
                                 onClick={() => {
+                                    if (!ensureJournalAccess()) {
+                                        return;
+                                    }
                                     setShowImageUpload(true);
-                                    requirePhotoAccess();
                                 }}
                                 style={styles.addImageButton}
                                 type="button"
@@ -379,12 +416,6 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                         ) : (
                             <div style={styles.imageContainer}>
                                 <label style={styles.label}>Attach Photos (Optional)</label>
-                                {!isPremium && (
-                                    <div style={styles.lockedNotice}>
-                                        <Lock size={14} />
-                                        <span>Upgrade to Replay Premium to attach photos to your notes.</span>
-                                    </div>
-                                )}
                                 <div style={styles.imageUploadMeta}>
                                     <span>{selectedImages.length} / {MAX_PHOTOS} photos selected</span>
                                     {remainingSlots === 0 && <span style={styles.limitNotice}>Maximum reached</span>}
@@ -394,7 +425,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                                         type="button"
                                         style={styles.optionButton}
                                         onClick={triggerLibraryInput}
-                                        disabled={remainingSlots <= 0 || !isPremium}
+                                        disabled={remainingSlots <= 0 || !hasFreeJournalQuota}
                                     >
                                         <ImageIcon size={16} />
                                         Photo Library
@@ -404,7 +435,7 @@ const TextUploadModal: React.FC<TextUploadModalProps> = ({
                                             type="button"
                                             style={styles.optionButton}
                                             onClick={triggerCamera}
-                                            disabled={remainingSlots <= 0 || !isPremium}
+                                            disabled={remainingSlots <= 0 || !hasFreeJournalQuota}
                                         >
                                             <Camera size={16} />
                                             Camera
