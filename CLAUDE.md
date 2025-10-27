@@ -160,6 +160,8 @@ This is a full-stack reflection and journaling application called "Replay" with:
 #### Server Environment (`server/.env`)
 - `GEMINI_API_KEY` - Google Generative AI API key for transcription and content generation
 - `REPLICATE_API_TOKEN` - Replicate API token for TTS (text-to-speech generation)
+- `REPLICATE_DEPLOYMENT_OWNER` - Replicate workspace or user that owns the TTS deployment
+- `REPLICATE_DEPLOYMENT_NAME` - Replicate deployment name invoked for text-to-speech
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_ANON_KEY` - Supabase anonymous key (public)
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (private, for server operations)

@@ -1,0 +1,306 @@
+/* Lotus/Mandala Button Container */
+.lotus-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 1rem;
+    user-select: none;
+    background: transparent;
+}
+
+/* Mandala Container */
+.mandala-container {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: smoke-drift 8s ease-in-out infinite;
+}
+
+/* Mandala SVG */
+.mandala-svg {
+    width: 100%;
+    height: 100%;
+    filter: blur(2px) drop-shadow(0 4px 20px rgba(6, 182, 212, 0.1));
+    transition: filter 0.8s ease;
+    overflow: visible;
+}
+
+.mandala-container:hover .mandala-svg {
+    filter: blur(1.5px) drop-shadow(0 6px 30px rgba(6, 182, 212, 0.2));
+}
+
+/* Smoke Wisps - Organic blob-like shapes */
+.smoke-wisp {
+    animation: smoke-flow 6s ease-in-out infinite;
+    opacity: 0.15;
+}
+
+/* Large smoke clouds */
+.large-smoke {
+    fill: rgba(6, 182, 212, 0.3);
+    opacity: 0.2;
+    animation: smoke-flow 7s ease-in-out infinite, smoke-rotate 12s linear infinite;
+    filter: blur(4px);
+}
+
+/* Medium smoke puffs */
+.medium-smoke {
+    fill: rgba(8, 145, 178, 0.35);
+    opacity: 0.18;
+    animation: smoke-flow 6s ease-in-out infinite, smoke-rotate 10s linear infinite reverse;
+    filter: blur(3px);
+}
+
+/* Small smoke particles */
+.small-smoke {
+    fill: rgba(14, 116, 144, 0.4);
+    opacity: 0.15;
+    animation: smoke-flow 5s ease-in-out infinite, smoke-rotate 8s linear infinite;
+    filter: blur(2.5px);
+}
+
+/* Tiny floating particles */
+.tiny-smoke {
+    fill: rgba(6, 182, 212, 0.5);
+    opacity: 0.12;
+    animation: smoke-flow 4s ease-in-out infinite, particle-drift 6s ease-in-out infinite;
+    filter: blur(1.5px);
+}
+
+/* "Reflect" Text */
+.lotus-button-text {
+    margin-top: 0.75rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: rgba(8, 145, 178, 0.85);
+    letter-spacing: 0.5px;
+    animation: text-breathe 6s ease-in-out infinite;
+    text-shadow: 0 2px 10px rgba(6, 182, 212, 0.12);
+}
+
+/* ============================================
+   ANIMATIONS - Smoke Movement
+   ============================================ */
+
+/* Smoke Drift - Container subtle movement */
+@keyframes smoke-drift {
+    0%, 100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+    25% {
+        transform: translate(2px, -3px) rotate(1deg);
+    }
+    50% {
+        transform: translate(-2px, 2px) rotate(-1deg);
+    }
+    75% {
+        transform: translate(3px, 1px) rotate(0.5deg);
+    }
+}
+
+/* Smoke Flow - Organic opacity and scale changes */
+@keyframes smoke-flow {
+    0%, 100% {
+        opacity: 0.15;
+        transform: scale(1) translate(0, 0);
+    }
+    20% {
+        opacity: 0.25;
+        transform: scale(1.15) translate(1px, -2px);
+    }
+    40% {
+        opacity: 0.18;
+        transform: scale(1.08) translate(-1px, 1px);
+    }
+    60% {
+        opacity: 0.22;
+        transform: scale(1.12) translate(2px, 0px);
+    }
+    80% {
+        opacity: 0.16;
+        transform: scale(1.05) translate(-1px, -1px);
+    }
+}
+
+/* Smoke Rotate - Slow organic rotation */
+@keyframes smoke-rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Particle Drift - Small floating movement */
+@keyframes particle-drift {
+    0%, 100% {
+        transform: translate(0, 0);
+    }
+    25% {
+        transform: translate(3px, -4px);
+    }
+    50% {
+        transform: translate(-2px, -2px);
+    }
+    75% {
+        transform: translate(2px, -5px);
+    }
+}
+
+/* Text Breathe - Very subtle pulse */
+@keyframes text-breathe {
+    0%, 100% {
+        opacity: 0.85;
+        transform: translateY(0px);
+    }
+    50% {
+        opacity: 1;
+        transform: translateY(-1px);
+    }
+}
+
+/* Hover Effects - Smoke intensifies */
+.lotus-button-container:hover .large-smoke {
+    opacity: 0.3;
+    animation-duration: 5s;
+    filter: blur(3.5px);
+}
+
+.lotus-button-container:hover .medium-smoke {
+    opacity: 0.28;
+    animation-duration: 4.5s;
+    filter: blur(2.8px);
+}
+
+.lotus-button-container:hover .small-smoke {
+    opacity: 0.25;
+    animation-duration: 4s;
+    filter: blur(2.2px);
+}
+
+.lotus-button-container:hover .tiny-smoke {
+    opacity: 0.22;
+    animation-duration: 3.5s;
+    filter: blur(1.2px);
+}
+
+.lotus-button-container:hover .lotus-button-text {
+    color: rgba(6, 182, 212, 1);
+    text-shadow: 0 3px 15px rgba(6, 182, 212, 0.25);
+}
+
+/* Active/Click Effect - Smoke billows */
+.lotus-button-container:active .mandala-container {
+    transform: scale(0.96);
+    transition: transform 0.2s ease;
+}
+
+.lotus-button-container:active .smoke-wisp {
+    opacity: 0.35;
+    animation-duration: 2s;
+}
+
+.lotus-button-container:active .large-smoke {
+    filter: blur(5px);
+    opacity: 0.4;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .mandala-container {
+        width: 100px;
+        height: 100px;
+    }
+
+    .lotus-button-text {
+        font-size: 0.95rem;
+    }
+
+    /* Slightly reduce blur on mobile for better visibility */
+    .mandala-svg {
+        filter: blur(1.5px) drop-shadow(0 4px 20px rgba(6, 182, 212, 0.1));
+    }
+
+    .large-smoke {
+        filter: blur(3px);
+    }
+
+    .medium-smoke {
+        filter: blur(2.5px);
+    }
+
+    .small-smoke {
+        filter: blur(2px);
+    }
+}
+
+/* Accessibility - Reduce Motion */
+@media (prefers-reduced-motion: reduce) {
+    .mandala-container,
+    .smoke-wisp,
+    .large-smoke,
+    .medium-smoke,
+    .small-smoke,
+    .tiny-smoke,
+    .lotus-button-text {
+        animation: none;
+    }
+
+    .mandala-svg {
+        transition: none;
+    }
+
+    /* Provide static visible state */
+    .smoke-wisp {
+        opacity: 0.25;
+    }
+
+    .large-smoke {
+        opacity: 0.3;
+    }
+
+    .medium-smoke {
+        opacity: 0.28;
+    }
+
+    .small-smoke {
+        opacity: 0.25;
+    }
+
+    .tiny-smoke {
+        opacity: 0.2;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .large-smoke {
+        fill: rgba(6, 182, 212, 0.4);
+        opacity: 0.25;
+    }
+
+    .medium-smoke {
+        fill: rgba(8, 145, 178, 0.45);
+        opacity: 0.23;
+    }
+
+    .small-smoke {
+        fill: rgba(14, 116, 144, 0.5);
+        opacity: 0.2;
+    }
+
+    .tiny-smoke {
+        fill: rgba(6, 182, 212, 0.6);
+        opacity: 0.18;
+    }
+
+    .lotus-button-text {
+        color: rgba(6, 182, 212, 0.95);
+    }
+}

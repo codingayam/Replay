@@ -32,7 +32,7 @@ function convertBoldToHtml(text) {
 
 function markdownToHtml(markdown) {
   const lines = markdown.split('\n');
-  let html = '<div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">';
+  let contentHtml = '';
   let inList = false;
 
   for (const rawLine of lines) {
@@ -40,51 +40,106 @@ function markdownToHtml(markdown) {
 
     if (line.startsWith('- ')) {
       if (!inList) {
-        html += '<ul style="padding-left: 20px;">';
+        contentHtml += '<ul style="margin: 16px 0; padding-left: 24px; list-style-type: none;">';
         inList = true;
       }
       const listContent = convertBoldToHtml(escapeHtml(line.slice(2)));
-      html += `<li>${listContent}</li>`;
+      contentHtml += `<li style="margin: 8px 0; padding-left: 8px; position: relative;">
+        <span style="position: absolute; left: -16px; color: #2dd4bf;">•</span>
+        <span style="color: #334155; line-height: 1.6;">${listContent}</span>
+      </li>`;
       continue;
     }
 
     if (inList) {
-      html += '</ul>';
+      contentHtml += '</ul>';
       inList = false;
     }
 
     if (line.startsWith('# ')) {
       const headerContent = convertBoldToHtml(escapeHtml(line.slice(2).trim()));
-      html += `<h2 style="margin: 24px 0 12px;">${headerContent}</h2>`;
+      contentHtml += `<h1 style="margin: 32px 0 16px; font-size: 28px; font-weight: 700; color: #0f172a; letter-spacing: -0.5px;">${headerContent}</h1>`;
       continue;
     }
 
     if (line.startsWith('## ')) {
       const headerContent = convertBoldToHtml(escapeHtml(line.slice(3).trim()));
-      html += `<h3 style="margin: 20px 0 10px;">${headerContent}</h3>`;
+      contentHtml += `<h2 style="margin: 28px 0 14px; font-size: 22px; font-weight: 700; color: #0ea5e9; letter-spacing: -0.3px; border-bottom: 2px solid #e0f2fe; padding-bottom: 8px;">${headerContent}</h2>`;
       continue;
     }
 
     if (line.startsWith('### ')) {
       const headerContent = convertBoldToHtml(escapeHtml(line.slice(4).trim()));
-      html += `<h4 style="margin: 16px 0 8px;">${headerContent}</h4>`;
+      contentHtml += `<h3 style="margin: 24px 0 12px; font-size: 18px; font-weight: 600; color: #14b8a6;">${headerContent}</h3>`;
       continue;
     }
 
     if (line === '') {
-      html += '<p style="margin: 12px 0;">&nbsp;</p>';
+      contentHtml += '<div style="margin: 16px 0;"></div>';
       continue;
     }
 
     const paragraphContent = convertBoldToHtml(escapeHtml(line));
-    html += `<p style="margin: 12px 0;">${paragraphContent}</p>`;
+    contentHtml += `<p style="margin: 14px 0; color: #475569; line-height: 1.7; font-size: 15px;">${paragraphContent}</p>`;
   }
 
   if (inList) {
-    html += '</ul>';
+    contentHtml += '</ul>';
   }
 
-  html += '</div>';
+  // Get logo URL from environment variable or use a default
+  const logoUrl = process.env.WEEKLY_REPORT_LOGO_URL || 'https://nuezhhuuwhqrapwznymn.supabase.co/storage/v1/object/public/assets/replay-logo.png';
+
+  // Wrap content in a beautiful email template
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Your Weekly Replay</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+          <td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); overflow: hidden;">
+
+              <!-- Header with logo and gradient -->
+              <tr>
+                <td style="background: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%); padding: 48px 40px; text-align: center;">
+                  <img src="${logoUrl}" alt="Replay Logo" style="width: 120px; height: auto; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;" />
+                  <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: -0.5px;">Your Weekly Reflection</h1>
+                </td>
+              </tr>
+
+              <!-- Main content -->
+              <tr>
+                <td style="padding: 40px;">
+                  ${contentHtml}
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f1f5f9; padding: 32px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
+                  <p style="margin: 0 0 12px; color: #64748b; font-size: 14px; line-height: 1.6;">
+                    Take a moment to reflect on your journey. Every step forward matters.
+                  </p>
+                  <p style="margin: 0; color: #94a3b8; font-size: 13px;">
+                    This is your weekly reflection from <strong style="color: #0ea5e9;">Replay</strong>
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
   return html;
 }
 

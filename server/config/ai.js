@@ -5,8 +5,14 @@ export const GEMINI_MODELS = {
   transcription: 'gemini-2.0-flash'
 };
 
-export const REPLICATE_MODELS = {
-  tts: 'jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13'
+const defaultReplicateOwner = process.env.REPLICATE_DEPLOYMENT_OWNER ?? 'codingayam';
+const defaultReplicateName = process.env.REPLICATE_DEPLOYMENT_NAME ?? 'kokoro-replay';
+
+export const REPLICATE_DEPLOYMENTS = {
+  tts: {
+    owner: defaultReplicateOwner,
+    name: defaultReplicateName
+  }
 };
 
 export const AUDIO_TRANSCRIPTION_PROMPT = 'Please transcribe this audio recording. Return only the transcribed text without any additional formatting or commentary.';

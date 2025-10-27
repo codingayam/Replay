@@ -365,11 +365,16 @@ test('POST /api/meditate generates custom day meditation and uploads audio', asy
 
   const replicateCalls = [];
   const replicate = {
-    async run(model, input) {
-      replicateCalls.push({ model, input });
-      return {
-        url: () => new URL('https://example.com/day-audio.wav')
-      };
+    deployments: {
+      predictions: {
+        async create(owner, name, payload) {
+          replicateCalls.push({ owner, name, input: payload });
+          return { id: 'pred-route-day', output: 'https://example.com/day-audio.wav' };
+        }
+      }
+    },
+    async wait(prediction) {
+      return prediction;
     }
   };
 
@@ -449,11 +454,16 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
 
   const replicateCalls = [];
   const replicate = {
-    async run(model, input) {
-      replicateCalls.push({ model, input });
-      return {
-        url: () => new URL('https://example.com/audio.wav')
-      };
+    deployments: {
+      predictions: {
+        async create(owner, name, payload) {
+          replicateCalls.push({ owner, name, input: payload });
+          return { id: 'pred-route-night', output: 'https://example.com/audio.wav' };
+        }
+      }
+    },
+    async wait(prediction) {
+      return prediction;
     }
   };
 
@@ -530,11 +540,16 @@ test('POST /api/meditate handles varied pause token formatting', async (t) => {
 
   const replicateCalls = [];
   const replicate = {
-    async run(model, input) {
-      replicateCalls.push({ model, input });
-      return {
-        url: () => new URL('https://example.com/varied-audio.wav')
-      };
+    deployments: {
+      predictions: {
+        async create(owner, name, payload) {
+          replicateCalls.push({ owner, name, input: payload });
+          return { id: 'pred-route-varied', output: 'https://example.com/varied-audio.wav' };
+        }
+      }
+    },
+    async wait(prediction) {
+      return prediction;
     }
   };
 
@@ -614,7 +629,18 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
     supabase,
     uuidv4: () => 'job-meditation',
     gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
-    replicate: { run: async () => ({ url: () => new URL('https://example.com/file.wav') }) },
+    replicate: {
+      deployments: {
+        predictions: {
+          async create() {
+            return { id: 'pred-route-job', output: 'https://example.com/file.wav' };
+          }
+        }
+      },
+      async wait(prediction) {
+        return prediction;
+      }
+    },
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
@@ -675,7 +701,18 @@ test('GET /api/meditations prunes expired meditations and excludes them from res
     supabase,
     uuidv4: () => 'not-used',
     gemini: { getGenerativeModel: () => ({}) },
-    replicate: { run: async () => ({ url: () => new URL('https://example.com/audio.wav') }) },
+    replicate: {
+      deployments: {
+        predictions: {
+          async create() {
+            return { id: 'pred-route-prune', output: 'https://example.com/audio.wav' };
+          }
+        }
+      },
+      async wait(prediction) {
+        return prediction;
+      }
+    },
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,
@@ -826,7 +863,18 @@ test('POST /api/meditations/:id/complete updates weekly progress after completio
     supabase,
     uuidv4: () => 'meditation-1',
     gemini: { getGenerativeModel: () => ({ generateContent: async () => ({ response: { text: () => '' } }) }) },
-    replicate: { run: async () => ({ url: () => new URL('https://example.com/audio.wav') }) },
+    replicate: {
+      deployments: {
+        predictions: {
+          async create() {
+            return { id: 'pred-route-complete', output: 'https://example.com/audio.wav' };
+          }
+        }
+      },
+      async wait(prediction) {
+        return prediction;
+      }
+    },
     createSilenceBuffer,
     mergeAudioBuffers,
     resolveVoiceSettings,

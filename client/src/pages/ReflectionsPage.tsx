@@ -11,7 +11,8 @@ import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
 import RecentActivityCalendar from '../components/RecentActivityCalendar';
 import CalendarModal from '../components/CalendarModal';
 import WeeklyProgressCard from '../components/WeeklyProgressCard';
-import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import LotusFlowerButton from '../components/LotusFlowerButton';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuthenticatedApi } from '../utils/api';
 import { useJobs } from '../contexts/JobContext';
 import { useResponsive } from '../hooks/useResponsive';
@@ -293,8 +294,7 @@ const ReflectionsPage: React.FC = () => {
     const handleSaveLater = async () => {
         setShowGenerationModal(false);
         fetchSavedMeditations(); // Refresh the saved meditations list
-        fetchStats(); // Refresh stats since a new meditation was created
-        await refreshWeeklyProgress();
+        await refreshWeeklyProgress(); // Refresh stats since a new meditation was created
         // Reset state
         setSelectedReflectionType('Day');
         setSelectedStartDate('');
@@ -316,8 +316,7 @@ const ReflectionsPage: React.FC = () => {
         setSelectedNoteIds([]);
         setGeneratedSummary('');
         fetchSavedMeditations(); // Refresh the saved meditations list
-        fetchStats(); // Refresh stats since meditation was completed
-        await refreshWeeklyProgress();
+        await refreshWeeklyProgress(); // Refresh stats since meditation was completed
     };
 
     const formatDateRange = () => {
@@ -425,18 +424,11 @@ const ReflectionsPage: React.FC = () => {
                     </>
                 )}
             
-            {/* Replay Button */}
+            {/* Lotus Flower Button */}
             <div
                 style={isDesktop ? styles.desktopCtaContainer : styles.ctaContainer}
             >
-                <button 
-                    onClick={handleStartReflection}
-                    style={styles.replayButton}
-                    className="subtle-glow-button"
-                >
-                    <Plus size={20} />
-                    <span>Replay</span>
-                </button>
+                <LotusFlowerButton onClick={handleStartReflection} />
             </div>
 
             {/* Recent Reflections Section */}
@@ -714,30 +706,19 @@ const styles = {
         position: 'sticky' as const,
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
         zIndex: 5,
-        padding: '0 0 16px 0',
+        padding: '1.5rem 0',
         marginTop: '1.5rem',
-        background: 'linear-gradient(to top, rgba(248,249,255,1) 40%, rgba(248,249,255,0))',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: 'linear-gradient(to top, rgba(248,249,255,1) 60%, rgba(248,249,255,0.8) 80%, rgba(248,249,255,0))',
     },
     desktopCtaContainer: {
-        margin: '1.5rem 0',
-    },
-    replayButton: {
-        width: '100%',
-        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-        color: 'white',
-        border: 'none',
-        borderRadius: '12px',
-        padding: '16px',
+        margin: '2rem 0',
         display: 'flex',
-        alignItems: 'center',
         justifyContent: 'center',
-        gap: '8px',
-        fontSize: '15px',
-        fontWeight: '600',
-        cursor: 'pointer',
-        transition: 'all 0.3s ease',
-        position: 'relative',
-    } as React.CSSProperties,
+        alignItems: 'center',
+    },
     inlineUpsellLink: {
         background: 'none',
         border: 'none',

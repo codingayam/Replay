@@ -18,12 +18,13 @@ import {
 import { DEFAULT_TIMEZONE } from '../utils/week.js';
 import {
   GEMINI_MODELS,
-  REPLICATE_MODELS,
+  REPLICATE_DEPLOYMENTS,
   buildMeditationTitlePrompt,
   buildReflectionSummaryPrompt,
   buildSynchronousMeditationScriptPrompt
 } from '../config/ai.js';
 import { getUsageSummary, incrementUsageCounters } from '../utils/quota.js';
+import { extractAudioUrlFromPrediction } from '../utils/replicate.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -653,6 +654,7 @@ export function registerMeditationRoutes(deps) {
         let audioExpiresAt = new Date(Date.now() + AUDIO_AVAILABILITY_WINDOW_MS);
 
         let measuredDurationSeconds = 0;
+        const ttsDeployment = REPLICATE_DEPLOYMENTS.tts;
 
         try {
           // Process all segments and create individual audio files
@@ -673,16 +675,22 @@ export function registerMeditationRoutes(deps) {
                   speed: voiceSettings.speed
                 };
               
-                console.log('📤 Replicate API call:', {
-                  model: REPLICATE_MODELS.tts,
+                console.log('📤 Replicate deployment call:', {
+                  owner: ttsDeployment.owner,
+                  name: ttsDeployment.name,
                   input: replicateInput
                 });
               
-                const output = await replicate.run(REPLICATE_MODELS.tts, { input: replicateInput });
+                const prediction = await replicate.deployments.predictions.create(
+                  ttsDeployment.owner,
+                  ttsDeployment.name,
+                  { input: replicateInput }
+                );
+                const completed = await replicate.wait(prediction);
 
                 // Get the audio URL from the response
-                const audioUrl = output.url().toString();
-                console.log('📥 Replicate API response:', { audioUrl });
+                const audioUrl = extractAudioUrlFromPrediction(completed);
+                console.log('📥 Replicate deployment response:', { audioUrl });
               
                 // Download TTS audio to temp file
                 const audioResponse = await fetch(audioUrl);

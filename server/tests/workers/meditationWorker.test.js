@@ -136,9 +136,17 @@ test('processMeditationJob completes day reflection jobs', async (t) => {
   supabase.storage = { from: (...args) => supabaseProxy.storage.from(...args) };
   const originalFetch = global.fetch;
   global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
+  const replicatePrediction = { id: 'pred-worker-day', output: 'https://example.com/worker-day.wav' };
   const replicateStub = {
-    async run() {
-      return { url: () => new URL('https://example.com/worker-day.wav') };
+    deployments: {
+      predictions: {
+        async create() {
+          return replicatePrediction;
+        }
+      }
+    },
+    async wait(prediction) {
+      return prediction;
     }
   };
   const geminiStub = {
@@ -211,9 +219,17 @@ test('processJobQueue claims pending job and delegates to worker', async (t) => 
   supabase.storage = { from: (...args) => supabaseProxy.storage.from(...args) };
   const originalFetch = global.fetch;
   global.fetch = async () => ({ ok: true, arrayBuffer: async () => SIMPLE_AUDIO });
+  const replicatePrediction = { id: 'pred-worker-queue', output: 'https://example.com/worker-day.wav' };
   const replicateStub = {
-    async run() {
-      return { url: () => new URL('https://example.com/worker-day.wav') };
+    deployments: {
+      predictions: {
+        async create() {
+          return replicatePrediction;
+        }
+      }
+    },
+    async wait(prediction) {
+      return prediction;
     }
   };
   const geminiStub = {

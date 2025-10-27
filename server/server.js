@@ -14,7 +14,7 @@ import Replicate from 'replicate';
 import { execSync } from 'child_process';
 import {
   GEMINI_MODELS,
-  REPLICATE_MODELS,
+  REPLICATE_DEPLOYMENTS,
   buildBackgroundMeditationTitlePrompt,
   buildBackgroundMeditationScriptPrompt
 } from './config/ai.js';
@@ -28,6 +28,7 @@ import {
 } from './utils/onesignal.js';
 import { attachEntitlements } from './middleware/entitlements.js';
 import { incrementUsageCounters } from './utils/quota.js';
+import { extractAudioUrlFromPrediction } from './utils/replicate.js';
 
 function createSilenceBuffer(durationSeconds = 0.35) {
   const buffer = generateSilenceBuffer(durationSeconds);
@@ -347,6 +348,7 @@ async function processMeditationJob(job) {
     }
 
     const tempAudioFiles = [];
+    const ttsDeployment = REPLICATE_DEPLOYMENTS.tts;
 
     // Process segments for TTS
     for (let i = 0; i < segments.length; i++) {
@@ -357,19 +359,28 @@ async function processMeditationJob(job) {
         try {
           // Determine voice settings based on reflection type
           const voiceSettings = resolveVoiceSettings(reflectionType);
-          
-          const output = await replicateClient.run(
-            REPLICATE_MODELS.tts,
-            {
-              input: {
-                text: segment,
-                voice: voiceSettings.voice,
-                speed: voiceSettings.speed
-              }
-            }
-          );
 
-          const audioUrl = output.url().toString();
+          const replicateInput = {
+            text: segment,
+            voice: voiceSettings.voice,
+            speed: voiceSettings.speed
+          };
+
+          console.log('📤 Replicate deployment call:', {
+            owner: ttsDeployment.owner,
+            name: ttsDeployment.name,
+            input: replicateInput
+          });
+
+          const prediction = await replicateClient.deployments.predictions.create(
+            ttsDeployment.owner,
+            ttsDeployment.name,
+            { input: replicateInput }
+          );
+          const completed = await replicateClient.wait(prediction);
+          const audioUrl = extractAudioUrlFromPrediction(completed);
+
+          console.log('📥 Replicate deployment response:', { audioUrl });
           const audioResponse = await fetch(audioUrl);
           const arrayBuffer = await audioResponse.arrayBuffer();
           const audioBuffer = Buffer.from(arrayBuffer);
