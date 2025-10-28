@@ -397,15 +397,17 @@ const ReflectionsPage: React.FC = () => {
             )}
 
             <div style={isDesktop ? styles.desktopContentContainer : styles.contentContainer}>
-                {/* Recent activity calendar - mobile only */}
+                {/* Mobile view sections - reordered */}
                 {!isDesktop && (
                     <>
+                        {/* Recent Activity Calendar - First */}
                         <RecentActivityCalendar
                             journalDates={activityDates.journals}
                             reflectionDates={activityDates.reflections}
                             onExpandClick={() => setShowCalendarModal(true)}
                         />
 
+                        {/* Weekly Progress - Second */}
                         <div style={styles.progressSection}>
                             <WeeklyProgressCard
                                 summary={weeklyProgress}
@@ -422,15 +424,20 @@ const ReflectionsPage: React.FC = () => {
                                 <p style={styles.progressHint}>Weekly report will send Monday at midnight.</p>
                             )}
                         </div>
+
+                        {/* Lotus Flower Button - Third */}
+                        <div style={styles.ctaContainer}>
+                            <LotusFlowerButton onClick={handleStartReflection} />
+                        </div>
                     </>
                 )}
-            
-            {/* Lotus Flower Button */}
-            <div
-                style={isDesktop ? styles.desktopCtaContainer : styles.ctaContainer}
-            >
-                <LotusFlowerButton onClick={handleStartReflection} />
-            </div>
+
+            {/* Lotus Flower Button - Desktop only */}
+            {isDesktop && (
+                <div style={styles.desktopCtaContainer}>
+                    <LotusFlowerButton onClick={handleStartReflection} />
+                </div>
+            )}
 
             {/* Recent Reflections Section */}
             <div style={styles.reflectionsSection}>
@@ -704,15 +711,12 @@ const styles = {
         color: '#475569',
     },
     ctaContainer: {
-        position: 'sticky' as const,
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
-        zIndex: 5,
-        padding: '1.5rem 0',
-        marginTop: '1.5rem',
+        padding: '1.5rem 0 1rem 0',
+        marginTop: '0.5rem',
+        marginBottom: '1rem',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        background: 'linear-gradient(to top, rgba(248,249,255,1) 60%, rgba(248,249,255,0.8) 80%, rgba(248,249,255,0))',
     },
     desktopCtaContainer: {
         margin: '2rem 0',

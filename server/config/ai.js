@@ -134,20 +134,12 @@ export function buildReflectionSummaryPrompt({ profileContext, experiencesText, 
         `;
 }
 
-const SYNCHRONOUS_FOCUS = {
-  general: `Let the session feel unhurried and restorative. Invite steady breathing, moments of silence, and gentle encouragement that guides the listener toward a grounded close with space to rest and integrate.`,
-  intention: `Guide the listener through a mindful intention-setting sequence. Help them notice key themes from their experiences, articulate what matters most, and name one or two intentional focal points they can carry forward.`,
-  calm: `Lead the listener into progressively deeper relaxation. Use body-based cues, soft imagery, and longer pauses that help dissolve tension and settle the nervous system before a soothing close.`,
-  gratitude: `Center the meditation on appreciation. Surface meaningful details from their reflections, encourage them to linger with the sensations of thankfulness, and close with an invitation to continue noticing everyday gifts.`,
-  compassion: `Weave in a loving-kindness (metta) segment tailored to their reflections. Begin with self-compassion, extend to loved ones, then to neutral or challenging relationships, and close by offering understanding to any difficult situations they mentioned.`
-};
-
-const BACKGROUND_FOCUS = {
-  general: `Let the arc feel restorative. Incorporate breath cues, soft imagery, and gentle direction that supports winding down and integrating the insights that surface.`,
-  intention: `Craft a daybreak-style experience that grounds the listener, highlights inspiring details from their reflections, and prompts them to visualize—and commit to—their next steps with clarity.`,
-  calm: `Emphasize slow pacing and somatic calm. Suggest body scans, relaxed breathing patterns, and tranquil imagery so the nervous system can downshift before a peaceful close.`,
-  gratitude: `Invite the listener to dwell on people, moments, or lessons they feel thankful for. Allow space for naming specific appreciations and closing with a warm, heartfelt acknowledgement.`,
-  compassion: `Include a loving-kindness section that references the relationships and challenges in their reflections. Offer phrases such as "May you be happy, may you be healthy, may you be free from suffering" as you widen the circle of care.`
+const MEDITATION_TYPE_PROMPTS = {
+  general: `Invite the listener into a restorative narrative that blends calm reflection with gentle encouragement. Use soothing language, grounded imagery, and well-spaced pauses to help them integrate recent experiences and finish feeling settled and supported.`,
+  intention: `Guide the listener through an intention-setting journey. Highlight meaningful themes from their reflections, help them articulate what matters most, and close with a clear, empowering intention they can carry into what comes next.`,
+  calm: `Lead the listener into deep ease. Focus on breath work, body-based relaxation cues, and spacious imagery that softens tension and quiets the nervous system before a serene close.`,
+  gratitude: `Center the session on appreciation. Surface specific people, moments, or lessons from their experiences and encourage lingering with the sensations of thankfulness, ending with an invitation to keep noticing everyday gifts.`,
+  compassion: `Weave a loving-kindness (metta) segment tailored to their reflections. Begin with self-compassion, extend to loved ones, then outward to neutral or challenging relationships, and conclude by offering understanding to any difficult situations they mentioned.`
 };
 
 function sanitizeContext(context) {
@@ -160,40 +152,22 @@ function sanitizeContext(context) {
 ` : '';
 }
 
-function buildSynchronousCore({ duration, profileContext, experiencesText, focus }) {
+export function buildMeditationScriptPrompt({ reflectionType, duration, profileContext, experiencesText }) {
+  const type = normalizeMeditationType(reflectionType);
+  const focus = MEDITATION_TYPE_PROMPTS[type] ?? MEDITATION_TYPE_PROMPTS.general;
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 5;
   const contextBlock = sanitizeContext(profileContext);
-  return `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Only add pauses where they naturally support deeper contemplation.
+  const baseInstructions = `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${safeDuration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Only add pauses where they naturally support deeper contemplation.
 
 ${contextBlock}Experiences:
 ${experiencesText}
+`;
+
+  return `${baseInstructions}
 
 ${focus}
 
 IMPORTANT: Write the script as plain spoken text only. Do not use markdown formatting or asterisks. You may only represent pauses using [PAUSE=Xs], and there should not be any pauses after the final spoken segment.`;
-}
-
-function buildBackgroundCore({ duration, profileContext, experiencesText, focus }) {
-  const contextBlock = sanitizeContext(profileContext);
-  return `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. The guided reflection should feel supportive and steady, with pauses noted as [PAUSE=Xs] where X is the number of seconds. Use the listener's personal context to shape the arc of the session.
-
-${contextBlock}Experiences:
-${experiencesText}
-
-${focus}
-
-IMPORTANT: Write the script as plain spoken text only. Do not use markdown formatting or asterisks. Do not include pauses after the final spoken segment.`;
-}
-
-export function buildSynchronousMeditationScriptPrompt({ reflectionType, duration, profileContext, experiencesText }) {
-  const type = normalizeMeditationType(reflectionType);
-  const focus = SYNCHRONOUS_FOCUS[type] ?? SYNCHRONOUS_FOCUS.general;
-  return buildSynchronousCore({ duration, profileContext, experiencesText, focus });
-}
-
-export function buildBackgroundMeditationScriptPrompt({ reflectionType, duration, profileContext, experiencesText }) {
-  const type = normalizeMeditationType(reflectionType);
-  const focus = BACKGROUND_FOCUS[type] ?? BACKGROUND_FOCUS.general;
-  return buildBackgroundCore({ duration, profileContext, experiencesText, focus });
 }
 
 export function buildWeeklyReportPrompt({ notesDigest, meditationsDigest, profileSection, weekStart, timezone, profileValues }) {

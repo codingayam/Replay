@@ -6,23 +6,32 @@ interface LotusFlowerButtonProps {
 }
 
 const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
-    // Generate smoke-like wisps
+    // Generate smoke-like wisps with organic randomness
     const generateSmokeWisps = () => {
         const wisps = [];
         const centerX = 50;
         const centerY = 50;
 
-        // Large smoke clouds - 6 main wisps
+        // Seeded random for consistency
+        const seededRandom = (seed: number) => {
+            const x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
+        };
+
+        // Large smoke clouds - 6 main wisps with randomness
         for (let i = 0; i < 6; i++) {
-            const angle = (i * 60) * Math.PI / 180;
-            const baseRadius = 8;
+            const angleOffset = (seededRandom(i * 7) - 0.5) * 40; // Random angle variation
+            const angle = (i * 60 + angleOffset) * Math.PI / 180;
+            const radiusVariation = seededRandom(i * 11) * 6 - 3;
+            const baseRadius = 8 + radiusVariation;
 
             const x = centerX + Math.cos(angle) * baseRadius;
             const y = centerY + Math.sin(angle) * baseRadius;
 
-            // Create organic blob-like smoke shape
-            const radius1 = 12 + Math.sin(i * 1.3) * 4;
-            const radius2 = 10 + Math.cos(i * 0.8) * 3;
+            // More organic shapes
+            const radius1 = 12 + seededRandom(i * 13) * 6;
+            const radius2 = 10 + seededRandom(i * 17) * 5;
+            const rotation = seededRandom(i * 19) * 360;
 
             wisps.push(
                 <ellipse
@@ -31,23 +40,26 @@ const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
                     cy={y}
                     rx={radius1}
                     ry={radius2}
-                    transform={`rotate(${i * 30} ${x} ${y})`}
+                    transform={`rotate(${rotation} ${x} ${y})`}
                     className="smoke-wisp large-smoke"
-                    style={{ animationDelay: `${i * 0.15}s` }}
+                    style={{ animationDelay: `${seededRandom(i * 23) * 2}s` }}
                 />
             );
         }
 
-        // Medium smoke puffs - 8 wisps
+        // Medium smoke puffs - 8 wisps with more variation
         for (let i = 0; i < 8; i++) {
-            const angle = (i * 45 + 22.5) * Math.PI / 180;
-            const baseRadius = 15;
+            const angleOffset = (seededRandom(i * 29) - 0.5) * 35;
+            const angle = (i * 45 + 22.5 + angleOffset) * Math.PI / 180;
+            const radiusVariation = seededRandom(i * 31) * 8 - 4;
+            const baseRadius = 15 + radiusVariation;
 
             const x = centerX + Math.cos(angle) * baseRadius;
             const y = centerY + Math.sin(angle) * baseRadius;
 
-            const radius1 = 8 + Math.sin(i * 1.5) * 2;
-            const radius2 = 7 + Math.cos(i * 1.2) * 2;
+            const radius1 = 8 + seededRandom(i * 37) * 4;
+            const radius2 = 7 + seededRandom(i * 41) * 3;
+            const rotation = seededRandom(i * 43) * 360;
 
             wisps.push(
                 <ellipse
@@ -56,23 +68,26 @@ const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
                     cy={y}
                     rx={radius1}
                     ry={radius2}
-                    transform={`rotate(${i * 45} ${x} ${y})`}
+                    transform={`rotate(${rotation} ${x} ${y})`}
                     className="smoke-wisp medium-smoke"
-                    style={{ animationDelay: `${i * 0.12}s` }}
+                    style={{ animationDelay: `${seededRandom(i * 47) * 1.8}s` }}
                 />
             );
         }
 
-        // Small smoke particles - 12 wisps
+        // Small smoke particles - 12 wisps scattered more randomly
         for (let i = 0; i < 12; i++) {
-            const angle = (i * 30) * Math.PI / 180;
-            const baseRadius = 22 + Math.sin(i * 0.7) * 5;
+            const angleOffset = (seededRandom(i * 53) - 0.5) * 50;
+            const angle = (i * 30 + angleOffset) * Math.PI / 180;
+            const radiusVariation = seededRandom(i * 59) * 10 - 5;
+            const baseRadius = 22 + radiusVariation;
 
             const x = centerX + Math.cos(angle) * baseRadius;
             const y = centerY + Math.sin(angle) * baseRadius;
 
-            const radius1 = 5 + Math.sin(i * 2) * 2;
-            const radius2 = 4 + Math.cos(i * 1.8) * 1.5;
+            const radius1 = 5 + seededRandom(i * 61) * 3;
+            const radius2 = 4 + seededRandom(i * 67) * 2.5;
+            const rotation = seededRandom(i * 71) * 360;
 
             wisps.push(
                 <ellipse
@@ -81,17 +96,19 @@ const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
                     cy={y}
                     rx={radius1}
                     ry={radius2}
-                    transform={`rotate(${i * 15} ${x} ${y})`}
+                    transform={`rotate(${rotation} ${x} ${y})`}
                     className="smoke-wisp small-smoke"
-                    style={{ animationDelay: `${i * 0.1}s` }}
+                    style={{ animationDelay: `${seededRandom(i * 73) * 1.5}s` }}
                 />
             );
         }
 
-        // Tiny floating particles - 16 wisps
+        // Tiny floating particles - 16 wisps with maximum scatter
         for (let i = 0; i < 16; i++) {
-            const angle = (i * 22.5) * Math.PI / 180;
-            const baseRadius = 28 + Math.sin(i * 0.5) * 7;
+            const angleOffset = (seededRandom(i * 79) - 0.5) * 60;
+            const angle = (i * 22.5 + angleOffset) * Math.PI / 180;
+            const radiusVariation = seededRandom(i * 83) * 12 - 6;
+            const baseRadius = 28 + radiusVariation;
 
             const x = centerX + Math.cos(angle) * baseRadius;
             const y = centerY + Math.sin(angle) * baseRadius;
@@ -101,9 +118,9 @@ const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
                     key={`smoke-tiny-${i}`}
                     cx={x}
                     cy={y}
-                    r={2 + Math.sin(i * 3) * 0.5}
+                    r={2 + seededRandom(i * 89) * 1.2}
                     className="smoke-wisp tiny-smoke"
-                    style={{ animationDelay: `${i * 0.08}s` }}
+                    style={{ animationDelay: `${seededRandom(i * 97) * 1.2}s` }}
                 />
             );
         }
@@ -133,7 +150,7 @@ const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
             </div>
 
             {/* "Generate Meditation" text below */}
-            <div className="lotus-button-text">Generate Meditation</div>
+            <div className="lotus-button-text">Meditate</div>
         </div>
     );
 };

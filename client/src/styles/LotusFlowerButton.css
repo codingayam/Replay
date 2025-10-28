@@ -44,32 +44,48 @@
 .large-smoke {
     fill: rgba(6, 182, 212, 0.3);
     opacity: 0.2;
-    animation: smoke-flow 7s ease-in-out infinite, smoke-rotate 12s linear infinite;
+    animation: smoke-flow 7s ease-in-out infinite, smoke-rotate-varied 15s linear infinite;
     filter: blur(4px);
+}
+
+.large-smoke:nth-child(odd) {
+    animation: smoke-flow 8s ease-in-out infinite, smoke-rotate-varied 18s linear infinite reverse;
 }
 
 /* Medium smoke puffs */
 .medium-smoke {
     fill: rgba(8, 145, 178, 0.35);
     opacity: 0.18;
-    animation: smoke-flow 6s ease-in-out infinite, smoke-rotate 10s linear infinite reverse;
+    animation: smoke-flow-alt 6.5s ease-in-out infinite, smoke-rotate-varied 13s linear infinite reverse;
     filter: blur(3px);
+}
+
+.medium-smoke:nth-child(even) {
+    animation: smoke-flow 7.5s ease-in-out infinite, smoke-rotate-varied 16s linear infinite;
 }
 
 /* Small smoke particles */
 .small-smoke {
     fill: rgba(14, 116, 144, 0.4);
     opacity: 0.15;
-    animation: smoke-flow 5s ease-in-out infinite, smoke-rotate 8s linear infinite;
+    animation: smoke-flow-alt 5.5s ease-in-out infinite, particle-drift-varied 9s ease-in-out infinite;
     filter: blur(2.5px);
+}
+
+.small-smoke:nth-child(3n) {
+    animation: smoke-flow 6.5s ease-in-out infinite, particle-drift 10s ease-in-out infinite reverse;
 }
 
 /* Tiny floating particles */
 .tiny-smoke {
     fill: rgba(6, 182, 212, 0.5);
     opacity: 0.12;
-    animation: smoke-flow 4s ease-in-out infinite, particle-drift 6s ease-in-out infinite;
+    animation: smoke-flow 4.5s ease-in-out infinite, particle-drift-varied 7s ease-in-out infinite;
     filter: blur(1.5px);
+}
+
+.tiny-smoke:nth-child(2n) {
+    animation: smoke-flow-alt 5s ease-in-out infinite, particle-drift 8s ease-in-out infinite reverse;
 }
 
 /* "Generate Meditation" Text */
@@ -141,6 +157,49 @@
     }
 }
 
+/* Smoke Rotate Varied - More organic rotation with pauses */
+@keyframes smoke-rotate-varied {
+    0%, 15% {
+        transform: rotate(0deg);
+    }
+    30% {
+        transform: rotate(45deg);
+    }
+    50%, 60% {
+        transform: rotate(120deg);
+    }
+    80% {
+        transform: rotate(240deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Smoke Flow Alt - Alternative flow pattern */
+@keyframes smoke-flow-alt {
+    0%, 100% {
+        opacity: 0.18;
+        transform: scale(1) translate(0, 0);
+    }
+    15% {
+        opacity: 0.22;
+        transform: scale(1.08) translate(-2px, 1px);
+    }
+    35% {
+        opacity: 0.15;
+        transform: scale(1.12) translate(1px, -2px);
+    }
+    55% {
+        opacity: 0.25;
+        transform: scale(1.05) translate(-1px, 0px);
+    }
+    75% {
+        opacity: 0.19;
+        transform: scale(1.15) translate(2px, 1px);
+    }
+}
+
 /* Particle Drift - Small floating movement */
 @keyframes particle-drift {
     0%, 100% {
@@ -154,6 +213,25 @@
     }
     75% {
         transform: translate(2px, -5px);
+    }
+}
+
+/* Particle Drift Varied - More erratic floating */
+@keyframes particle-drift-varied {
+    0%, 100% {
+        transform: translate(0, 0);
+    }
+    20% {
+        transform: translate(-3px, -3px);
+    }
+    40% {
+        transform: translate(4px, 2px);
+    }
+    60% {
+        transform: translate(-2px, 4px);
+    }
+    80% {
+        transform: translate(3px, -2px);
     }
 }
 

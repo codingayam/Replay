@@ -24,7 +24,7 @@ import {
   normalizeMeditationType,
   buildMeditationTitlePrompt,
   buildReflectionSummaryPrompt,
-  buildSynchronousMeditationScriptPrompt
+  buildMeditationScriptPrompt
 } from '../config/ai.js';
 import { getUsageSummary, incrementUsageCounters } from '../utils/quota.js';
 import { extractAudioUrlFromPrediction } from '../utils/replicate.js';
@@ -578,7 +578,7 @@ export function registerMeditationRoutes(deps) {
           Currently thinking about/working on: ${profile.thinking_about || 'Not specified'}
         ` : '';
 
-        const scriptPrompt = buildSynchronousMeditationScriptPrompt({
+        const scriptPrompt = buildMeditationScriptPrompt({
           reflectionType: normalizedReflectionType,
           duration: durationMinutes,
           profileContext,

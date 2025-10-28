@@ -19,7 +19,7 @@ import {
   DEFAULT_MEDITATION_TYPE,
   normalizeMeditationType,
   buildBackgroundMeditationTitlePrompt,
-  buildBackgroundMeditationScriptPrompt
+  buildMeditationScriptPrompt
 } from './config/ai.js';
 import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer, getWavDurationSeconds, convertAudioToWav, normalizeWavBuffer } from './utils/audio.js';
 import {
@@ -329,7 +329,7 @@ async function processMeditationJob(job) {
 
     // Use shared audio helpers for silence generation and concatenation
 
-    const scriptPrompt = buildBackgroundMeditationScriptPrompt({
+    const scriptPrompt = buildMeditationScriptPrompt({
       reflectionType: normalizedReflectionType,
       duration,
       profileContext,
