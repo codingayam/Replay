@@ -41,13 +41,10 @@ const CTA = () => {
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
                 </Button>
-                <Button variant="ghost" size="xl" className="text-primary-foreground hover:bg-primary-foreground/10">
-                  Learn More
-                </Button>
               </div>
 
               <p className="text-sm text-primary-foreground/80">
-                No credit card required • 5-minute setup • Cancel anytime
+                No credit card required • 1-minute setup
               </p>
             </div>
           </div>

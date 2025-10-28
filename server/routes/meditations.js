@@ -3,7 +3,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { calculateStreak } from '../utils/stats.js';
-import { transcodeAudioBuffer, getWavDurationSeconds } from '../utils/audio.js';
+import { transcodeAudioBuffer, getWavDurationSeconds, convertAudioToWav, normalizeWavBuffer } from '../utils/audio.js';
 import {
   onesignalEnabled,
   updateOneSignalUser,
@@ -664,10 +664,7 @@ export function registerMeditationRoutes(deps) {
         const ttsDeployment = REPLICATE_DEPLOYMENTS.tts;
         const voiceSettings = resolveVoiceSettings(normalizedReflectionType);
         const playbackSpeed = typeof voiceSettings.speed === 'number' && voiceSettings.speed > 0 ? voiceSettings.speed : 1;
-        const shouldAdjustSpeed = playbackSpeed !== 1;
-        const speedFfmpegPath = shouldAdjustSpeed
-          ? (typeof ffmpegPathResolver === 'function' ? ffmpegPathResolver() : 'ffmpeg')
-          : null;
+        const ffmpegPathForSegments = typeof ffmpegPathResolver === 'function' ? ffmpegPathResolver() : 'ffmpeg';
 
         try {
           // Process all segments and create individual audio files
@@ -707,18 +704,17 @@ export function registerMeditationRoutes(deps) {
                 const arrayBuffer = await audioResponse.arrayBuffer();
                 let audioBuffer = Buffer.from(arrayBuffer);
 
-                if (shouldAdjustSpeed) {
-                  try {
-                    audioBuffer = await transcodeAudioBuffer(audioBuffer, {
-                      ffmpegPath: speedFfmpegPath ?? 'ffmpeg',
-                      inputFormat: 'auto',
-                      format: 'wav',
-                      playbackSpeed
-                    });
-                  } catch (speedError) {
-                    const message = speedError instanceof Error ? speedError.message : String(speedError);
-                    console.warn(`⚠️ TTS speed adjustment failed for segment ${i}:`, message);
-                  }
+                try {
+                  audioBuffer = await convertAudioToWav(audioBuffer, {
+                    ffmpegPath: ffmpegPathForSegments,
+                    playbackSpeed,
+                    inputFormat: 'auto'
+                  });
+                  audioBuffer = normalizeWavBuffer(audioBuffer);
+                } catch (conversionError) {
+                  const message = conversionError instanceof Error ? conversionError.message : String(conversionError);
+                  console.warn(`⚠️ Failed to convert segment ${i} audio to WAV:`, message);
+                  audioBuffer = createSilenceBuffer(Math.max(3, Math.ceil(segment.length / 20)));
                 }
               
           const tempFileName = join(tempDir, `segment-${i}-speech.wav`);
@@ -765,8 +761,7 @@ export function registerMeditationRoutes(deps) {
           try {
             audioResult = await transcodeAudio(finalAudioBuffer, {
               reflectionType: normalizedReflectionType,
-              duration: durationMinutes,
-              playbackSpeed
+              duration: durationMinutes
             });
           } catch (transcodeError) {
             console.warn('Audio transcode threw unexpectedly, using WAV fallback:', transcodeError.message);
@@ -1383,7 +1378,7 @@ export function registerMeditationRoutes(deps) {
         .insert([{
           user_id: userId,
           status: 'pending',
-          job_type: normalizedReflectionType,
+          job_type: 'custom',
           note_ids: noteIds,
           duration: durationMinutes,
           reflection_type: normalizedReflectionType,

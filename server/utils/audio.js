@@ -229,3 +229,91 @@ export async function transcodeAudioBuffer(buffer, { ffmpegPath = 'ffmpeg', inpu
     ffmpeg.stdin.end(buffer);
   });
 }
+
+export async function convertAudioToWav(buffer, { ffmpegPath = 'ffmpeg', playbackSpeed = 1, inputFormat = 'auto' } = {}) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return buffer;
+  }
+
+  const baseOptions = {
+    ffmpegPath,
+    format: 'wav',
+    inputFormat,
+  };
+
+  if (playbackSpeed !== 1) {
+    try {
+      return await transcodeAudioBuffer(buffer, { ...baseOptions, playbackSpeed });
+    } catch (error) {
+      // Retry without tempo adjustment before surfacing the failure.
+      try {
+        return await transcodeAudioBuffer(buffer, baseOptions);
+      } catch (secondaryError) {
+        throw secondaryError;
+      }
+    }
+  }
+
+  return transcodeAudioBuffer(buffer, baseOptions);
+}
+
+export function normalizeWavBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < WAV_HEADER_SIZE) {
+    return buffer;
+  }
+
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
+    return buffer;
+  }
+
+  let fmtChunk = null;
+  let dataChunk = null;
+  let offset = 12;
+
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString('ascii', offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkDataStart = offset + 8;
+    const paddedSize = chunkSize + (chunkSize % 2); // Chunks are word-aligned
+
+    if (chunkId === 'fmt ') {
+      fmtChunk = buffer.subarray(chunkDataStart, chunkDataStart + chunkSize);
+    } else if (chunkId === 'data') {
+      dataChunk = buffer.subarray(chunkDataStart, chunkDataStart + chunkSize);
+      break;
+    }
+
+    offset = chunkDataStart + paddedSize;
+  }
+
+  if (!fmtChunk || !dataChunk || fmtChunk.length < 16) {
+    return buffer;
+  }
+
+  const audioFormat = fmtChunk.readUInt16LE(0);
+  const numChannels = fmtChunk.readUInt16LE(2);
+  const sampleRate = fmtChunk.readUInt32LE(4);
+  const byteRate = fmtChunk.readUInt32LE(8);
+  const blockAlign = fmtChunk.readUInt16LE(12);
+  const bitsPerSample = fmtChunk.length >= 14 ? fmtChunk.readUInt16LE(14) : 16;
+
+  const dataSize = dataChunk.length;
+  const result = Buffer.alloc(WAV_HEADER_SIZE + dataSize);
+
+  result.write('RIFF', 0);
+  result.writeUInt32LE(result.length - 8, 4);
+  result.write('WAVE', 8);
+  result.write('fmt ', 12);
+  result.writeUInt32LE(16, 16);
+  result.writeUInt16LE(audioFormat, 20);
+  result.writeUInt16LE(numChannels, 22);
+  result.writeUInt32LE(sampleRate, 24);
+  result.writeUInt32LE(byteRate, 28);
+  result.writeUInt16LE(blockAlign, 32);
+  result.writeUInt16LE(bitsPerSample, 34);
+  result.write('data', 36);
+  result.writeUInt32LE(dataSize, 40);
+  dataChunk.copy(result, WAV_HEADER_SIZE);
+
+  return result;
+}

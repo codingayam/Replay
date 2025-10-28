@@ -18,8 +18,8 @@ const Hero = () => {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold leading-tight">
-              From Brain Dump to{' '}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">5-Minute Reset</span>
+              Personalized{' '}
+              <span className="bg-gradient-primary bg-clip-text text-transparent">Guided Meditations</span>
             </h1>
 
             <p className="text-xl text-muted-foreground max-w-xl">
@@ -27,17 +27,12 @@ const Hero = () => {
               Journal with voice, pictures, or text — then turn them into personalized guided meditation sessions.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button asChild variant="hero" size="xl" className="group">
-                <Link to="/login">
-                  Start Your Journey
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </Button>
-              <Button variant="outlineHero" size="xl">
-                Watch Demo
-              </Button>
-            </div>
+            <Button asChild variant="hero" size="xl" className="group">
+              <Link to="/login">
+                Start Your Journey
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </Button>
 
             <div className="flex items-center gap-6 pt-4">
               <div className="flex -space-x-2">

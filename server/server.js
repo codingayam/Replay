@@ -21,7 +21,7 @@ import {
   buildBackgroundMeditationTitlePrompt,
   buildBackgroundMeditationScriptPrompt
 } from './config/ai.js';
-import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer, getWavDurationSeconds } from './utils/audio.js';
+import { concatenateAudioBuffers, generateSilenceBuffer, transcodeAudioBuffer, getWavDurationSeconds, convertAudioToWav, normalizeWavBuffer } from './utils/audio.js';
 import {
   onesignalEnabled,
   sendOneSignalNotification,
@@ -359,8 +359,7 @@ async function processMeditationJob(job) {
     const ttsDeployment = REPLICATE_DEPLOYMENTS.tts;
     const voiceSettings = resolveVoiceSettings(normalizedReflectionType);
     const playbackSpeed = typeof voiceSettings.speed === 'number' && voiceSettings.speed > 0 ? voiceSettings.speed : 1;
-    const shouldAdjustSpeed = playbackSpeed !== 1;
-    const speedFfmpegPath = shouldAdjustSpeed ? getFFmpegPath() : null;
+    const ffmpegPathForSegments = getFFmpegPath();
 
     // Process segments for TTS
     for (let i = 0; i < segments.length; i++) {
@@ -394,20 +393,20 @@ async function processMeditationJob(job) {
           const arrayBuffer = await audioResponse.arrayBuffer();
           let audioBuffer = Buffer.from(arrayBuffer);
 
-          if (shouldAdjustSpeed) {
-            try {
-              audioBuffer = await transcodeAudioBuffer(audioBuffer, {
-                ffmpegPath: speedFfmpegPath ?? 'ffmpeg',
-                inputFormat: 'auto',
-                format: 'wav',
-                playbackSpeed
-              });
-            } catch (speedError) {
-              const message = speedError instanceof Error ? speedError.message : String(speedError);
-              console.warn(`⚠️ TTS speed adjustment failed for segment ${i}:`, message);
-            }
+          try {
+            audioBuffer = await convertAudioToWav(audioBuffer, {
+              ffmpegPath: ffmpegPathForSegments,
+              playbackSpeed,
+              inputFormat: 'auto'
+            });
+            audioBuffer = normalizeWavBuffer(audioBuffer);
+          } catch (conversionError) {
+            const message = conversionError instanceof Error ? conversionError.message : String(conversionError);
+            console.warn(`⚠️ Failed to convert segment ${i} audio to WAV:`, message);
+            // Fall back to generating silence to avoid corrupt buffers downstream.
+            audioBuffer = createSilenceBuffer(Math.max(3, Math.ceil(segment.length / 20)));
           }
-          
+
           const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
           fs.writeFileSync(tempFileName, audioBuffer);
           tempAudioFiles.push(tempFileName);
@@ -440,7 +439,7 @@ async function processMeditationJob(job) {
     const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
     const measuredDurationSeconds = Math.round(getWavDurationSeconds(finalAudioBuffer));
 
-    const audioResult = await transcodeMeditationAudio(finalAudioBuffer, { reflectionType: normalizedReflectionType, duration, playbackSpeed });
+    const audioResult = await transcodeMeditationAudio(finalAudioBuffer, { reflectionType: normalizedReflectionType, duration });
     const finalAudioFileName = `${meditationId}-complete.${audioResult.extension}`;
     const storagePath = `${userId}/${finalAudioFileName}`;
     

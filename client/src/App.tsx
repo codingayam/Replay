@@ -12,6 +12,11 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import OnboardingPage from './pages/OnboardingPage';
 import EmailConfirmationPage from './pages/EmailConfirmationPage';
 import HomePage from './pages/HomePage';
+import AboutPage from './pages/About/AboutPage';
+import ContactPage from './pages/Contact/ContactPage';
+import PrivacyPolicyPage from './pages/Legal/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/Legal/TermsOfServicePage';
+import CookiePolicyPage from './pages/Legal/CookiePolicyPage';
 import BottomTabNavigation from './components/BottomTabNavigation';
 import DesktopLayout from './components/DesktopLayout';
 import BackgroundJobIndicator from './components/BackgroundJobIndicator';
@@ -61,10 +66,12 @@ function App() {
             path="/confirm-email"
             element={<EmailConfirmationPage />}
           />
-          <Route
-            path="/home"
-            element={<HomePage />}
-          />
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+          <Route path="/cookie-policy" element={<CookiePolicyPage />} />
           <Route
             path="/forgot-password"
             element={
