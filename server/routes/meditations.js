@@ -19,6 +19,9 @@ import { DEFAULT_TIMEZONE } from '../utils/week.js';
 import {
   GEMINI_MODELS,
   REPLICATE_DEPLOYMENTS,
+  MEDITATION_TYPE_LABELS,
+  DEFAULT_MEDITATION_TYPE,
+  normalizeMeditationType,
   buildMeditationTitlePrompt,
   buildReflectionSummaryPrompt,
   buildSynchronousMeditationScriptPrompt
@@ -395,6 +398,9 @@ export function registerMeditationRoutes(deps) {
   };
 
   const generateTitleAndSummary = async (script, reflectionType, fallbackTitle) => {
+    const normalizedType = normalizeMeditationType(reflectionType);
+    const label = MEDITATION_TYPE_LABELS[normalizedType] || 'Meditation';
+    const fallbackSummary = `Guided ${label.toLowerCase()} session based on your recent reflections.`;
     const prompt = buildMeditationTitlePrompt(script);
 
     try {
@@ -407,7 +413,7 @@ export function registerMeditationRoutes(deps) {
       const summaryCandidate = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
 
       const resolvedTitle = titleCandidate || fallbackTitle;
-      const resolvedSummary = limitSentences(summaryCandidate, 3) || `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on your recent reflections.`;
+      const resolvedSummary = limitSentences(summaryCandidate, 3) || fallbackSummary;
 
       return {
         title: resolvedTitle,
@@ -417,7 +423,7 @@ export function registerMeditationRoutes(deps) {
       console.error('Failed to generate meditation title/summary:', error);
       return {
         title: fallbackTitle,
-        summary: `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on your recent reflections.`
+        summary: fallbackSummary
       };
     }
   };
@@ -513,6 +519,7 @@ export function registerMeditationRoutes(deps) {
       const { noteIds, duration: durationInput, title, reflectionType } = req.body;
       const parsedDuration = typeof durationInput === 'number' ? durationInput : parseInt(durationInput, 10);
       const durationMinutes = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 5;
+      const normalizedReflectionType = normalizeMeditationType(reflectionType || DEFAULT_MEDITATION_TYPE);
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
         return res.status(400).json({ error: 'noteIds array is required' });
@@ -572,7 +579,7 @@ export function registerMeditationRoutes(deps) {
         ` : '';
 
         const scriptPrompt = buildSynchronousMeditationScriptPrompt({
-          reflectionType,
+          reflectionType: normalizedReflectionType,
           duration: durationMinutes,
           profileContext,
           experiencesText
@@ -584,7 +591,7 @@ export function registerMeditationRoutes(deps) {
         const fallbackTitle = title || `Meditation - ${new Date().toLocaleDateString()}`;
         const { title: generatedTitle, summary: generatedSummary } = await generateTitleAndSummary(
           script,
-          reflectionType,
+          normalizedReflectionType,
           fallbackTitle
         );
 
@@ -655,6 +662,12 @@ export function registerMeditationRoutes(deps) {
 
         let measuredDurationSeconds = 0;
         const ttsDeployment = REPLICATE_DEPLOYMENTS.tts;
+        const voiceSettings = resolveVoiceSettings(normalizedReflectionType);
+        const playbackSpeed = typeof voiceSettings.speed === 'number' && voiceSettings.speed > 0 ? voiceSettings.speed : 1;
+        const shouldAdjustSpeed = playbackSpeed !== 1;
+        const speedFfmpegPath = shouldAdjustSpeed
+          ? (typeof ffmpegPathResolver === 'function' ? ffmpegPathResolver() : 'ffmpeg')
+          : null;
 
         try {
           // Process all segments and create individual audio files
@@ -665,9 +678,6 @@ export function registerMeditationRoutes(deps) {
               // This is a speech segment, generate TTS
               try {
                 console.log(`🔊 Generating TTS for segment ${i}: "${segment.substring(0, 100)}${segment.length > 100 ? '...' : ''}"`);
-              
-                // Determine voice settings based on reflection type
-                const voiceSettings = resolveVoiceSettings(reflectionType);
               
                 const replicateInput = {
                   text: segment,
@@ -695,7 +705,21 @@ export function registerMeditationRoutes(deps) {
                 // Download TTS audio to temp file
                 const audioResponse = await fetch(audioUrl);
                 const arrayBuffer = await audioResponse.arrayBuffer();
-                const audioBuffer = Buffer.from(arrayBuffer);
+                let audioBuffer = Buffer.from(arrayBuffer);
+
+                if (shouldAdjustSpeed) {
+                  try {
+                    audioBuffer = await transcodeAudioBuffer(audioBuffer, {
+                      ffmpegPath: speedFfmpegPath ?? 'ffmpeg',
+                      inputFormat: 'auto',
+                      format: 'wav',
+                      playbackSpeed
+                    });
+                  } catch (speedError) {
+                    const message = speedError instanceof Error ? speedError.message : String(speedError);
+                    console.warn(`⚠️ TTS speed adjustment failed for segment ${i}:`, message);
+                  }
+                }
               
           const tempFileName = join(tempDir, `segment-${i}-speech.wav`);
                 fs.writeFileSync(tempFileName, audioBuffer);
@@ -739,7 +763,11 @@ export function registerMeditationRoutes(deps) {
 
           let audioResult;
           try {
-            audioResult = await transcodeAudio(finalAudioBuffer, { reflectionType, duration: durationMinutes });
+            audioResult = await transcodeAudio(finalAudioBuffer, {
+              reflectionType: normalizedReflectionType,
+              duration: durationMinutes,
+              playbackSpeed
+            });
           } catch (transcodeError) {
             console.warn('Audio transcode threw unexpectedly, using WAV fallback:', transcodeError.message);
             audioResult = {
@@ -1330,6 +1358,7 @@ export function registerMeditationRoutes(deps) {
       const { noteIds, duration: durationInput, reflectionType, startDate, endDate } = req.body;
       const parsedDuration = typeof durationInput === 'number' ? durationInput : parseInt(durationInput, 10);
       const durationMinutes = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 5;
+      const normalizedReflectionType = reflectionType ? normalizeMeditationType(reflectionType) : DEFAULT_MEDITATION_TYPE;
 
       if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
         return res.status(400).json({ error: 'noteIds array is required' });
@@ -1354,10 +1383,10 @@ export function registerMeditationRoutes(deps) {
         .insert([{
           user_id: userId,
           status: 'pending',
-          job_type: reflectionType.toLowerCase(),
+          job_type: normalizedReflectionType,
           note_ids: noteIds,
           duration: durationMinutes,
-          reflection_type: reflectionType,
+          reflection_type: normalizedReflectionType,
           start_date: startDate || null,
           end_date: endDate || null
         }])
@@ -1412,10 +1441,12 @@ export function registerMeditationRoutes(deps) {
       }
 
       // Build response based on job status
+      const normalizedReflectionType = normalizeMeditationType(job.reflection_type || DEFAULT_MEDITATION_TYPE);
+
       const response = {
         jobId: job.id,
         status: job.status,
-        reflectionType: job.reflection_type,
+        reflectionType: normalizedReflectionType,
         duration: job.duration,
         experienceCount: job.note_ids ? job.note_ids.length : 0,
         createdAt: job.created_at
@@ -1490,7 +1521,7 @@ export function registerMeditationRoutes(deps) {
       const transformedJobs = jobs.map(job => ({
         jobId: job.id,
         status: job.status,
-        reflectionType: job.reflection_type,
+        reflectionType: normalizeMeditationType(job.reflection_type || DEFAULT_MEDITATION_TYPE),
         duration: job.duration,
         experienceCount: job.note_ids ? job.note_ids.length : 0,
         createdAt: job.created_at,

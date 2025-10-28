@@ -17,6 +17,59 @@ export const REPLICATE_DEPLOYMENTS = {
 
 export const AUDIO_TRANSCRIPTION_PROMPT = 'Please transcribe this audio recording. Return only the transcribed text without any additional formatting or commentary.';
 
+export const MEDITATION_TYPE_LABELS = {
+  general: 'General Meditation',
+  intention: 'Intention Setting',
+  calm: 'Calmness & Relaxation',
+  gratitude: 'Gratitude',
+  compassion: 'Compassion'
+};
+
+export const DEFAULT_MEDITATION_TYPE = 'general';
+
+export function normalizeMeditationType(value) {
+  if (!value) {
+    return DEFAULT_MEDITATION_TYPE;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed in MEDITATION_TYPE_LABELS) {
+      return trimmed;
+    }
+
+    if (trimmed === 'night' || trimmed === 'night meditation') {
+      return 'general';
+    }
+
+    if (trimmed === 'day' || trimmed === 'day meditation') {
+      return 'intention';
+    }
+
+    if (trimmed === 'calmness and relaxation' || trimmed === 'calmness & relaxation' || trimmed === 'calm') {
+      return 'calm';
+    }
+
+    if (trimmed === 'intention setting') {
+      return 'intention';
+    }
+
+    if (trimmed === 'general meditation' || trimmed === 'general') {
+      return 'general';
+    }
+
+    if (trimmed === 'compassion') {
+      return 'compassion';
+    }
+
+    if (trimmed === 'gratitude') {
+      return 'gratitude';
+    }
+  }
+
+  return DEFAULT_MEDITATION_TYPE;
+}
+
 export function buildBackgroundMeditationTitlePrompt(script) {
   return `
     You will receive the full script of a guided meditation or reflection session.
@@ -81,56 +134,66 @@ export function buildReflectionSummaryPrompt({ profileContext, experiencesText, 
         `;
 }
 
-export function buildSynchronousMeditationScriptPrompt({ reflectionType, duration, profileContext, experiencesText }) {
-  const baseInstructions = `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Ideally, only add pauses to moments where it makes sense to do so, for instance when what was said provides a good opportunity to pause and reflect.
-          
-            ${profileContext}
-          
-            Experiences:
-            ${experiencesText}
-          
-            Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for rest and recharge.
-          
-            IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.
-          `;
+const SYNCHRONOUS_FOCUS = {
+  general: `Let the session feel unhurried and restorative. Invite steady breathing, moments of silence, and gentle encouragement that guides the listener toward a grounded close with space to rest and integrate.`,
+  intention: `Guide the listener through a mindful intention-setting sequence. Help them notice key themes from their experiences, articulate what matters most, and name one or two intentional focal points they can carry forward.`,
+  calm: `Lead the listener into progressively deeper relaxation. Use body-based cues, soft imagery, and longer pauses that help dissolve tension and settle the nervous system before a soothing close.`,
+  gratitude: `Center the meditation on appreciation. Surface meaningful details from their reflections, encourage them to linger with the sensations of thankfulness, and close with an invitation to continue noticing everyday gifts.`,
+  compassion: `Weave in a loving-kindness (metta) segment tailored to their reflections. Begin with self-compassion, extend to loved ones, then to neutral or challenging relationships, and close by offering understanding to any difficult situations they mentioned.`
+};
 
-  if (reflectionType === 'Day') {
-    return `
-            You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Ideally, only add pauses to moments where it makes sense to do so, for instance when what was said provides a good opportunity to pause and reflect.
-          
-            ${profileContext}
-          
-            Experiences:
-            ${experiencesText}
+const BACKGROUND_FOCUS = {
+  general: `Let the arc feel restorative. Incorporate breath cues, soft imagery, and gentle direction that supports winding down and integrating the insights that surface.`,
+  intention: `Craft a daybreak-style experience that grounds the listener, highlights inspiring details from their reflections, and prompts them to visualize—and commit to—their next steps with clarity.`,
+  calm: `Emphasize slow pacing and somatic calm. Suggest body scans, relaxed breathing patterns, and tranquil imagery so the nervous system can downshift before a peaceful close.`,
+  gratitude: `Invite the listener to dwell on people, moments, or lessons they feel thankful for. Allow space for naming specific appreciations and closing with a warm, heartfelt acknowledgement.`,
+  compassion: `Include a loving-kindness section that references the relationships and challenges in their reflections. Offer phrases such as "May you be happy, may you be healthy, may you be free from suffering" as you widen the circle of care.`
+};
 
-            Guide the listener through a mindful morning practice that helps them feel grounded, grateful, and energized for the day ahead. Encourage gentle breath awareness, highlight meaningful themes from their recent experiences, and weave in intention-setting prompts that connect back to their personal values and mission. Include moments that foster optimism, clarity, and purposeful action for the hours ahead. Make sure that the opening and closing of the meditation is appropriate and eases them into the meditation and also at the closing, prepares them for the day ahead.
-            
-            IMPORTANT: Write the script as plain spoken text only. Do not use any markdown formatting, asterisks. You are only allowed to use the format [PAUSE=Xs] for pauses. Do not include section headers or timestamps like "**Breathing Guidance (1 minute 30 seconds)**". Also, there should not be any pauses after the last segment.`;
+function sanitizeContext(context) {
+  if (!context || typeof context !== 'string') {
+    return '';
   }
+  const trimmed = context.trim();
+  return trimmed ? `${trimmed}
 
-  return baseInstructions;
+` : '';
+}
+
+function buildSynchronousCore({ duration, profileContext, experiencesText, focus }) {
+  const contextBlock = sanitizeContext(profileContext);
+  return `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. Your role is to provide a focused, reflective space for life's meaningful moments. The guided reflection should be thoughtful and not cloying, with pauses for quiet reflection using the format [PAUSE=Xs], where X is the number of seconds. You are trusted to decide on the duration and number of pauses. Only add pauses where they naturally support deeper contemplation.
+
+${contextBlock}Experiences:
+${experiencesText}
+
+${focus}
+
+IMPORTANT: Write the script as plain spoken text only. Do not use markdown formatting or asterisks. You may only represent pauses using [PAUSE=Xs], and there should not be any pauses after the final spoken segment.`;
+}
+
+function buildBackgroundCore({ duration, profileContext, experiencesText, focus }) {
+  const contextBlock = sanitizeContext(profileContext);
+  return `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. The guided reflection should feel supportive and steady, with pauses noted as [PAUSE=Xs] where X is the number of seconds. Use the listener's personal context to shape the arc of the session.
+
+${contextBlock}Experiences:
+${experiencesText}
+
+${focus}
+
+IMPORTANT: Write the script as plain spoken text only. Do not use markdown formatting or asterisks. Do not include pauses after the final spoken segment.`;
+}
+
+export function buildSynchronousMeditationScriptPrompt({ reflectionType, duration, profileContext, experiencesText }) {
+  const type = normalizeMeditationType(reflectionType);
+  const focus = SYNCHRONOUS_FOCUS[type] ?? SYNCHRONOUS_FOCUS.general;
+  return buildSynchronousCore({ duration, profileContext, experiencesText, focus });
 }
 
 export function buildBackgroundMeditationScriptPrompt({ reflectionType, duration, profileContext, experiencesText }) {
-  const baseInstructions = `You are an experienced meditation practitioner. You are great at taking raw experiences and sensory data and converting them into a ${duration}-minute meditation session. The guided reflection should feel supportive, with pauses noted as [PAUSE=Xs] where X is the number of seconds. Use the listener's personal context to shape the arc of the session.
-
-      ${profileContext}
-
-      Experiences:
-      ${experiencesText}
-
-      IMPORTANT: Write the script as plain spoken text only. No markdown formatting or asterisks, and do not include pauses after the final segment.`;
-
-  if (reflectionType === 'Day') {
-    return `${baseInstructions}
-
-        Craft a mindful morning experience that grounds the listener, surfaces gratitude from their recent experiences, and sets clear intentions for the day ahead. Encourage gentle breathing, visualization of upcoming moments, and motivation aligned with their values and mission.`;
-  }
-
-  return `${baseInstructions}
-
-      After weaving insights from their experiences into the narrative, include a loving-kindness (metta) segment. Reference specific people, relationships, places, or challenges from their reflections and guide them through sending phrases such as "May you be happy, may you be healthy, may you be free from suffering, may you find peace and joy." Begin with the listener, extend to loved ones, then to neutral or challenging figures, and close with any difficult situations mentioned.`;
+  const type = normalizeMeditationType(reflectionType);
+  const focus = BACKGROUND_FOCUS[type] ?? BACKGROUND_FOCUS.general;
+  return buildBackgroundCore({ duration, profileContext, experiencesText, focus });
 }
 
 export function buildWeeklyReportPrompt({ notesDigest, meditationsDigest, profileSection, weekStart, timezone, profileValues }) {

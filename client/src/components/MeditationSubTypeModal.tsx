@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sun, Moon } from 'lucide-react';
+import { X, Brain, Target, Feather, Sun, Heart } from 'lucide-react';
+import { MEDITATION_TYPES, type MeditationTypeSlug } from '../lib/meditationTypes';
 
 interface MeditationSubTypeModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelectType: (type: 'Day' | 'Night') => void;
+    onSelectType: (type: MeditationTypeSlug) => void;
 }
 
 const MeditationSubTypeModal: React.FC<MeditationSubTypeModalProps> = ({
@@ -44,43 +45,52 @@ const MeditationSubTypeModal: React.FC<MeditationSubTypeModalProps> = ({
 
                 <div style={styles.content}>
                     <div style={isMobile ? {...styles.optionsContainer, ...styles.optionsContainerMobile} : styles.optionsContainer}>
-                        <button
-                            onClick={() => onSelectType('Day')}
-                            style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
-                        >
-                            <div style={styles.iconContainer}>
-                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#fef3c7'} : {...styles.iconCircle, backgroundColor: '#fef3c7'}}>
-                                    <Sun size={isMobile ? 24 : 32} color="#f59e0b" />
-                                </div>
-                            </div>
-                            <div style={styles.optionContent}>
-                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Day</h3>
-                                <h4 style={isMobile ? {...styles.optionSubtitle, ...styles.optionSubtitleMobile} : styles.optionSubtitle}>Meditation</h4>
-                                <p style={styles.optionDescription}>Morning mindfulness</p>
-                            </div>
-                        </button>
-
-                        <button
-                            onClick={() => onSelectType('Night')}
-                            style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
-                        >
-                            <div style={styles.iconContainer}>
-                                <div style={isMobile ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: '#ddd6fe'} : {...styles.iconCircle, backgroundColor: '#ddd6fe'}}>
-                                    <Moon size={isMobile ? 24 : 32} color="#7c3aed" />
-                                </div>
-                            </div>
-                            <div style={styles.optionContent}>
-                                <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>Night</h3>
-                                <h4 style={isMobile ? {...styles.optionSubtitle, ...styles.optionSubtitleMobile} : styles.optionSubtitle}>Meditation</h4>
-                                <p style={styles.optionDescription}>Evening review</p>
-                            </div>
-                        </button>
+                        {MEDITATION_TYPES.map((type) => {
+                            const IconComponent = getIconComponent(type.icon);
+                            return (
+                                <button
+                                    key={type.slug}
+                                    onClick={() => onSelectType(type.slug)}
+                                    style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
+                                >
+                                    <div style={styles.iconContainer}>
+                                        <div
+                                            style={isMobile
+                                                ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: type.iconBackground}
+                                                : {...styles.iconCircle, backgroundColor: type.iconBackground}}
+                                        >
+                                            <IconComponent size={isMobile ? 24 : 32} color={type.iconColor} />
+                                        </div>
+                                    </div>
+                                    <div style={styles.optionContent}>
+                                        <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>{type.label}</h3>
+                                        <p style={styles.optionDescription}>{type.description}</p>
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
         </div>
     );
 };
+
+function getIconComponent(icon: 'brain' | 'target' | 'feather' | 'sun' | 'heart') {
+    switch (icon) {
+        case 'target':
+            return Target;
+        case 'feather':
+            return Feather;
+        case 'sun':
+            return Sun;
+        case 'heart':
+            return Heart;
+        case 'brain':
+        default:
+            return Brain;
+    }
+}
 
 const styles = {
     overlay: {
@@ -100,7 +110,7 @@ const styles = {
         backgroundColor: 'var(--card-background)',
         borderRadius: 'var(--border-radius)',
         width: '100%',
-        maxWidth: '480px',
+        maxWidth: '720px',
         maxHeight: '90vh',
         overflowY: 'auto' as const,
         overflowX: 'hidden' as const,
@@ -141,12 +151,15 @@ const styles = {
     },
     optionsContainer: {
         display: 'flex',
-        gap: '1rem',
+        gap: '1.25rem',
         flexDirection: 'row' as const,
+        flexWrap: 'wrap' as const,
         minWidth: 0,
+        justifyContent: 'center' as const,
+        alignItems: 'stretch' as const,
     },
     optionCard: {
-        flex: 1,
+        flex: '1 1 30%',
         display: 'flex',
         flexDirection: 'column' as const,
         alignItems: 'center',
@@ -158,6 +171,8 @@ const styles = {
         transition: 'all 0.2s ease',
         textAlign: 'center' as const,
         minHeight: '200px',
+        maxWidth: '260px',
+        width: '100%',
         justifyContent: 'center',
     },
     iconContainer: {
@@ -176,15 +191,9 @@ const styles = {
         display: 'flex',
         flexDirection: 'column' as const,
         alignItems: 'center',
-        gap: '0.25rem',
+        gap: '0.5rem',
     },
     optionTitle: {
-        fontSize: '1.5rem',
-        fontWeight: '700',
-        color: 'var(--text-color)',
-        margin: 0,
-    },
-    optionSubtitle: {
         fontSize: '1.5rem',
         fontWeight: '700',
         color: 'var(--text-color)',
@@ -193,29 +202,31 @@ const styles = {
     optionDescription: {
         fontSize: '1rem',
         color: 'var(--text-secondary)',
-        margin: '0.5rem 0 0 0',
+        margin: 0,
         fontWeight: '400',
+        lineHeight: 1.4,
     },
     
     // Mobile-specific styles
     optionsContainerMobile: {
-        flexDirection: 'column' as const,
-        gap: '1rem',
+        flexDirection: 'row' as const,
+        flexWrap: 'wrap' as const,
+        justifyContent: 'center' as const,
+        gap: '0.75rem',
     },
     optionCardMobile: {
-        padding: '1.5rem 1rem',
-        minHeight: '160px',
-        flex: 'none',
+        padding: '1.25rem 0.75rem',
+        minHeight: '140px',
+        flex: '0 1 46%',
+        width: '46%',
+        maxWidth: '200px',
     },
     iconCircleMobile: {
-        width: '64px',
-        height: '64px',
+        width: '56px',
+        height: '56px',
     },
     optionTitleMobile: {
-        fontSize: '1.25rem',
-    },
-    optionSubtitleMobile: {
-        fontSize: '1.25rem',
+        fontSize: '1.1rem',
     },
 };
 

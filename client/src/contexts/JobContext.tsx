@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import api from '../utils/api';
 import { useAuth } from './AuthContext';
+import { DEFAULT_MEDITATION_TYPE, type MeditationTypeSlug, isMeditationTypeSlug } from '../lib/meditationTypes';
 
 // Types for meditation jobs
 export interface MeditationJob {
   jobId: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  reflectionType: string;
+  reflectionType: MeditationTypeSlug;
   duration: number;
   experienceCount: number;
   createdAt: string;
@@ -23,7 +24,7 @@ export interface MeditationJob {
 // Job creation parameters
 export interface JobCreationParams {
   noteIds: string[];
-  reflectionType: string;
+  reflectionType: MeditationTypeSlug;
   startDate?: string;
   endDate?: string;
   title?: string;
@@ -31,6 +32,59 @@ export interface JobCreationParams {
 }
 
 const DEFAULT_JOB_DURATION_MINUTES = 5;
+
+function normalizeReflectionType(value: unknown): MeditationTypeSlug {
+  if (isMeditationTypeSlug(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+
+    if (trimmed === 'night' || trimmed === 'night meditation') {
+      return 'general';
+    }
+    if (trimmed === 'day' || trimmed === 'day meditation') {
+      return 'intention';
+    }
+    if (trimmed === 'intention setting') {
+      return 'intention';
+    }
+    if (trimmed === 'calmness & relaxation' || trimmed === 'calmness and relaxation' || trimmed === 'calm') {
+      return 'calm';
+    }
+    if (trimmed === 'gratitude') {
+      return 'gratitude';
+    }
+    if (trimmed === 'compassion') {
+      return 'compassion';
+    }
+    if (trimmed === 'general meditation' || trimmed === 'general') {
+      return 'general';
+    }
+  }
+
+  return DEFAULT_MEDITATION_TYPE;
+}
+
+function normalizeJobFromServer(raw: any): MeditationJob {
+  const reflectionType = normalizeReflectionType(raw?.reflectionType ?? raw?.reflection_type);
+
+  return {
+    jobId: raw?.jobId ?? raw?.id ?? '',
+    status: (raw?.status === 'pending' || raw?.status === 'processing' || raw?.status === 'completed' || raw?.status === 'failed')
+      ? raw.status
+      : 'pending',
+    reflectionType,
+    duration: typeof raw?.duration === 'number' ? raw.duration : DEFAULT_JOB_DURATION_MINUTES,
+    experienceCount: Array.isArray(raw?.noteIds) ? raw.noteIds.length : Array.isArray(raw?.note_ids) ? raw.note_ids.length : (raw?.experienceCount ?? 0),
+    createdAt: raw?.createdAt ?? raw?.created_at ?? new Date().toISOString(),
+    completedAt: raw?.completedAt ?? raw?.completed_at,
+    meditationId: raw?.meditationId ?? raw?.meditation_id,
+    error: raw?.error ?? raw?.error_message,
+    result: raw?.result
+  };
+}
 
 // Context value interface
 interface JobContextValue {
@@ -138,7 +192,7 @@ export function JobProvider({ children }: { children: ReactNode }) {
   const getJobStatus = useCallback(async (jobId: string): Promise<MeditationJob> => {
     try {
       const response = await makeAuthenticatedRequest('GET', `/meditate/jobs/${jobId}`);
-      return response as MeditationJob;
+      return normalizeJobFromServer(response);
     } catch (error: any) {
       console.error(`❌ Failed to get job status for ${jobId}:`, error);
       throw new Error(error.response?.data?.error || 'Failed to get job status');
@@ -195,11 +249,13 @@ export function JobProvider({ children }: { children: ReactNode }) {
     try {
       // Get active and recent jobs (pending, processing, completed in last hour)
       const response = await makeAuthenticatedRequest('GET', '/meditate/jobs?status=pending,processing,completed,failed');
-      const { jobs } = response;
+      const { jobs: rawJobs } = response;
+      const jobs: MeditationJob[] = Array.isArray(rawJobs)
+        ? rawJobs.map((job: any) => normalizeJobFromServer(job))
+        : [];
 
       // Check for status changes and log them
-      if (jobs) {
-        jobs.forEach((job: MeditationJob) => {
+      jobs.forEach((job) => {
           const previousStatus = previousJobStatuses.current[job.jobId];
           
           // If status changed to completed or failed, log the change
@@ -214,12 +270,11 @@ export function JobProvider({ children }: { children: ReactNode }) {
           // Update previous status tracking
           previousJobStatuses.current[job.jobId] = job.status;
         });
-      }
 
-      setActiveJobs(jobs || []);
+      setActiveJobs(jobs);
       
       // If no active jobs, stop polling
-      if (!jobs || jobs.length === 0 || !jobs.some((job: MeditationJob) => 
+      if (jobs.length === 0 || !jobs.some((job) => 
         job.status === 'pending' || job.status === 'processing'
       )) {
         stopPolling();
@@ -280,13 +335,14 @@ export function JobProvider({ children }: { children: ReactNode }) {
         console.log('🔍 Checking for existing active jobs...');
         
         const response = await makeAuthenticatedRequest('GET', '/meditate/jobs?status=pending,processing');
-        const { jobs } = response;
+        const rawJobs = Array.isArray(response?.jobs) ? response.jobs : [];
+        const jobs: MeditationJob[] = rawJobs.map((job: any) => normalizeJobFromServer(job));
 
-        if (jobs && jobs.length > 0) {
+        if (jobs.length > 0) {
           console.log(`📋 Found ${jobs.length} active job(s), starting session recovery...`);
           
           // Initialize status tracking for existing jobs
-          jobs.forEach((job: MeditationJob) => {
+          jobs.forEach((job) => {
             previousJobStatuses.current[job.jobId] = job.status;
           });
           

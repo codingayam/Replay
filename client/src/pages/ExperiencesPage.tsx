@@ -11,6 +11,7 @@ import MeditationGeneratingModal from '../components/MeditationGeneratingModal';
 import MeditationPlayer from '../components/MeditationPlayer';
 import EditExperienceModal from '../components/EditExperienceModal';
 import type { Note, SearchResult } from '../types';
+import { DEFAULT_MEDITATION_TYPE } from '../lib/meditationTypes';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -427,7 +428,7 @@ const ExperiencesPage: React.FC = () => {
             console.log('🧘 Queuing background meditation job from selected experiences...');
             const jobResponse = await createJob({
                 noteIds: Array.from(selectedNoteIds),
-                reflectionType: 'Night'
+                reflectionType: DEFAULT_MEDITATION_TYPE
             });
 
             console.log('✅ Background job queued:', jobResponse);
@@ -778,7 +779,7 @@ const ExperiencesPage: React.FC = () => {
                 onClose={() => setShowReadyToBeginModal(false)}
                 onBack={handleReadyToBeginBack}
                 onStart={handleReadyToBeginStart}
-                reflectionType="Night Meditation"
+                reflectionType={DEFAULT_MEDITATION_TYPE}
                 period="Selected Experiences"
                 experienceCount={selectedNoteIds.size}
                 duration={DEFAULT_DURATION_MINUTES}

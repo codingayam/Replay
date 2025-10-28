@@ -18,6 +18,7 @@ import { useJobs } from '../contexts/JobContext';
 import { useResponsive } from '../hooks/useResponsive';
 import useWeeklyProgress from '../hooks/useWeeklyProgress';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { DEFAULT_MEDITATION_TYPE, type MeditationTypeSlug } from '../lib/meditationTypes';
 
 interface PlaylistItem {
     type: 'speech' | 'pause';
@@ -86,7 +87,7 @@ const ReflectionsPage: React.FC = () => {
     const [isMeditationApiComplete, setIsMeditationApiComplete] = useState(false);
     
     // Reflection session data
-    const [selectedReflectionType, setSelectedReflectionType] = useState<'Day' | 'Night'>('Day');
+    const [selectedReflectionType, setSelectedReflectionType] = useState<MeditationTypeSlug>(DEFAULT_MEDITATION_TYPE);
     const [selectedStartDate, setSelectedStartDate] = useState('');
     const [selectedEndDate, setSelectedEndDate] = useState('');
     const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
@@ -204,7 +205,7 @@ const ReflectionsPage: React.FC = () => {
         setShowMeditationSubTypeModal(true);
     };
 
-    const handleMeditationSubTypeSelection = (type: 'Day' | 'Night') => {
+    const handleMeditationSubTypeSelection = (type: MeditationTypeSlug) => {
         setSelectedReflectionType(type);
         setShowMeditationSubTypeModal(false);
         setShowTimePeriodModal(true);
@@ -254,7 +255,7 @@ const ReflectionsPage: React.FC = () => {
             setGeneratedPlaylist(null);
             setMeditationPlaylist(null);
             setGeneratedSummary('');
-            setSelectedReflectionType('Day');
+            setSelectedReflectionType(DEFAULT_MEDITATION_TYPE);
             setSelectedStartDate('');
             setSelectedEndDate('');
             setSelectedNoteIds([]);
@@ -296,7 +297,7 @@ const ReflectionsPage: React.FC = () => {
         fetchSavedMeditations(); // Refresh the saved meditations list
         await refreshWeeklyProgress(); // Refresh stats since a new meditation was created
         // Reset state
-        setSelectedReflectionType('Day');
+        setSelectedReflectionType(DEFAULT_MEDITATION_TYPE);
         setSelectedStartDate('');
         setSelectedEndDate('');
         setSelectedNoteIds([]);
@@ -310,7 +311,7 @@ const ReflectionsPage: React.FC = () => {
         setMeditationPlaylist(null);
         setCurrentMeditationId(null);
         // Reset all state when meditation finishes
-        setSelectedReflectionType('Day');
+        setSelectedReflectionType(DEFAULT_MEDITATION_TYPE);
         setSelectedStartDate('');
         setSelectedEndDate('');
         setSelectedNoteIds([]);

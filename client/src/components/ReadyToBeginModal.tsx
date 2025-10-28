@@ -1,12 +1,13 @@
 import React from 'react';
 import { X, CheckCircle, ArrowLeft } from 'lucide-react';
+import { getMeditationTypeConfig, type MeditationTypeSlug } from '../lib/meditationTypes';
 
 interface ReadyToBeginModalProps {
     isOpen: boolean;
     onClose: () => void;
     onBack: () => void;
     onStart: () => void;
-    reflectionType: 'Day' | 'Night';
+    reflectionType: MeditationTypeSlug;
     period: string;
     experienceCount: number;
     duration: number;
@@ -26,9 +27,7 @@ const ReadyToBeginModal: React.FC<ReadyToBeginModalProps> = ({
 }) => {
     if (!isOpen) return null;
 
-    const formatReflectionType = () => {
-        return reflectionType === 'Day' ? 'Day Meditation' : 'Night Reflection';
-    };
+    const typeConfig = getMeditationTypeConfig(reflectionType);
 
     return (
         <div style={styles.overlay} onClick={onClose}>
@@ -53,7 +52,7 @@ const ReadyToBeginModal: React.FC<ReadyToBeginModalProps> = ({
                     <div style={styles.summaryContainer}>
                         <div style={styles.summaryItem}>
                             <span style={styles.summaryLabel}>Type:</span>
-                            <span style={styles.summaryValue}>{formatReflectionType()}</span>
+                            <span style={styles.summaryValue}>{typeConfig.label}</span>
                         </div>
 
                         <div style={styles.summaryItem}>
@@ -61,7 +60,7 @@ const ReadyToBeginModal: React.FC<ReadyToBeginModalProps> = ({
                             <span style={styles.summaryValue}>{period}</span>
                         </div>
 
-                        {reflectionType === 'Night' && (
+                        {experienceCount > 0 && (
                             <div style={styles.summaryItem}>
                                 <span style={styles.summaryLabel}>Experiences:</span>
                                 <span style={styles.summaryValue}>{experienceCount} selected</span>

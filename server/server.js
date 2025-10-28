@@ -15,6 +15,9 @@ import { execSync } from 'child_process';
 import {
   GEMINI_MODELS,
   REPLICATE_DEPLOYMENTS,
+  MEDITATION_TYPE_LABELS,
+  DEFAULT_MEDITATION_TYPE,
+  normalizeMeditationType,
   buildBackgroundMeditationTitlePrompt,
   buildBackgroundMeditationScriptPrompt
 } from './config/ai.js';
@@ -108,6 +111,9 @@ const limitSentences = (text, maxSentences) => {
 };
 
 async function generateTitleAndSummary(script, reflectionType, fallbackTitle) {
+  const normalizedType = normalizeMeditationType(reflectionType);
+  const label = MEDITATION_TYPE_LABELS[normalizedType] || 'Meditation';
+  const fallbackSummary = `Guided ${label.toLowerCase()} session based on personal reflections.`;
   const prompt = buildBackgroundMeditationTitlePrompt(script);
 
   try {
@@ -120,7 +126,7 @@ async function generateTitleAndSummary(script, reflectionType, fallbackTitle) {
     const summaryCandidate = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
 
     const resolvedTitle = titleCandidate || fallbackTitle;
-    const resolvedSummary = limitSentences(summaryCandidate, 3) || `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on personal reflections.`;
+    const resolvedSummary = limitSentences(summaryCandidate, 3) || fallbackSummary;
 
     return {
       title: resolvedTitle,
@@ -130,7 +136,7 @@ async function generateTitleAndSummary(script, reflectionType, fallbackTitle) {
     console.error('Worker failed to generate meditation title/summary:', error);
     return {
       title: fallbackTitle,
-      summary: `Guided ${reflectionType?.toLowerCase?.() || 'meditation'} session based on personal reflections.`
+      summary: fallbackSummary
     };
   }
 }
@@ -278,6 +284,7 @@ async function processMeditationJob(job) {
     } = job;
     const parsedDuration = typeof jobDuration === 'number' ? jobDuration : parseInt(jobDuration, 10);
     const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 5;
+    const normalizedReflectionType = normalizeMeditationType(reflectionType || DEFAULT_MEDITATION_TYPE);
 
     // Generate meditation using existing meditation logic
     // Get selected notes and user profile (same as synchronous version)
@@ -297,7 +304,7 @@ async function processMeditationJob(job) {
       .eq('user_id', userId)
       .single();
 
-    // Generate custom meditation for Day/Night reflections
+    // Generate custom meditation using the selected reflection type
     const model = gemini.getGenerativeModel({ model: GEMINI_MODELS.default });
     
     // Build experience text from notes
@@ -323,17 +330,18 @@ async function processMeditationJob(job) {
     // Use shared audio helpers for silence generation and concatenation
 
     const scriptPrompt = buildBackgroundMeditationScriptPrompt({
-      reflectionType,
+      reflectionType: normalizedReflectionType,
       duration,
       profileContext,
       experiencesText
     });
     const result = await model.generateContent(scriptPrompt);
     const script = result.response.text();
-    const fallbackTitle = `${reflectionType} Reflection - ${new Date().toLocaleDateString()}`;
+    const typeLabel = MEDITATION_TYPE_LABELS[normalizedReflectionType] || 'General Meditation';
+    const fallbackTitle = `${typeLabel} - ${new Date().toLocaleDateString()}`;
     const { title: generatedTitle, summary: generatedSummary } = await generateTitleAndSummary(
       script,
-      reflectionType,
+      normalizedReflectionType,
       fallbackTitle
     );
 
@@ -349,6 +357,10 @@ async function processMeditationJob(job) {
 
     const tempAudioFiles = [];
     const ttsDeployment = REPLICATE_DEPLOYMENTS.tts;
+    const voiceSettings = resolveVoiceSettings(normalizedReflectionType);
+    const playbackSpeed = typeof voiceSettings.speed === 'number' && voiceSettings.speed > 0 ? voiceSettings.speed : 1;
+    const shouldAdjustSpeed = playbackSpeed !== 1;
+    const speedFfmpegPath = shouldAdjustSpeed ? getFFmpegPath() : null;
 
     // Process segments for TTS
     for (let i = 0; i < segments.length; i++) {
@@ -357,9 +369,6 @@ async function processMeditationJob(job) {
       if (segment && isNaN(segment)) {
         // Speech segment - generate TTS
         try {
-          // Determine voice settings based on reflection type
-          const voiceSettings = resolveVoiceSettings(reflectionType);
-
           const replicateInput = {
             text: segment,
             voice: voiceSettings.voice,
@@ -383,7 +392,21 @@ async function processMeditationJob(job) {
           console.log('📥 Replicate deployment response:', { audioUrl });
           const audioResponse = await fetch(audioUrl);
           const arrayBuffer = await audioResponse.arrayBuffer();
-          const audioBuffer = Buffer.from(arrayBuffer);
+          let audioBuffer = Buffer.from(arrayBuffer);
+
+          if (shouldAdjustSpeed) {
+            try {
+              audioBuffer = await transcodeAudioBuffer(audioBuffer, {
+                ffmpegPath: speedFfmpegPath ?? 'ffmpeg',
+                inputFormat: 'auto',
+                format: 'wav',
+                playbackSpeed
+              });
+            } catch (speedError) {
+              const message = speedError instanceof Error ? speedError.message : String(speedError);
+              console.warn(`⚠️ TTS speed adjustment failed for segment ${i}:`, message);
+            }
+          }
           
           const tempFileName = path.join(tempDir, `segment-${i}-speech.wav`);
           fs.writeFileSync(tempFileName, audioBuffer);
@@ -417,7 +440,7 @@ async function processMeditationJob(job) {
     const finalAudioBuffer = mergeAudioBuffers(audioBuffers);
     const measuredDurationSeconds = Math.round(getWavDurationSeconds(finalAudioBuffer));
 
-    const audioResult = await transcodeMeditationAudio(finalAudioBuffer, { reflectionType, duration });
+    const audioResult = await transcodeMeditationAudio(finalAudioBuffer, { reflectionType: normalizedReflectionType, duration, playbackSpeed });
     const finalAudioFileName = `${meditationId}-complete.${audioResult.extension}`;
     const storagePath = `${userId}/${finalAudioFileName}`;
     
@@ -573,7 +596,7 @@ async function processMeditationJob(job) {
       notificationTasks.push(
         sendOneSignalEvent(userId, 'meditation_generated', {
           meditation_id: meditation.id,
-          reflection_type: reflectionType,
+          reflection_type: normalizedReflectionType,
           expires_at: audioError ? null : audioExpiresAt.toISOString(),
         })
       );

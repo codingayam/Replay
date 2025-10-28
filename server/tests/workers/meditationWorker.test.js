@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { generateSilenceBuffer } from '../../utils/audio.js';
+
 const DEFAULT_USER = 'user-1';
-const SIMPLE_AUDIO = Buffer.alloc(64, 1);
+const SIMPLE_AUDIO = generateSilenceBuffer(0.5);
 
 function createSupabaseProxy() {
   const proxy = {
@@ -180,7 +182,7 @@ test('processMeditationJob completes day reflection jobs', async (t) => {
     user_id: DEFAULT_USER,
     note_ids: ['note-1'],
     duration: 10,
-    reflection_type: 'Day'
+    reflection_type: 'intention'
   };
 
   await processMeditationJob(job);
@@ -206,7 +208,7 @@ test('processJobQueue claims pending job and delegates to worker', async (t) => 
         user_id: DEFAULT_USER,
         note_ids: ['note-1'],
         duration: 5,
-        reflection_type: 'Day',
+        reflection_type: 'intention',
         status: 'pending'
       }
     ]

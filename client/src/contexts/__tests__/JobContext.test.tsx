@@ -31,11 +31,13 @@ const getTokenMock = jest.fn(async () => 'mock-jwt') as jest.MockedFunction<() =
 
 let JobProvider: typeof import('../JobContext').JobProvider;
 let useJobs: typeof import('../JobContext').useJobs;
+let DEFAULT_TYPE: typeof import('../../lib/meditationTypes').DEFAULT_MEDITATION_TYPE;
 
 beforeAll(async () => {
   const jobModule = await import('../JobContext');
   JobProvider = jobModule.JobProvider;
   useJobs = jobModule.useJobs;
+  ({ DEFAULT_MEDITATION_TYPE: DEFAULT_TYPE } = await import('../../lib/meditationTypes'));
 });
 
 describe('JobContext', () => {
@@ -63,7 +65,7 @@ describe('JobContext', () => {
     await act(async () => {
       await result.current.createJob({
         noteIds: ['1'],
-        reflectionType: 'Meditation',
+        reflectionType: DEFAULT_TYPE,
       } as any);
     });
 

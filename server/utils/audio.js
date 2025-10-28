@@ -136,6 +136,29 @@ export const __TEST_ONLY__ = {
   WAV_HEADER_SIZE
 };
 
+function buildAtempoFilters(playbackSpeed) {
+  if (typeof playbackSpeed !== 'number' || !Number.isFinite(playbackSpeed) || playbackSpeed <= 0 || playbackSpeed === 1) {
+    return [];
+  }
+
+  const filters = [];
+  let target = playbackSpeed;
+
+  // Clamp extreme values into the supported 0.5-2.0 window using repeated factors.
+  while (target < 0.5) {
+    filters.push(0.5);
+    target /= 0.5;
+  }
+
+  while (target > 2) {
+    filters.push(2);
+    target /= 2;
+  }
+
+  filters.push(Number(target.toFixed(4)));
+  return filters;
+}
+
 /**
  * Transcode a WAV PCM buffer into a compressed audio buffer using ffmpeg.
  * Falls back to returning the original buffer when transcoding fails.
@@ -143,17 +166,30 @@ export const __TEST_ONLY__ = {
  * @param {Buffer} buffer - Source PCM WAV buffer to transcode.
  * @param {object} options
  * @param {string} [options.ffmpegPath='ffmpeg'] - Path to ffmpeg executable.
+ * @param {string} [options.inputFormat='wav'] - Explicit input format for ffmpeg (set to 'auto' to autodetect).
  * @param {string} [options.format='mp3'] - Target audio container/format.
  * @param {string} [options.bitrate='128k'] - Audio bitrate for encoding.
+ * @param {number} [options.playbackSpeed=1] - Tempo multiplier applied using ffmpeg atempo filters.
  * @returns {Promise<Buffer>} Transcoded audio buffer.
  */
-export async function transcodeAudioBuffer(buffer, { ffmpegPath = 'ffmpeg', format = 'mp3', bitrate = '128k' } = {}) {
+export async function transcodeAudioBuffer(buffer, { ffmpegPath = 'ffmpeg', inputFormat = 'wav', format = 'mp3', bitrate = '128k', playbackSpeed = 1 } = {}) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     return buffer;
   }
 
   return new Promise((resolve, reject) => {
-    const args = ['-f', 'wav', '-i', 'pipe:0'];
+    const args = [];
+    const normalizedInputFormat = inputFormat === 'auto' ? null : inputFormat;
+    if (normalizedInputFormat) {
+      args.push('-f', normalizedInputFormat);
+    }
+    args.push('-i', 'pipe:0');
+
+    const atempoFilters = buildAtempoFilters(playbackSpeed);
+    if (atempoFilters.length > 0) {
+      const filterChain = atempoFilters.map((value) => `atempo=${value}`).join(',');
+      args.push('-filter:a', filterChain);
+    }
 
     if (format === 'mp3') {
       args.push('-acodec', 'libmp3lame', '-b:a', bitrate);

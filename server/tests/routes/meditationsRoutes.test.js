@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 
 import { registerMeditationRoutes } from '../../routes/meditations.js';
+import { generateSilenceBuffer } from '../../utils/audio.js';
 
 const DEFAULT_USER = 'user-1';
 
@@ -208,7 +209,7 @@ function resolveVoiceSettings() {
   return { voice: 'af_nicole', speed: 0.7 };
 }
 
-const SIMPLE_AUDIO = Buffer.alloc(64, 1);
+const SIMPLE_AUDIO = generateSilenceBuffer(0.5);
 
 function createPrunableSupabase(initialState) {
   const state = {
@@ -346,7 +347,7 @@ function stubFsForAudio(t) {
   t.mock.method(fs, 'rmSync', () => {});
 }
 
-test('POST /api/meditate generates custom day meditation and uploads audio', async (t) => {
+test('POST /api/meditate generates custom intention meditation and uploads audio', async (t) => {
   const { app, routes } = createMockApp();
   const supabase = createSupabaseMock({
     notes: [
@@ -417,7 +418,7 @@ test('POST /api/meditate generates custom day meditation and uploads audio', asy
   const resWrapper = createMockResponse();
   await runHandlers(route.handlers, {
     auth: null,
-    body: { noteIds: ['note-1'], reflectionType: 'Day', duration: 8, title: 'Morning Momentum' }
+    body: { noteIds: ['note-1'], reflectionType: 'intention', duration: 8, title: 'Morning Momentum' }
   }, resWrapper);
 
   assert.equal(resWrapper.statusCode, 201);
@@ -435,7 +436,7 @@ test('POST /api/meditate generates custom day meditation and uploads audio', asy
   assert.equal(typeof storedMeditation.summary, 'string');
 });
 
-test('POST /api/meditate generates custom night meditation and uploads audio', async (t) => {
+test('POST /api/meditate generates custom general meditation and uploads audio', async (t) => {
   const { app, routes } = createMockApp();
   const supabase = createSupabaseMock({
     notes: [
@@ -506,7 +507,7 @@ test('POST /api/meditate generates custom night meditation and uploads audio', a
   const resWrapper = createMockResponse();
   await runHandlers(route.handlers, {
     auth: null,
-    body: { noteIds: ['note-1'], reflectionType: 'Night', duration: 8, title: 'Evening Wind-down' }
+    body: { noteIds: ['note-1'], reflectionType: 'general', duration: 8, title: 'Evening Wind-down' }
   }, resWrapper);
 
   assert.equal(resWrapper.statusCode, 201);
@@ -594,7 +595,7 @@ test('POST /api/meditate handles varied pause token formatting', async (t) => {
   const resWrapper = createMockResponse();
   await runHandlers(route.handlers, {
     auth: null,
-    body: { noteIds: ['note-1'], reflectionType: 'Day', duration: 8, title: 'Formatting Flexibility' }
+  body: { noteIds: ['note-1'], reflectionType: 'intention', duration: 8, title: 'Formatting Flexibility' }
   }, resWrapper);
 
   assert.equal(resWrapper.statusCode, 201);
@@ -655,7 +656,7 @@ test('POST /api/meditate/jobs creates background job and triggers queue processi
   const resWrapper = createMockResponse();
   await runHandlers(route.handlers, {
     auth: null,
-    body: { noteIds: ['note-1'], duration: 10, reflectionType: 'Night' }
+    body: { noteIds: ['note-1'], duration: 10, reflectionType: 'general' }
   }, resWrapper);
 
   assert.equal(resWrapper.statusCode, 201);

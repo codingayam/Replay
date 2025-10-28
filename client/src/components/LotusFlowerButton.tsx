@@ -132,8 +132,8 @@ const LotusFlowerButton: React.FC<LotusFlowerButtonProps> = ({ onClick }) => {
                 </svg>
             </div>
 
-            {/* "Reflect" text below */}
-            <div className="lotus-button-text">Reflect</div>
+            {/* "Generate Meditation" text below */}
+            <div className="lotus-button-text">Generate Meditation</div>
         </div>
     );
 };
