@@ -85,7 +85,7 @@ const carouselContent = [
   },
   {
     title: 'Weekly pulse',
-    description: "You'll receive a weekly digest that surfaces themes and patterns from your week - connecting your daily dots and making sense of it all."
+    description: "You'll receive a weekly digest that surfaces themes and patterns from your week - connecting your daily dots and making sense of it all. This will be sent automatically to your login email at the end of the week."
   },
   {
     title: 'Personalize Replay',
@@ -275,9 +275,9 @@ const OnboardingPage: React.FC = () => {
               {/* Icon */}
               <div className="w-24 h-24 rounded-3xl shadow-2xl flex items-center justify-center bg-white">
                 <img
-                  src="/icon-512.png"
+                  src="/replay-icon-official.png"
                   alt="Replay Logo"
-                  className="w-16 h-16"
+                  className="w-20 h-20"
                 />
               </div>
 

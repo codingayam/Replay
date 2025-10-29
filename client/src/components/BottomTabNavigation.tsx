@@ -6,8 +6,8 @@ const BottomTabNavigation: React.FC = () => {
     const location = useLocation();
 
     const tabs = [
-        { path: '/experiences', icon: Calendar, label: 'Experiences' },
-        { path: '/reflections', icon: Brain, label: 'Reflections' },
+        { path: '/experiences', icon: Calendar, label: 'Journal' },
+        { path: '/reflections', icon: Brain, label: 'Meditation' },
         { path: '/profile', icon: User, label: 'Profile' },
     ];
 
@@ -60,7 +60,8 @@ const styles = {
         textDecoration: 'none',
         padding: '0.75rem 1rem',
         borderRadius: 'var(--border-radius-sm)',
-        minWidth: '72px',
+        flex: 1,
+        maxWidth: '120px',
         transition: 'all 0.2s ease',
     },
     activeTab: {
