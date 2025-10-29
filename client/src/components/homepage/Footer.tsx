@@ -7,10 +7,10 @@ const Footer = () => {
       <div className="container mx-auto">
         <div className="grid md:grid-cols-4 gap-8 mb-8">
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
+            <Link to="/home" className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
               <div className="w-8 h-8 rounded-lg bg-gradient-primary" />
               <span className="font-bold text-xl">Replay</span>
-            </div>
+            </Link>
             <p className="text-sm text-muted-foreground">Your AI journaling companion for clarity and calm.</p>
           </div>
 
@@ -30,6 +30,11 @@ const Footer = () => {
               <li>
                 <Link to="/home#pricing" className="hover:text-primary transition-colors">
                   Pricing
+                </Link>
+              </li>
+              <li>
+                <Link to="/home#install" className="hover:text-primary transition-colors">
+                  Installation
                 </Link>
               </li>
               <li>

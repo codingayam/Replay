@@ -14,17 +14,17 @@ const Hero = () => {
           <div className="space-y-8 animate-fade-in">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-card/80 backdrop-blur-sm rounded-full border border-primary/20 shadow-soft">
               <Sparkles className="w-4 h-4 text-primary animate-glow" />
-              <span className="text-sm font-medium text-foreground">ADHD-Friendly: Short, Structured, Zero Judgment</span>
+              <span className="text-sm font-medium text-foreground">Meditations built from your own words </span>
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-bold leading-tight">
-              Personalized{' '}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">Guided Meditations</span>
+            <h1 className="text-5xl md:text-6xl font-bold leading-tight">
+              Journal & {' '}
+              <span className="bg-gradient-primary bg-clip-text text-transparent">Meditate</span>
             </h1>
 
             <p className="text-xl text-muted-foreground max-w-xl">
               A quiet space to discover growth, calm and meaning from daily experiences.
-              Journal with voice, pictures, or text — then turn them into personalized guided meditation sessions.
+              Journal with your voice, photos, writings — then watch them transform into guided meditation sessions - personalized just for you.
             </p>
 
             <Button asChild variant="hero" size="xl" className="group">
@@ -33,20 +33,6 @@ const Hero = () => {
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>
             </Button>
-
-            <div className="flex items-center gap-6 pt-4">
-              <div className="flex -space-x-2">
-                {[1, 2, 3, 4].map((item) => (
-                  <div
-                    key={item}
-                    className="w-10 h-10 rounded-full bg-gradient-primary border-2 border-background"
-                  />
-                ))}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Join <span className="font-semibold text-foreground">10,000+</span> mindful explorers
-              </div>
-            </div>
           </div>
 
           <div className="relative animate-scale-in">

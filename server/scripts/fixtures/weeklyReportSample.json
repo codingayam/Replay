@@ -1,0 +1,57 @@
+{
+  "now": "2025-05-26T05:00:00Z",
+  "progressRows": [
+    {
+      "id": "progress-1",
+      "user_id": "user-1",
+      "week_start": "2025-05-19",
+      "journal_count": 5,
+      "meditation_count": 2,
+      "weekly_report_ready_at": "2025-05-25T18:00:00Z",
+      "weekly_report_sent_at": null,
+      "eligible": true,
+      "next_report_at_utc": "2025-05-26T04:00:00Z",
+      "claimed_at": null,
+      "retry_attempts": 0
+    }
+  ],
+  "notes": [
+    {
+      "id": "note-1",
+      "title": "Morning gratitude",
+      "transcript": "Felt grateful for family breakfast.",
+      "date": "2025-05-20T12:00:00Z"
+    },
+    {
+      "id": "note-2",
+      "title": "Evening reflection",
+      "transcript": "Challenging day but learned patience.",
+      "date": "2025-05-22T22:15:00Z"
+    }
+  ],
+  "meditations": [
+    {
+      "id": "med-1",
+      "title": "Calming breath",
+      "completed_at": "2025-05-23T11:00:00Z"
+    },
+    {
+      "id": "med-2",
+      "title": "Evening unwind",
+      "completed_at": "2025-05-24T21:30:00Z"
+    }
+  ],
+  "user": {
+    "email": "weekly@example.com"
+  },
+  "profile": {
+    "name": "Alex",
+    "timezone": "America/New_York",
+    "values": ["empathy", "growth"],
+    "mission": "Help people build mindful routines",
+    "thinking_about": "Balancing work and rest"
+  },
+  "gemini": {
+    "text": "## Highlights\n- You stayed consistent this week.\n- Keep leaning into what worked."
+  }
+}

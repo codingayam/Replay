@@ -10,24 +10,24 @@ type Testimonial = {
 
 const testimonials: Testimonial[] = [
   {
-    name: 'Emma L.',
-    role: 'College Student, 22',
+    name: 'Cindy',
+    role: 'Housewife, 31',
     quote:
       "I can't switch off. Guided stuff helps, but it's generic. This app turns MY notes into a meditation I'll actually use. It's the first thing that's clicked for me.",
     rating: 5,
   },
   {
-    name: 'Marcus T.',
-    role: 'Marketing Manager, 31',
+    name: 'Helen',
+    role: 'Office Worker, 24',
     quote:
-      "I love journaling but it becomes backlog guilt. Now I just voice-record on my commute, and by the weekend I have a meditation ready. No guilt, just progress.",
+      "This app helps me to relax and decompress when I get triggered by unexpected events in life.",
     rating: 5,
   },
   {
-    name: 'Jasmine K.',
-    role: 'Freelance Designer, 26',
+    name: 'Jay',
+    role: 'Designer, 26',
     quote:
-      "I over-collect ideas, under-process them. This app finally gives me a format that works. Dump → distill → listen. My thoughts aren't the problem anymore—they're my guide.",
+      "I over-collect ideas and under-process them. This app makes it so easy to record and revisit them anytime. The meditation feature helps me to sit with them, so that I actually spend time with my ideas and not just forget them.",
     rating: 5,
   },
 ];

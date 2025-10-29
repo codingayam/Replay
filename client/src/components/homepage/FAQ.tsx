@@ -4,10 +4,25 @@ const faqs = [
     answer: 'A maximum of 10 photos can be uploaded in a single journal entry.',
   },
   {
+    question: 'How does the meditation generation work?',
+    answer: 'Our proprietary generative AI models generate a meditation script based on the type of meditation and journals you select. After the script is generated, a separate AI model converts the script into speech - with a prosody that is suited to the type of meditation chosen.',
+  },
+  {
     question: 'How long does it take to generate a meditation?',
     answer:
-      'It usually takes about 1-2 minutes for the AI to generate your personalized meditation. The process involves taking your selected journals, and sending it to a specialized AI model to generate the script for the guided meditation. The script is then sent to yet another trained AI model to produce the audio itself in a soothing and calm voice. To minimize waiting time, we recommend users to close the app anytime after the generation. The app will notify the users when meditation generation is complete.',
+      'It usually takes about 1-2 minutes.',
   },
+  {
+    question: 'How long is a typical meditation session?',
+    answer:
+      '10-12 minutes, depending on the content of the journals you choose and the type of meditation.',
+  },
+  {
+    question: 'How secure is the information and data I share?',
+    answer:
+      'Replay is SOC 2 Type 2 compliant. All customer data is encrypted at rest with AES-256 and in transit via TLS. We also do not share any of your information with third parties.',
+  },
+
   {
     question: 'How do I delete all my information if I want to stop using Replay?',
     answer:

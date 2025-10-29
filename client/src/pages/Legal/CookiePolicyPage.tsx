@@ -1,7 +1,10 @@
-import type { FC } from 'react';
+import { useEffect, type FC } from 'react';
 import Footer from '../../components/homepage/Footer';
 
 const CookiePolicyPage: FC = () => {
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-hero flex flex-col">
       <div className="container mx-auto flex-1 px-4 py-20 space-y-10">

@@ -96,11 +96,15 @@
     font-weight: 600;
     color: rgba(8, 145, 178, 0.85);
     letter-spacing: 0.5px;
-    animation: text-breathe 6s ease-in-out infinite;
+    animation: text-breathe 6s ease-in-out infinite, glow-pulse 3s ease-in-out infinite;
     text-shadow: 0 2px 10px rgba(6, 182, 212, 0.12);
     background: transparent;
     border-radius: 999px;
     transition: all 0.3s ease;
+    box-shadow:
+        0 0 10px rgba(6, 182, 212, 0.2),
+        0 0 20px rgba(6, 182, 212, 0.1),
+        0 0 30px rgba(6, 182, 212, 0.05);
 }
 
 /* ============================================
@@ -245,10 +249,25 @@
     }
 }
 
+/* Glow Pulse - Animated box shadow glow */
+@keyframes glow-pulse {
+    0%, 100% {
+        box-shadow:
+            0 0 10px rgba(6, 182, 212, 0.2),
+            0 0 20px rgba(6, 182, 212, 0.1),
+            0 0 30px rgba(6, 182, 212, 0.05);
+    }
+    50% {
+        box-shadow:
+            0 0 20px rgba(6, 182, 212, 0.4),
+            0 0 40px rgba(6, 182, 212, 0.25),
+            0 0 60px rgba(6, 182, 212, 0.15),
+            0 0 80px rgba(6, 182, 212, 0.08);
+    }
+}
+
 /* Hover Effects - Button and smoke intensifies */
 .lotus-button-container:hover .lotus-button-text {
-    background: rgba(6, 182, 212, 0.25);
-    box-shadow: 0 6px 30px rgba(6, 182, 212, 0.35);
     transform: translateY(-2px);
     color: rgba(6, 182, 212, 1);
 }
@@ -281,8 +300,6 @@
 /* Active/Click Effect - Smoke billows */
 .lotus-button-container:active .lotus-button-text {
     transform: translateY(0px);
-    box-shadow: 0 2px 15px rgba(6, 182, 212, 0.3);
-    background: rgba(6, 182, 212, 0.2);
 }
 
 .lotus-button-container:active .mandala-container {
@@ -344,6 +361,14 @@
 
     .mandala-svg {
         transition: none;
+    }
+
+    /* Static glow for text when motion is reduced */
+    .lotus-button-text {
+        box-shadow:
+            0 0 15px rgba(6, 182, 212, 0.3),
+            0 0 30px rgba(6, 182, 212, 0.15),
+            0 0 45px rgba(6, 182, 212, 0.08);
     }
 
     /* Provide static visible state */
