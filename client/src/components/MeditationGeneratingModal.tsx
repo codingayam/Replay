@@ -358,7 +358,7 @@ const styles = {
         color: 'var(--text-secondary)',
     },
     footer: {
-        padding: '2rem 1.5rem 3rem 1.5rem',
+        padding: '2rem 1.5rem 6rem 1.5rem',
         textAlign: 'center' as const,
     },
     footerText: {
