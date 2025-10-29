@@ -4,6 +4,7 @@ export interface MeditationTypeConfig {
   slug: MeditationTypeSlug;
   label: string;
   description: string;
+  recommendation: string;
   icon: 'brain' | 'target' | 'feather' | 'sun' | 'heart';
   iconColor: string;
   iconBackground: string;
@@ -14,8 +15,9 @@ export const DEFAULT_MEDITATION_TYPE: MeditationTypeSlug = 'general';
 const typeList: MeditationTypeConfig[] = [
   {
     slug: 'general',
-    label: 'General Meditation',
-    description: 'Personalized session drawn from your selected experiences.',
+    label: 'General',
+    description: 'A quiet reflection of selected journals and experiences to ground you with awareness and mindfulness.',
+    recommendation: 'At night, before bedtime.',
     icon: 'brain',
     iconColor: '#2563eb',
     iconBackground: '#dbeafe'
@@ -23,15 +25,17 @@ const typeList: MeditationTypeConfig[] = [
   {
     slug: 'intention',
     label: 'Intention Setting',
-    description: 'Clarify your focus and align with what comes next.',
+    description: 'Takes your documented desires, goals and challenges into a clear, positive intention to guide your state of mind.',
+    recommendation: 'Before you start the day.',
     icon: 'target',
     iconColor: '#f59e0b',
     iconBackground: '#fef3c7'
   },
   {
     slug: 'calm',
-    label: 'Calmness & Relaxation',
-    description: 'Release tension, slow down, and settle your nervous system.',
+    label: 'Feel Calm and Relaxed',
+    description: 'Release stress, tension or anxiety surfaced in your recent thoughts.',
+    recommendation: 'Anytime.',
     icon: 'feather',
     iconColor: '#0284c7',
     iconBackground: '#e0f2fe'
@@ -39,7 +43,8 @@ const typeList: MeditationTypeConfig[] = [
   {
     slug: 'gratitude',
     label: 'Gratitude',
-    description: 'Savor meaningful moments and amplify appreciation.',
+    description: 'Highlights and deepens appreciation for the positive elements and gifts within your recent thoughts and experiences.',
+    recommendation: 'Anytime.',
     icon: 'sun',
     iconColor: '#db2777',
     iconBackground: '#fdf2f8'
@@ -47,7 +52,8 @@ const typeList: MeditationTypeConfig[] = [
   {
     slug: 'compassion',
     label: 'Compassion',
-    description: 'Extend kindness inward and outward with loving awareness.',
+    description: 'Cultivates kindness and understanding toward yourself and others connected to the feelings expressed in your reflections.',
+    recommendation: 'Anytime.',
     icon: 'heart',
     iconColor: '#7c3aed',
     iconBackground: '#ede9fe'

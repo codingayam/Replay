@@ -53,7 +53,7 @@ const MeditationSubTypeModal: React.FC<MeditationSubTypeModalProps> = ({
                                     onClick={() => onSelectType(type.slug)}
                                     style={isMobile ? {...styles.optionCard, ...styles.optionCardMobile} : styles.optionCard}
                                 >
-                                    <div style={styles.iconContainer}>
+                                    <div style={isMobile ? {...styles.iconContainer, ...styles.iconContainerMobile} : styles.iconContainer}>
                                         <div
                                             style={isMobile
                                                 ? {...styles.iconCircle, ...styles.iconCircleMobile, backgroundColor: type.iconBackground}
@@ -62,9 +62,13 @@ const MeditationSubTypeModal: React.FC<MeditationSubTypeModalProps> = ({
                                             <IconComponent size={isMobile ? 24 : 32} color={type.iconColor} />
                                         </div>
                                     </div>
-                                    <div style={styles.optionContent}>
+                                    <div style={isMobile ? {...styles.optionContent, ...styles.optionContentMobile} : styles.optionContent}>
                                         <h3 style={isMobile ? {...styles.optionTitle, ...styles.optionTitleMobile} : styles.optionTitle}>{type.label}</h3>
-                                        <p style={styles.optionDescription}>{type.description}</p>
+                                        <p style={styles.optionDescription}>
+                                            {type.description}
+                                            <br />
+                                            <strong>Recommended:</strong> {type.recommendation}
+                                        </p>
                                     </div>
                                 </button>
                             );
@@ -209,24 +213,34 @@ const styles = {
     
     // Mobile-specific styles
     optionsContainerMobile: {
-        flexDirection: 'row' as const,
-        flexWrap: 'wrap' as const,
-        justifyContent: 'center' as const,
-        gap: '0.75rem',
+        flexDirection: 'column' as const,
+        gap: '1rem',
     },
     optionCardMobile: {
-        padding: '1.25rem 0.75rem',
-        minHeight: '140px',
-        flex: '0 1 46%',
-        width: '46%',
-        maxWidth: '200px',
+        flexDirection: 'row' as const,
+        padding: '1.25rem',
+        minHeight: 'auto',
+        flex: 'none',
+        width: '100%',
+        maxWidth: 'none',
+        alignItems: 'flex-start',
+        textAlign: 'left' as const,
     },
     iconCircleMobile: {
         width: '56px',
         height: '56px',
+        flexShrink: 0,
     },
     optionTitleMobile: {
         fontSize: '1.1rem',
+    },
+    iconContainerMobile: {
+        marginBottom: 0,
+        marginRight: '1rem',
+    },
+    optionContentMobile: {
+        alignItems: 'flex-start',
+        flex: 1,
     },
 };
 
