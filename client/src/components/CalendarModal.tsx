@@ -8,7 +8,7 @@ interface CalendarModalProps {
   reflectionDates: string[];
 }
 
-const journalColor = '#3b82f6';
+const journalColor = '#4adede';
 const reflectionColor = '#8b5cf6';
 
 const CalendarModal: React.FC<CalendarModalProps> = ({
@@ -89,7 +89,7 @@ const CalendarModal: React.FC<CalendarModalProps> = ({
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Reflection Calendar</h2>
+          <h2 style={styles.title}>Mindfulness Calendar</h2>
           <button onClick={onClose} style={styles.closeButton}>
             <X style={styles.closeIcon} />
           </button>
@@ -122,10 +122,8 @@ const CalendarModal: React.FC<CalendarModalProps> = ({
               if (day) {
                 if (hasJournal && hasReflection) {
                   dayContent = (
-                    <div style={styles.dayBothOuter}>
-                      <div style={styles.dayBothInner}>
-                        <span style={styles.dayNumberActive}>{day}</span>
-                      </div>
+                    <div style={styles.daySplit}>
+                      <span style={styles.dayNumberActive}>{day}</span>
                     </div>
                   );
                 } else if (hasJournal || hasReflection) {
@@ -161,12 +159,10 @@ const CalendarModal: React.FC<CalendarModalProps> = ({
             </div>
             <div style={styles.legendItem}>
               <div style={{ ...styles.legendSwatch, backgroundColor: reflectionColor }} />
-              <span style={styles.legendText}>Reflections</span>
+              <span style={styles.legendText}>Meditations</span>
             </div>
             <div style={styles.legendItem}>
-              <div style={styles.legendDualOuter}>
-                <div style={styles.legendDualInner} />
-              </div>
+              <div style={styles.legendSplitCircle} />
               <span style={styles.legendText}>Both</span>
             </div>
           </div>
@@ -298,20 +294,11 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center'
   } as React.CSSProperties,
-  dayBothOuter: {
+  daySplit: {
     minWidth: '36px',
     minHeight: '36px',
     borderRadius: '50%',
-    backgroundColor: reflectionColor,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  } as React.CSSProperties,
-  dayBothInner: {
-    minWidth: '28px',
-    minHeight: '28px',
-    borderRadius: '50%',
-    backgroundColor: journalColor,
+    background: `linear-gradient(to right, ${journalColor} 50%, ${reflectionColor} 50%)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center'
@@ -331,20 +318,11 @@ const styles = {
     height: '12px',
     borderRadius: '50%'
   } as React.CSSProperties,
-  legendDualOuter: {
-    width: '14px',
-    height: '14px',
+  legendSplitCircle: {
+    width: '12px',
+    height: '12px',
     borderRadius: '50%',
-    backgroundColor: reflectionColor,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  } as React.CSSProperties,
-  legendDualInner: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    backgroundColor: journalColor
+    background: `linear-gradient(to right, ${journalColor} 50%, ${reflectionColor} 50%)`
   } as React.CSSProperties,
   legendText: {
     fontSize: '12px',

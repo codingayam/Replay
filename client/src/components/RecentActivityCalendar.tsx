@@ -7,7 +7,7 @@ interface RecentActivityCalendarProps {
   onExpandClick: () => void;
 }
 
-const journalColor = '#3b82f6';
+const journalColor = '#4adede';
 const reflectionColor = '#8b5cf6';
 
 const RecentActivityCalendar: React.FC<RecentActivityCalendarProps> = ({
@@ -72,9 +72,7 @@ const RecentActivityCalendar: React.FC<RecentActivityCalendarProps> = ({
           };
 
           let innerDot: React.ReactNode = null;
-          if (hasJournal && hasReflection) {
-            innerDot = <div style={styles.innerDotBoth} />;
-          } else if (hasReflection) {
+          if (hasReflection && !hasJournal) {
             innerDot = <div style={styles.innerDotReflection} />;
           }
 
@@ -157,18 +155,12 @@ const styles = {
     backgroundColor: reflectionColor
   } as React.CSSProperties,
   dayIndicatorBoth: {
-    backgroundColor: reflectionColor
+    background: `linear-gradient(to right, ${journalColor} 50%, ${reflectionColor} 50%)`
   } as React.CSSProperties,
   innerDotReflection: {
     width: '10px',
     height: '10px',
     backgroundColor: '#ffffff',
-    borderRadius: '50%'
-  } as React.CSSProperties,
-  innerDotBoth: {
-    width: '12px',
-    height: '12px',
-    backgroundColor: journalColor,
     borderRadius: '50%'
   } as React.CSSProperties,
   dayNumber: {

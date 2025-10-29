@@ -6,7 +6,7 @@ const BottomTabNavigation: React.FC = () => {
     const location = useLocation();
 
     const tabs = [
-        { path: '/', icon: Calendar, label: 'Experiences' },
+        { path: '/experiences', icon: Calendar, label: 'Experiences' },
         { path: '/reflections', icon: Brain, label: 'Reflections' },
         { path: '/profile', icon: User, label: 'Profile' },
     ];
