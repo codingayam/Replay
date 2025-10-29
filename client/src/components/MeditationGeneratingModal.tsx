@@ -195,7 +195,7 @@ const MeditationGeneratingModal: React.FC<MeditationGeneratingModalProps> = ({
                                 🔄 Run in Background
                             </button>
                             <p style={styles.backgroundButtonSubtext}>
-                                Continue using the app while your meditation generates
+                                You can continue to use the app while the magic happens behind the scenes. A notification will be sent to you when it is complete.
                             </p>
                         </div>
                     )}
